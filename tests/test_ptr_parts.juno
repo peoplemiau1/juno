@@ -1,0 +1,21 @@
+// Test pointer parts separately
+
+fn main() {
+    // Part 1: Basic pointer (should be 52)
+    let x = 10
+    let ptr = &x
+    let val = *ptr
+    *ptr = 42
+    let x2 = x
+    
+    // Part 2: Array pointer (should be 10)
+    let arr[3]
+    arr[0] = 5
+    arr[1] = 10
+    arr[2] = 15
+    let p = &arr[1]
+    let elem = *p
+    
+    // 10 + 42 + 10 = 62
+    return val + x2 + elem
+}

@@ -1,0 +1,10 @@
+// Test - function before main, literal args
+
+fn add_nums(a, b) {
+    return a + b
+}
+
+fn main() {
+    let sum = add_nums(100, 200)
+    return sum
+}

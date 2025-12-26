@@ -1,0 +1,11 @@
+// test_linux.juno - Simple test for Linux
+
+fn add(a, b) {
+    return a + b
+}
+
+fn main() {
+    let x = add(10, 20)
+    let y = 5 * 8
+    return x + y
+}

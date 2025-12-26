@@ -1,0 +1,35 @@
+// test_pointers.juno - Test pointer operations
+
+fn swap(a, b) {
+    let tmp = *a
+    *a = *b
+    *b = tmp
+}
+
+fn main() {
+    // Basic pointer operations
+    let x = 10
+    let ptr = &x
+    let val = *ptr      // val = 10
+    
+    *ptr = 42           // x = 42
+    let x2 = x          // x2 = 42
+    
+    // Swap via pointers
+    let a = 100
+    let b = 200
+    swap(&a, &b)
+    // Now a = 200, b = 100
+    
+    // Array pointer
+    let arr[3]
+    arr[0] = 5
+    arr[1] = 10
+    arr[2] = 15
+    
+    let p = &arr[1]
+    let elem = *p       // elem = 10
+    
+    // Result: 10 + 42 + 200 + 100 + 10 = 362
+    return val + x2 + a + b + elem
+}

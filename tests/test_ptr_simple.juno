@@ -1,0 +1,13 @@
+// test_ptr_simple.juno - Simple pointer test
+
+fn main() {
+    let x = 10
+    let ptr = &x
+    let val = *ptr
+    
+    *ptr = 42
+    let x2 = x
+    
+    // 10 + 42 = 52
+    return val + x2
+}

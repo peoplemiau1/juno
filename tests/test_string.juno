@@ -1,0 +1,16 @@
+// Test strings and print
+fn main() {
+    print("Hello, Juno!")
+    print(42)
+    print(176)
+    
+    let arr[3]
+    arr[0] = 10
+    arr[1] = 20
+    arr[2] = 30
+    
+    let size = len(arr)
+    print(size)
+    
+    return 0
+}

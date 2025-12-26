@@ -1,0 +1,20 @@
+// Test without optimization tricks
+
+fn get100() {
+    return 100
+}
+
+fn get200() {
+    return 200
+}
+
+fn add_nums(a, b) {
+    return a + b
+}
+
+fn main() {
+    let x = get100()
+    let y = get200()
+    let sum = add_nums(x, y)
+    return sum
+}

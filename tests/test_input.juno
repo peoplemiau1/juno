@@ -1,0 +1,4 @@
+print("Press any key to continue...")
+let key = 0
+input(key)
+print("Key pressed!")

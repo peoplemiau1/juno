@@ -1,0 +1,3 @@
+fn main() {
+    output_int(12345)
+}

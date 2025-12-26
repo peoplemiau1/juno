@@ -1,0 +1,25 @@
+// test_import.juno - Test module imports
+
+import "examples/math.juno"
+import "examples/geometry.juno"
+
+fn main() {
+    // Test math functions
+    let sq = square(5)       // 25
+    let cb = cube(3)         // 27
+    let dbl = double(10)     // 20
+    let fact = factorial(4)  // 24
+    
+    // Test geometry
+    let r = Rectangle
+    r.init(6, 4)
+    let area = r.area()      // 24
+    
+    let p = Point
+    p.init(3, 4)
+    p.move(2, 1)
+    let px = p.x             // 5
+    
+    // Result: 25 + 27 + 20 + 24 + 24 + 5 = 125
+    return sq + cb + dbl + fact + area + px
+}

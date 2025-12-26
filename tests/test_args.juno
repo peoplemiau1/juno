@@ -1,0 +1,10 @@
+fn greet(times) {
+    while (times != 0) {
+        print("Hello!")
+        times--
+    }
+}
+
+print("Starting greet...")
+greet(3)
+print("Done!")

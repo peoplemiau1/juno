@@ -1,0 +1,24 @@
+struct Point {
+    let x
+    let y
+}
+
+print("Struct Test Start")
+
+let p = Point
+p.x = 10
+p.y = 20
+
+print("Point initialized.")
+print("p.x is:")
+print(p.x)
+
+let sum = p.x + p.y
+print("Sum of fields:")
+print(sum)
+
+if (sum == 30) {
+    print("Struct check SUCCESS")
+} else {
+    print("Struct check FAILED")
+}

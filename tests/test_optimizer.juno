@@ -1,0 +1,28 @@
+// test_optimizer.juno - Test optimization passes
+
+fn main() {
+    // Constant folding: 10 + 20 -> 30 at compile time
+    let a = 10 + 20
+    
+    // Strength reduction: x * 8 -> x << 3
+    let b = 5 * 8           // Should use shift
+    
+    // Strength reduction: x / 4 -> x >> 2
+    let c = 64 / 4          // Should use shift
+    
+    // Dead code: x * 0 = 0
+    let d = 100 * 0         // Should be 0
+    
+    // Identity: x + 0 = x
+    let e = 42 + 0          // Should be 42
+    
+    // Identity: x * 1 = x
+    let f = 33 * 1          // Should be 33
+    
+    // Constant propagation
+    let x = 10
+    let y = x + 5           // Should become 15 at compile time
+    
+    // Result: 30 + 40 + 16 + 0 + 42 + 33 + 15 = 176
+    return a + b + c + d + e + f + y
+}

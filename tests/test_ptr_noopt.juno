@@ -1,0 +1,12 @@
+// test_ptr_noopt.juno - Pointer test without optimization tricks
+
+fn get_ten() {
+    return 10
+}
+
+fn main() {
+    let x = get_ten()
+    let ptr = &x
+    let val = *ptr
+    return val
+}

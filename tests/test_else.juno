@@ -1,0 +1,27 @@
+fn main() {
+    let x = 5
+    
+    if (x == 5) {
+        print("x is 5")
+    } else {
+        print("x is not 5")
+    }
+    
+    if (x == 10) {
+        print("x is 10")
+    } else {
+        print("x is not 10")
+    }
+    
+    // Test alloc
+    let ptr = alloc(4096)
+    print(ptr)
+    
+    if (ptr > 0) {
+        print("alloc success!")
+    } else {
+        print("alloc failed")
+    }
+    
+    return 0
+}

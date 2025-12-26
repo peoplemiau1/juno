@@ -1,0 +1,33 @@
+fn add(a, b) {
+    let res = a + b
+    return res
+}
+
+fn check_value(v) {
+    if (v == 15) {
+        print("Sum check: 15 is correct")
+    } else {
+        print("Sum check: ERROR")
+    }
+}
+
+print("--- JUNO NATIVE VERIFICATION ---")
+
+let x = 10
+let y = 5
+print("Calculating 10 + 5...")
+let result = add(x, y)
+
+print("Result of add:")
+print(result)
+
+check_value(result)
+
+print("Loop test (1 to 3):")
+let i = 1
+while (i <= 3) {
+    print(i)
+    i++
+}
+
+print("Verification complete!")

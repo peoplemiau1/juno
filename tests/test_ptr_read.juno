@@ -1,0 +1,11 @@
+// Test reading through pointer parameter
+
+fn get_value(ptr) {
+    return *ptr
+}
+
+fn main() {
+    let x = 77
+    let v = get_value(&x)
+    return v
+}

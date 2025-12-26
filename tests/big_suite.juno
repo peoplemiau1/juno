@@ -1,0 +1,80 @@
+// Combined smoke test for Juno
+
+fn add(a, b) {
+    return a + b
+}
+
+fn mul(a, b) {
+    return a * b
+}
+
+fn fact(n) {
+    let res = 1
+    for (i = 1; i <= n; i++) {
+        res = res * i
+    }
+    return res
+}
+
+struct Point { x y }
+
+fn Point.init(px, py) {
+    self.x = px
+    self.y = py
+}
+
+fn Point.move(dx, dy) {
+    self.x = self.x + dx
+    self.y = self.y + dy
+}
+
+fn Point.len() {
+    return self.x + self.y
+}
+
+fn main() {
+    print("=== BIG SUITE START ===")
+
+    // Arithmetic
+    let sum = add(10, 20)     // 30
+    let prod = mul(7, 6)      // 42
+    let check = sum + prod    // 72
+    if (check != 72) { print("FAIL arith"); return 1 }
+
+    // While loop countdown
+    let c = 3
+    while (c != 0) {
+        c = c - 1
+    }
+    if (c != 0) { print("FAIL while"); return 2 }
+
+    // Arrays
+    let arr[5]
+    arr[0] = 3
+    arr[1] = 4
+    arr[2] = 5
+    arr[3] = 6
+    arr[4] = 7
+    let arr_sum = arr[0] + arr[1] + arr[2] + arr[3] + arr[4] // 25
+    if (arr_sum != 25) { print("FAIL array"); return 3 }
+
+    // Factorial via for-loop
+    let f = fact(5) // 120
+    if (f != 120) { print("FAIL fact"); return 4 }
+
+    // Struct + methods
+    let p = Point
+    p.init(2, 3)
+    p.move(1, 2)   // (3,5)
+    let pl = p.len() // 8
+    if (pl != 8) { print("FAIL struct"); return 5 }
+
+    // Final report
+    print("All checks passed")
+    print(check)
+    print(arr_sum)
+    print(f)
+    print(pl)
+    print("=== BIG SUITE END ===")
+    return 0
+}

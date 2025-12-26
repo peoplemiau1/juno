@@ -1,0 +1,15 @@
+fn say_hello() {
+    print("Hello from function!")
+}
+
+fn test_math() {
+    let a = 5
+    let b = 10
+    let c = a + b
+    print("Function math works!")
+}
+
+print("Main start")
+say_hello()
+test_math()
+print("Main end")

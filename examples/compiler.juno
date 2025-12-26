@@ -1,0 +1,65 @@
+// compiler.juno v3.0 (ASM Generator)
+let c_v = 0;
+
+fn nxt() {
+    insertASM {
+        extern fgetc, stdin
+        ; На Windows stdin - это указатель. Нужно его загрузить.
+        ; Но для простоты в этом бутстрапе мы можем использовать Си-подобный вызов через fgetc
+        ; В NASM-версии src/main.rb мы настроили externs.
+        call fgetc
+        mov [rel c_v], rax
+    }
+}
+
+fn emit_header() {
+    insertASM {
+        section .data
+        fmt_str db "%s", 0
+        fmt_char db "%c", 0
+        section .text
+        extern printf
+    }
+}
+
+fn main() {
+    // В этом режиме compiler.juno должен выводить Ассемблер
+    // Мы будем использовать прямые вызовы printf для генерации .asm файла
+    
+    insertASM {
+        lea rcx, [rel fmt_str]
+        mov rdx, asm_head
+        call printf
+        jmp start_logic
+
+        section .data
+        asm_head db "section .text", 10, "global main", 10, "main:", 10, 0
+        
+        section .text
+        start_logic:
+    }
+    
+    nxt();
+    while (c_v != -1) {
+        // Простейшая логика: читаем и выводим как есть (для теста)
+        // В реальности здесь будет парсинг Juno -> ASM
+        insertASM {
+            mov rcx, [rel c_v]
+            call putchar
+        }
+        nxt();
+    }
+    
+    insertASM {
+        mov rdx, asm_tail
+        lea rcx, [rel fmt_str]
+        call printf
+        
+        section .data
+        asm_tail db "  ret", 10, 0
+        
+        section .text
+    }
+}
+
+main();

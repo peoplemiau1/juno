@@ -1,0 +1,14 @@
+fn add(a, b) {
+    let result = a + b
+    return result
+}
+
+let x = 42
+print("x = ")
+print(x)
+
+let sum = add(100, 200)
+print("100 + 200 = ")
+print(sum)
+
+print("Done!")

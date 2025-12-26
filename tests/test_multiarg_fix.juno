@@ -1,0 +1,32 @@
+// Test for multi-argument function call fix
+// This should return 300, not 44
+
+fn add(a, b) {
+    return a + b
+}
+
+fn multiply(x, y) {
+    return x * y
+}
+
+fn main() {
+    // Test 1: Simple addition with large numbers
+    let result1 = add(100, 200)
+    print("add(100, 200) = ")
+    print(result1)
+    
+    // Test 2: Multiplication
+    let result2 = multiply(15, 20)
+    print("multiply(15, 20) = ")
+    print(result2)
+    
+    // Test 3: Nested calls
+    let result3 = add(add(10, 20), add(30, 40))
+    print("add(add(10,20), add(30,40)) = ")
+    print(result3)
+    
+    // Test 4: Three arguments (if supported)
+    // let result4 = add3(5, 10, 15)
+    
+    return result1
+}

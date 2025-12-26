@@ -1,0 +1,11 @@
+// Test passing pointer to function
+
+fn set_value(ptr) {
+    *ptr = 42
+}
+
+fn main() {
+    let x = 10
+    set_value(&x)
+    return x
+}

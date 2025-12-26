@@ -1,0 +1,19 @@
+struct Math {
+    factor
+}
+
+fn Math.add(a, b) {
+    f = self.factor
+    res = a + b
+    val = res + f
+    return val
+}
+
+fn main() {
+    m = Math
+    m.factor = 10
+    output_int(m.factor) // ДОЛЖНО БЫТЬ 10
+    
+    val = m.add(2, 3)
+    output_int(val)      // ДОЛЖНО БЫТЬ 15
+}

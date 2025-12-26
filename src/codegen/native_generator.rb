@@ -1,0 +1,133 @@
+require_relative "../native/pe_builder"
+require_relative "../native/elf_builder"
+require_relative "parts/context"
+require_relative "parts/linker"
+require_relative "parts/emitter"
+require_relative "parts/logic"
+require_relative "parts/calls"
+
+class NativeGenerator
+  include GeneratorLogic
+  include GeneratorCalls
+
+  def initialize(ast, target_os)
+    @ast = ast
+    @target_os = target_os
+    
+    @ctx = CodegenContext.new
+    @emitter = CodeEmitter.new
+    base_rva = target_os == :windows ? 0x1000 : 0x401000
+    @linker = Linker.new(base_rva)
+    
+    if target_os == :windows
+      # Register hardcoded imports from PEBuilder
+      @linker.register_import("GetStdHandle", 0x2060)
+      @linker.register_import("WriteFile", 0x2068)
+      @linker.register_import("ReadFile", 0x2070)
+      @linker.register_import("CreateThread", 0x2078)
+      @linker.register_import("Sleep", 0x2080)
+      @linker.register_import("ExitProcess", 0x2088)
+    end
+
+    @linker.add_data("int_buffer", "\0" * 64)
+    @linker.add_data("file_buffer", "\0" * 4096)  # 4KB buffer for file reading
+    @linker.add_data("concat_buffer", "\0" * 2048) # Buffer for concat()
+    @linker.add_data("substr_buffer", "\0" * 1024) # Buffer for substr()
+    @linker.add_data("chr_buffer", "\0" * 4)       # Buffer for chr()
+    @linker.add_data("input_buffer", "\0" * 1024)  # Buffer for input()
+    @linker.add_data("rand_seed", [12345].pack("Q<")) # Random seed
+    @linker.add_data("newline_char", "\n")         # Newline for prints()
+  end
+
+  def generate(output_path)
+    top_level = []
+
+    @ast.each do |n|
+      case n[:type]
+      when :struct_definition
+        gen_struct_def(n)
+      when :function_definition
+        # skip here, generate later
+      else
+        top_level << n
+      end
+    end
+
+    has_main = @ast.any? { |n| n[:type] == :function_definition && n[:name] == "main" }
+    gen_synthetic_main(top_level) unless has_main || top_level.empty?
+
+    gen_entry_point
+    @ast.each { |n| gen_function(n) if n[:type] == :function_definition }
+    
+    final_bytes = @linker.finalize(@emitter.bytes)
+    builder = @target_os == :windows ? PEBuilder.new(final_bytes) : ELFBuilder.new(final_bytes)
+    File.binwrite(output_path, builder.build)
+  end
+
+  private
+
+  def gen_struct_def(node)
+    offset = 0; fields = {}
+    node[:fields].each { |f| fields[f] = offset; offset += 8 }
+    @ctx.register_struct(node[:name], offset, fields)
+  end
+
+  def gen_entry_point
+    @emitter.emit_prologue(256)
+    @linker.add_fn_patch(@emitter.current_pos + 1, "main")
+    @emitter.call_rel32
+    # Ignore main return value for process exit; exit code = 0
+    @emitter.mov_rax(0)
+    if @target_os == :windows
+      @emitter.emit_epilogue(256)
+      @emitter.emit([0x48, 0x31, 0xc0, 0xc3]) # xor rax, rax; ret
+    else
+      @emitter.emit_sys_exit_rax
+    end
+  end
+
+  def gen_function(node)
+    @linker.register_function(node[:name], @emitter.current_pos)
+    @ctx.reset_for_function(node[:name])
+    @emitter.emit_prologue(256)
+    # Default return value = 0
+    @emitter.mov_rax(0)
+    
+    if node[:name].include?('.')
+       @ctx.var_types["self"] = node[:name].split('.')[0]
+       @ctx.var_is_ptr["self"] = true
+    end
+
+    regs, stack_base =
+      if @target_os == :windows
+        [[CodeEmitter::REG_RCX, CodeEmitter::REG_RDX, CodeEmitter::REG_R8, CodeEmitter::REG_R9], 16 + 8 * 4] # shadow space
+      else
+        [[CodeEmitter::REG_RDI, CodeEmitter::REG_RSI, CodeEmitter::REG_RDX, CodeEmitter::REG_RCX, CodeEmitter::REG_R8, CodeEmitter::REG_R9], 16]
+      end
+
+    node[:params].each_with_index do |param, i|
+      off = @ctx.declare_variable(param)
+      if i < regs.length
+        reg = regs[i]
+        @emitter.mov_stack_reg_val(off, reg) if reg
+      else
+        disp = stack_base + 8 * (i - regs.length)
+        @emitter.mov_rax_rbp_disp32(disp)
+        @emitter.mov_stack_reg_val(off, CodeEmitter::REG_RAX)
+      end
+    end
+
+    node[:body].each { |child| process_node(child) }
+    @emitter.emit_epilogue(256)
+  end
+
+  # Auto-generate main() when absent, executing top-level statements
+  def gen_synthetic_main(nodes)
+    @linker.register_function("main", @emitter.current_pos)
+    @ctx.reset_for_function("main")
+    @emitter.emit_prologue(256)
+    @emitter.mov_rax(0)
+    nodes.each { |child| process_node(child) }
+    @emitter.emit_epilogue(256)
+  end
+end

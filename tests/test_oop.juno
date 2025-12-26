@@ -1,0 +1,16 @@
+struct Point {
+    let x
+    let y
+}
+
+fn Point.set(val) {
+    self.x = val
+}
+
+fn main() {
+    p = Point
+    p.set(123)
+    output_member_int(p.x)
+}
+
+main()

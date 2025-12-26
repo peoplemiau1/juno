@@ -1,0 +1,10 @@
+// Exact same as test_call_order but with add name
+
+fn add(a, b) {
+    return a + b
+}
+
+fn main() {
+    let sum = add(100, 200)
+    return sum
+}

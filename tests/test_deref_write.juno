@@ -1,0 +1,7 @@
+// Test dereference write
+fn main() {
+    let x = 10
+    let ptr = &x
+    *ptr = 42
+    return x
+}

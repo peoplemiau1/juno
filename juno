@@ -1,0 +1,222 @@
+#!/usr/bin/env ruby
+# Juno CLI - Compiler and Interpreter
+
+require_relative "src/lexer"
+require_relative "src/parser"
+
+class JunoInterpreter
+  def initialize(ast)
+    @ast = ast
+    @functions = {}
+    @structs = {}
+    @globals = {}
+  end
+
+  def run
+    # Register all functions and structs
+    @ast.each do |node|
+      case node[:type]
+      when :function_definition
+        @functions[node[:name]] = node
+      when :struct_definition
+        @structs[node[:name]] = node
+      end
+    end
+
+    # Call main
+    if @functions["main"]
+      call_function("main", [])
+    else
+      puts "Error: No main() function found"
+      exit 1
+    end
+  end
+
+  private
+
+  def call_function(name, args)
+    fn = @functions[name]
+    return builtin(name, args) if fn.nil?
+
+    # Create local scope
+    locals = {}
+    fn[:params].each_with_index { |p, i| locals[p] = args[i] }
+
+    # Execute body
+    execute_block(fn[:body], locals)
+  end
+
+  def builtin(name, args)
+    case name
+    when "print"
+      val = args[0]
+      puts val.is_a?(String) ? val : val.to_s
+      0
+    when "len"
+      args[0].is_a?(Array) ? args[0].length : args[0].to_s.length
+    else
+      puts "Error: Unknown function '#{name}'"
+      exit 1
+    end
+  end
+
+  def execute_block(body, locals)
+    result = 0
+    body.each do |node|
+      result = execute(node, locals)
+      return result if node[:type] == :return
+    end
+    result
+  end
+
+  def execute(node, locals)
+    case node[:type]
+    when :assignment
+      val = evaluate(node[:expression], locals)
+      if node[:name].include?('.')
+        # Struct member
+        parts = node[:name].split('.')
+        locals[parts[0]][parts[1]] = val
+      else
+        locals[node[:name]] = val
+      end
+      val
+    when :array_decl
+      locals[node[:name]] = Array.new(node[:size], 0)
+      0
+    when :array_assign
+      idx = evaluate(node[:index], locals)
+      val = evaluate(node[:value], locals)
+      locals[node[:name]][idx] = val
+      val
+    when :if_statement
+      cond = evaluate(node[:condition], locals)
+      if cond != 0
+        execute_block(node[:body], locals)
+      elsif node[:else_body]
+        execute_block(node[:else_body], locals)
+      end
+    when :while_statement
+      while evaluate(node[:condition], locals) != 0
+        execute_block(node[:body], locals)
+      end
+    when :for_statement
+      execute(node[:init], locals)
+      while evaluate(node[:condition], locals) != 0
+        execute_block(node[:body], locals)
+        execute(node[:update], locals)
+      end
+    when :increment
+      locals[node[:name]] += (node[:op] == "++" ? 1 : -1)
+    when :return
+      evaluate(node[:expression], locals)
+    when :fn_call
+      args = node[:args].map { |a| evaluate(a, locals) }
+      call_function(node[:name], args)
+    else
+      0
+    end
+  end
+
+  def evaluate(expr, locals)
+    case expr[:type]
+    when :literal
+      expr[:value]
+    when :string_literal
+      expr[:value]
+    when :variable
+      name = expr[:name]
+      if @structs.key?(name)
+        # Create struct instance
+        fields = {}
+        @structs[name][:fields].each { |f| fields[f] = 0 }
+        fields
+      else
+        locals[name] || 0
+      end
+    when :array_access
+      idx = evaluate(expr[:index], locals)
+      locals[expr[:name]][idx]
+    when :binary_op
+      left = evaluate(expr[:left], locals)
+      right = evaluate(expr[:right], locals)
+      case expr[:op]
+      when "+" then left + right
+      when "-" then left - right
+      when "*" then left * right
+      when "/" then left / right
+      when "==" then left == right ? 1 : 0
+      when "!=" then left != right ? 1 : 0
+      when "<" then left < right ? 1 : 0
+      when ">" then left > right ? 1 : 0
+      when "<=" then left <= right ? 1 : 0
+      when ">=" then left >= right ? 1 : 0
+      end
+    when :member_access
+      locals[expr[:receiver]][expr[:member]]
+    when :fn_call
+      args = expr[:args].map { |a| evaluate(a, locals) }
+      call_function(expr[:name], args)
+    else
+      0
+    end
+  end
+end
+
+def run_interpreter(file)
+  code = File.read(file)
+  lexer = Lexer.new(code, file)
+  tokens = lexer.tokenize
+  parser = Parser.new(tokens, file, code)
+  ast = parser.parse
+  
+  interpreter = JunoInterpreter.new(ast)
+  interpreter.run
+end
+
+def compile_native(file, target)
+  require_relative "src/codegen/native_generator"
+  require_relative "src/optimizer/optimizer"
+  
+  puts "Compiling..."
+  code = File.read(file)
+  lexer = Lexer.new(code, file)
+  tokens = lexer.tokenize
+  parser = Parser.new(tokens, file, code)
+  ast = parser.parse
+  
+  # Optimize AST
+  puts "Optimizing..."
+  optimizer = Optimizer.new(ast)
+  ast = optimizer.optimize
+  
+  output = target == :windows ? "output.exe" : "output_linux"
+  generator = NativeGenerator.new(ast, target)
+  generator.generate(output)
+  
+  puts "Success! Binary: #{output}"
+end
+
+# CLI
+case ARGV[0]
+when "run"
+  if ARGV[1]
+    run_interpreter(ARGV[1])
+  else
+    puts "Usage: juno run <file.juno>"
+  end
+when "build"
+  if ARGV[1]
+    target = ARGV[2] == "--windows" ? :windows : :linux
+    compile_native(ARGV[1], target)
+  else
+    puts "Usage: juno build <file.juno> [--windows]"
+  end
+else
+  puts "Juno v1.1 - Systems Programming Language"
+  puts ""
+  puts "Usage:"
+  puts "  juno run <file.juno>              Run directly (interpreter)"
+  puts "  juno build <file.juno>            Compile to native ELF"
+  puts "  juno build <file.juno> --windows  Compile to native PE"
+end

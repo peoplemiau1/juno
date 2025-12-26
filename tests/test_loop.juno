@@ -1,0 +1,6 @@
+let count = 3
+while (count != 0) {
+    print("Looping...")
+    count--
+}
+print("Done!")

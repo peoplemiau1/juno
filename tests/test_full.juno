@@ -1,0 +1,41 @@
+struct Entity {
+    id
+    active
+}
+
+fn Entity.init(id_val) {
+    self.id = id_val
+    self.active = 1
+}
+
+fn Entity.check() {
+    return self.active
+}
+
+fn main() {
+    output("--- JUNO FULL TEST ---")
+    
+    // 1. Математика
+    a = 10
+    b = 2
+    res = a * b + 5
+    output("Math check (25):")
+    output_int(res)
+    
+    // 2. Структуры и Методы
+    e = Entity
+    e.init(7)
+    
+    output("Entity ID (7):")
+    output_int(e.id)
+    
+    // 3. Условия
+    is_ok = e.check()
+    if (is_ok) {
+        output("Condition: Success")
+    } else {
+        output("Condition: Failed")
+    }
+    
+    output("--- TEST COMPLETE ---")
+}

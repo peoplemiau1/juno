@@ -1,0 +1,9 @@
+fn main() {
+    let x = 10
+    let y = 20
+    let z = x + y
+    print("Math Test: 10 + 20")
+    print(z)
+    print("Success!")
+    return 0
+}

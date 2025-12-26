@@ -1,0 +1,12 @@
+let secret = 42
+print("SECRET GAME")
+insertC {
+    int guess = 0;
+    printf("Enter guess: ");
+    scanf("%d", &guess);
+    if (guess == 42) {
+        printf("YOU WIN!\n");
+    } else {
+        printf("TRY AGAIN!\n");
+    }
+}

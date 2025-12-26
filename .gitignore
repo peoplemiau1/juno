@@ -1,0 +1,39 @@
+# Build artifacts
+a.out
+*.exe
+*.obj
+*.o
+output_linux
+output.exe
+compiler.exe
+
+# Build directory
+build/
+out.asm
+out.c
+out.obj
+
+# Logs
+log.txt
+*.log
+thread_out.txt
+test_out.txt
+
+# Temporary files
+*.tmp
+*.swp
+*~
+
+# IDE
+.vscode/
+.idea/
+*.code-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Generated documentation dumps
+all_code.txt
+combined_ruby.txt
+juno_complete_source.txt

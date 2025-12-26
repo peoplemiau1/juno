@@ -1,0 +1,45 @@
+// ============================================
+// Juno v1.1 - Arrays & Strings Demo
+// ============================================
+
+fn main() {
+    print("=== Juno v1.1 Demo ===")
+    
+    // --- Arrays ---
+    print("Arrays:")
+    let arr[5]
+    arr[0] = 10
+    arr[1] = 20
+    arr[2] = 30
+    arr[3] = 40
+    arr[4] = 50
+    
+    // Sum with loop
+    let sum = 0
+    for (i = 0; i < 5; i++) {
+        sum = sum + arr[i]
+    }
+    print(sum)
+    
+    // len() for arrays
+    let size = len(arr)
+    print(size)
+    
+    // --- Strings ---
+    print("Strings:")
+    print("Hello, World!")
+    print("Juno is awesome!")
+    
+    // --- Math ---
+    print("Math:")
+    let a = 100
+    let b = 23
+    print(a + b)
+    print(a - b)
+    print(a * b)
+    
+    // --- Structs ---
+    print("Done!")
+    
+    return sum
+}

@@ -1,0 +1,67 @@
+// ============================================
+// JunoFetch - Real System Info
+// Reads from /proc filesystem
+// ============================================
+
+fn main() {
+    let buf = getbuf()
+    
+    // Header - ASCII art
+    print("\x1b[36m     _                      \x1b[0m")
+    print("\x1b[36m    | |_   _ _ __   ___     \x1b[0m")
+    print("\x1b[36m _  | | | | | '_ \\ / _ \\    \x1b[0m")
+    print("\x1b[36m| |_| | |_| | | | | (_) |   \x1b[0m")
+    print("\x1b[36m \\___/ \\__,_|_| |_|\\___/    \x1b[0m")
+    print("")
+    print("\x1b[33m------------------------------------\x1b[0m")
+    print("")
+    
+    // Read /proc/version (kernel info)
+    print("\x1b[35mKernel:\x1b[0m")
+    let fd = open("/proc/version")
+    if (fd >= 0) {
+        let n = read(fd, buf, 80)
+        syscall(1, 1, buf, n)
+        close(fd)
+    }
+    print("")
+    
+    // Read hostname
+    print("\x1b[35mHostname:\x1b[0m")
+    let fd4 = open("/proc/sys/kernel/hostname")
+    if (fd4 >= 0) {
+        let n4 = read(fd4, buf, 64)
+        syscall(1, 1, buf, n4)
+        close(fd4)
+    }
+    
+    // Read uptime
+    print("\x1b[35mUptime:\x1b[0m")
+    let fd5 = open("/proc/uptime")
+    if (fd5 >= 0) {
+        let n5 = read(fd5, buf, 32)
+        syscall(1, 1, buf, n5)
+        close(fd5)
+    }
+    
+    // Read /proc/meminfo (first 3 lines)
+    print("\x1b[35mMemory:\x1b[0m")
+    let fd3 = open("/proc/meminfo")
+    if (fd3 >= 0) {
+        let n3 = read(fd3, buf, 150)
+        syscall(1, 1, buf, n3)
+        close(fd3)
+    }
+    
+    print("\x1b[33m------------------------------------\x1b[0m")
+    print("\x1b[32mCompiled with: Juno v1.1\x1b[0m")
+    print("\x1b[32mBinary: Native ELF x86_64\x1b[0m")
+    print("")
+    
+    // Color palette
+    print("\x1b[40m   \x1b[41m   \x1b[42m   \x1b[43m   \x1b[44m   \x1b[45m   \x1b[46m   \x1b[47m   \x1b[0m")
+    print("\x1b[100m   \x1b[101m   \x1b[102m   \x1b[103m   \x1b[104m   \x1b[105m   \x1b[106m   \x1b[107m   \x1b[0m")
+    print("")
+    
+    return 0
+}

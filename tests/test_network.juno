@@ -1,0 +1,65 @@
+
+┌──(asadula㉿admin)-[/mnt/c/users/qabaq/downloads/juno-lang-main]
+└─$ ruby juno build test_network.juno && ./output_linux
+ruby: warning: shebang line ending with \r may cause problems
+Compiling...
+Optimizing...
+Success! Binary: output_linux
+Creating socket...
+3
+Connecting to 127.0.0.1:8080...
+0
+Connected! Sending HTTP request...
+18
+Receiving response...
+18446744073709551602
+Done!
+
+┌──(asadula㉿admin)-[/mnt/c/users/qabaq/downloads/juno-lang-main]
+└─$// Simple HTTP client - connects to localhost:8080
+
+fn main() {
+    print("Creating socket...")
+    
+    // socket(AF_INET=2, SOCK_STREAM=1, 0)
+    let sock = socket(2, 1, 0)
+    print(sock)
+    
+    if (sock < 0) {
+        print("Socket failed!")
+        return 1
+    }
+    
+    print("Connecting to 127.0.0.1:8080...")
+    
+    let addr = ip(127, 0, 0, 1)
+    let result = connect(sock, addr, 8080)
+    print(result)
+    
+    if (result < 0) {
+        print("Connect failed")
+        close(sock)
+        return 1
+    }
+    
+    print("Connected! Sending HTTP request...")
+    
+    // HTTP GET request
+    let req = "GET / HTTP/1.0\r\n\r\n"
+    let sent = send(sock, req, 18)
+    print(sent)
+    
+    print("Receiving response...")
+    let buf = getbuf()
+    let received = recv(sock, buf, 4000)
+    print(received)
+    
+    if (received > 0) {
+        print("Response:")
+        prints(buf)
+    }
+    
+    close(sock)
+    print("Done!")
+    return 0
+}
