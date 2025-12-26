@@ -46,6 +46,7 @@ POSITIVE_TESTS=(
   tests/test_two_noopt.juno
   tests/test_all_features.juno
   tests/test_ptr_arith_and_str_plus.juno
+  tests/test_file_io_wrappers.juno
 )
 
 for test_file in "${POSITIVE_TESTS[@]}"; do
