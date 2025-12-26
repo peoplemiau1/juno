@@ -17,6 +17,33 @@ POSITIVE_TESTS=(
   tests/test_multiarg_fix.juno
   tests/test_else.juno
   tests/test_v1.juno
+  tests/test_array.juno
+  tests/test_call_order.juno
+  tests/test_complex_oop.juno
+  tests/test_debug.juno
+  tests/test_deref_write.juno
+  tests/test_exact.juno
+  tests/test_full.juno
+  tests/test_linux.juno
+  tests/test_minimal_demo.juno
+  tests/test_optimizer.juno
+  tests/test_pointers.juno
+  tests/test_ptr_arg.juno
+  tests/test_ptr_debug.juno
+  tests/test_ptr_debug2.juno
+  tests/test_ptr_noopt.juno
+  tests/test_ptr_parts.juno
+  tests/test_ptr_read.juno
+  tests/test_ptr_simple.juno
+  tests/test_ptr_v2.juno
+  tests/test_ptr_v3.juno
+  tests/test_ptr_v4.juno
+  tests/test_simple.juno
+  tests/test_simple_demo.juno
+  tests/test_string.juno
+  tests/test_swap.juno
+  tests/test_two_int.juno
+  tests/test_two_noopt.juno
 )
 
 for test_file in "${POSITIVE_TESTS[@]}"; do
