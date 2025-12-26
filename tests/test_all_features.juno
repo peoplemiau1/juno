@@ -1,0 +1,64 @@
+// Combined feature test with multiple functions and constructs
+
+struct Point {
+    x
+    y
+}
+
+fn add(a, b) {
+    return a + b
+}
+
+fn mul(a, b) {
+    return a * b
+}
+
+fn struct_sum(x, y) {
+    let p = Point
+    p.x = x
+    p.y = y
+    return p.x + p.y
+}
+
+fn sum_array() {
+    let arr[5]
+    for (i = 0; i < 5; i++) {
+        arr[i] = i * 10
+    }
+    let s = 0
+    for (i = 0; i < 5; i++) {
+        s = s + arr[i]
+    }
+    return s  // 0+10+20+30+40 = 100
+}
+
+fn pointer_inc(v, delta) {
+    let x = v
+    let px = &x
+    *px = *px + delta
+    return x
+}
+
+fn loop_accumulate(n) {
+    let acc = 0
+    for (i = 1; i <= n; i++) {
+        acc = acc + i
+    }
+    return acc
+}
+
+fn combined_check() {
+    let part1 = add(10, 20) + mul(3, 4)      // 42
+    let part2 = struct_sum(3, 4)              // 7
+    let part3 = sum_array()                   // 100
+    let part4 = pointer_inc(5, 2)             // 7
+    let part5 = loop_accumulate(5)            // 15
+    return part1 + part2 + part3 + part4 + part5
+}
+
+fn main() {
+    let total = combined_check()
+    print("combined total:")
+    print(total)  // Expected 171
+    return total
+}
