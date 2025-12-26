@@ -175,35 +175,41 @@ module GeneratorLogic
       end
       @emitter.mov_reg_stack_val(CodeEmitter::REG_RAX, off)
     when :binary_op
-      eval_expression(expr[:left])
-      @emitter.emit([0x50]) # push rax (save left)
-      eval_expression(expr[:right])
-      @emitter.emit([0x5a]) # pop rdx (restore left to rdx)
-      # RAX = right, RDX = left. Swap them.
-      @emitter.emit([0x48, 0x92]) # xchg rax, rdx
-      # Now RAX = left, RDX = right
-      case expr[:op]
-      when "+"
-        @emitter.add_rax_rdx
-      when "-"
-        @emitter.sub_rax_rdx
-      when "*"
-        # Use shift if optimized
-        if expr[:shift_opt]
-          # RAX already has left operand after xchg
-          @emitter.shl_rax_imm(expr[:shift_opt])
-        else
-          @emitter.imul_rax_rdx
+      if string_concat?(expr)
+        gen_fn_call({ type: :fn_call, name: "concat", args: [expr[:left], expr[:right]] })
+      elsif pointer_arith?(expr)
+        gen_pointer_arith(expr)
+      else
+        eval_expression(expr[:left])
+        @emitter.emit([0x50]) # push rax (save left)
+        eval_expression(expr[:right])
+        @emitter.emit([0x5a]) # pop rdx (restore left to rdx)
+        # RAX = right, RDX = left. Swap them.
+        @emitter.emit([0x48, 0x92]) # xchg rax, rdx
+        # Now RAX = left, RDX = right
+        case expr[:op]
+        when "+"
+          @emitter.add_rax_rdx
+        when "-"
+          @emitter.sub_rax_rdx
+        when "*"
+          # Use shift if optimized
+          if expr[:shift_opt]
+            # RAX already has left operand after xchg
+            @emitter.shl_rax_imm(expr[:shift_opt])
+          else
+            @emitter.imul_rax_rdx
+          end
+        when "/"
+          # Use shift if optimized
+          if expr[:shift_opt]
+            @emitter.shr_rax_imm(expr[:shift_opt])
+          else
+            @emitter.div_rax_by_rdx
+          end
+        when "==", "!=", "<", ">", "<=", ">="
+          @emitter.cmp_rax_rdx(expr[:op])
         end
-      when "/"
-        # Use shift if optimized
-        if expr[:shift_opt]
-          @emitter.shr_rax_imm(expr[:shift_opt])
-        else
-          @emitter.div_rax_by_rdx
-        end
-      when "==", "!=", "<", ">", "<=", ">="
-        @emitter.cmp_rax_rdx(expr[:op])
       end
     when :member_access
        load_member_rax("#{expr[:receiver]}.#{expr[:member]}")
@@ -438,5 +444,59 @@ module GeneratorLogic
     
     # Store R11 to [RAX]
     @emitter.emit([0x4c, 0x89, 0x18]) # mov [rax], r11
+  end
+
+  def string_concat?(expr)
+    expr[:op] == "+" && (string_node?(expr[:left]) || string_node?(expr[:right]))
+  end
+
+  def string_node?(node)
+    node && node[:type] == :string_literal
+  end
+
+  def pointer_arith?(expr)
+    return false unless expr[:op] == "+" || expr[:op] == "-"
+    lptr = pointer_node?(expr[:left])
+    rptr = pointer_node?(expr[:right])
+    lptr ^ rptr  # exactly one pointer operand
+  end
+
+  def pointer_node?(node)
+    return false unless node.is_a?(Hash)
+    case node[:type]
+    when :address_of
+      true
+    when :variable
+      @ctx.var_is_ptr[node[:name]] == true
+    else
+      false
+    end
+  end
+
+  def gen_pointer_arith(expr)
+    base_ptr = pointer_node?(expr[:left]) ? expr[:left] : expr[:right]
+    offset_expr = (base_ptr == expr[:left]) ? expr[:right] : expr[:left]
+    op = expr[:op]
+
+    # Evaluate base pointer -> RAX
+    eval_expression(base_ptr)
+    @emitter.emit([0x50]) # push rax (save base)
+
+    # Evaluate offset -> RAX, scale by 8 (pointer to 8-byte values)
+    eval_expression(offset_expr)
+    @emitter.emit([0x48, 0xc1, 0xe0, 0x03]) # shl rax, 3
+
+    # Preserve offset in RDX, restore base to RBX
+    @emitter.mov_reg_reg(CodeEmitter::REG_RDX, CodeEmitter::REG_RAX)
+    @emitter.emit([0x5b]) # pop rbx (base)
+
+    if op == "+"
+      # rax = offset, rbx = base
+      @emitter.emit([0x48, 0x01, 0xd8]) # add rax, rbx  => rax = offset + base
+    else
+      # rdx = offset, rbx = base
+      @emitter.mov_reg_reg(CodeEmitter::REG_RAX, CodeEmitter::REG_RBX) # rax = base
+      @emitter.emit([0x48, 0x29, 0xd0]) # sub rax, rdx => base - offset
+    end
   end
 end
