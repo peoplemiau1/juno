@@ -5,6 +5,7 @@ require_relative "parts/linker"
 require_relative "parts/emitter"
 require_relative "parts/logic"
 require_relative "parts/calls"
+require_relative "../optimizer/register_allocator"
 
 class NativeGenerator
   include GeneratorLogic
@@ -16,6 +17,7 @@ class NativeGenerator
     
     @ctx = CodegenContext.new
     @emitter = CodeEmitter.new
+    @allocator = RegisterAllocator.new
     base_rva = target_os == :windows ? 0x1000 : 0x401000
     @linker = Linker.new(base_rva)
     
@@ -46,6 +48,8 @@ class NativeGenerator
       case n[:type]
       when :struct_definition
         gen_struct_def(n)
+      when :union_definition
+        gen_union_def(n)
       when :function_definition
         # skip here, generate later
       else
@@ -54,9 +58,10 @@ class NativeGenerator
     end
 
     has_main = @ast.any? { |n| n[:type] == :function_definition && n[:name] == "main" }
-    gen_synthetic_main(top_level) unless has_main || top_level.empty?
-
+    
+    # IMPORTANT: Entry point must be generated FIRST (ELF/PE entry is at start of code)
     gen_entry_point
+    gen_synthetic_main(top_level) unless has_main || top_level.empty?
     @ast.each { |n| gen_function(n) if n[:type] == :function_definition }
     
     final_bytes = @linker.finalize(@emitter.bytes)
@@ -67,9 +72,44 @@ class NativeGenerator
   private
 
   def gen_struct_def(node)
-    offset = 0; fields = {}
-    node[:fields].each { |f| fields[f] = offset; offset += 8 }
+    fields = {}
+    field_types = node[:field_types] || {}
+    packed = node[:packed] || false
+    
+    if packed
+      # Packed: no padding, use actual sizes
+      offset = 0
+      node[:fields].each do |f|
+        fields[f] = offset
+        type_name = field_types[f]
+        offset += @ctx.type_size(type_name)
+      end
+    else
+      # Regular: all fields 8 bytes aligned
+      offset = 0
+      node[:fields].each do |f|
+        fields[f] = offset
+        offset += 8
+      end
+    end
+    
     @ctx.register_struct(node[:name], offset, fields)
+  end
+
+  def gen_union_def(node)
+    # Union: all fields at offset 0, size = max field size
+    fields = {}
+    field_types = node[:field_types] || {}
+    max_size = 0
+    
+    node[:fields].each do |f|
+      fields[f] = field_types[f] || "i64"
+      type_size = @ctx.type_size(fields[f])
+      max_size = type_size if type_size > max_size
+    end
+    
+    max_size = 8 if max_size == 0
+    @ctx.register_union(node[:name], max_size, fields)
   end
 
   def gen_entry_point
@@ -89,7 +129,20 @@ class NativeGenerator
   def gen_function(node)
     @linker.register_function(node[:name], @emitter.current_pos)
     @ctx.reset_for_function(node[:name])
+    @allocator.reset
+    
+    # Analyze and allocate registers for this function
+    allocation_result = @allocator.allocate(node[:body])
+    allocation_result[:allocations].each do |var_name, reg|
+      @ctx.assign_register(var_name, reg)
+    end
+    
+    # Save callee-saved registers that we'll use
+    used_regs = @ctx.used_callee_saved
+    
     @emitter.emit_prologue(256)
+    @emitter.push_callee_saved(used_regs) unless used_regs.empty?
+    
     # Default return value = 0
     @emitter.mov_rax(0)
     
@@ -106,18 +159,29 @@ class NativeGenerator
       end
 
     node[:params].each_with_index do |param, i|
-      off = @ctx.declare_variable(param)
-      if i < regs.length
-        reg = regs[i]
-        @emitter.mov_stack_reg_val(off, reg) if reg
+      # Check if param got a register allocation
+      if @ctx.in_register?(param) && i < regs.length
+        # Move from calling convention reg to allocated reg
+        allocated_reg = CodeEmitter.reg_code(@ctx.get_register(param))
+        @emitter.mov_reg_reg(allocated_reg, regs[i])
       else
-        disp = stack_base + 8 * (i - regs.length)
-        @emitter.mov_rax_rbp_disp32(disp)
-        @emitter.mov_stack_reg_val(off, CodeEmitter::REG_RAX)
+        # Fallback to stack
+        off = @ctx.declare_variable(param)
+        if i < regs.length
+          reg = regs[i]
+          @emitter.mov_stack_reg_val(off, reg) if reg
+        else
+          disp = stack_base + 8 * (i - regs.length)
+          @emitter.mov_rax_rbp_disp32(disp)
+          @emitter.mov_stack_reg_val(off, CodeEmitter::REG_RAX)
+        end
       end
     end
 
     node[:body].each { |child| process_node(child) }
+    
+    # Restore callee-saved registers before implicit return
+    @emitter.pop_callee_saved(used_regs) unless used_regs.empty?
     @emitter.emit_epilogue(256)
   end
 
@@ -125,9 +189,21 @@ class NativeGenerator
   def gen_synthetic_main(nodes)
     @linker.register_function("main", @emitter.current_pos)
     @ctx.reset_for_function("main")
+    @allocator.reset
+    
+    # Analyze and allocate registers for top-level code
+    allocation_result = @allocator.allocate(nodes)
+    allocation_result[:allocations].each do |var_name, reg|
+      @ctx.assign_register(var_name, reg)
+    end
+    
+    used_regs = @ctx.used_callee_saved
+    
     @emitter.emit_prologue(256)
+    @emitter.push_callee_saved(used_regs) unless used_regs.empty?
     @emitter.mov_rax(0)
     nodes.each { |child| process_node(child) }
+    @emitter.pop_callee_saved(used_regs) unless used_regs.empty?
     @emitter.emit_epilogue(256)
   end
 end

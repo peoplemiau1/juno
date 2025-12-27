@@ -1,0 +1,47 @@
+// Test bitwise operations
+
+fn main(): int {
+    print("=== Bitwise Operations ===")
+    
+    // AND
+    let a = 0xFF & 0x0F
+    print("0xFF & 0x0F =")
+    print(a)  // 15
+    
+    // OR
+    let b = 0xF0 | 0x0F
+    print("0xF0 | 0x0F =")
+    print(b)  // 255
+    
+    // XOR
+    let c = 0xFF ^ 0x0F
+    print("0xFF ^ 0x0F =")
+    print(c)  // 240
+    
+    // NOT
+    let d = ~0
+    print("~0 =")
+    print(d)  // -1 (all bits set)
+    
+    // Left shift
+    let e = 1 << 4
+    print("1 << 4 =")
+    print(e)  // 16
+    
+    // Right shift
+    let f = 256 >> 4
+    print("256 >> 4 =")
+    print(f)  // 16
+    
+    // Complex expression
+    let flags = (1 << 0) | (1 << 2) | (1 << 4)
+    print("flags (1|4|16) =")
+    print(flags)  // 21
+    
+    // Check flag
+    let has_flag = flags & (1 << 2)
+    print("has bit 2 =")
+    print(has_flag)  // 4 (non-zero = true)
+    
+    return 0
+}

@@ -1,0 +1,45 @@
+// Простой HTTP клиент
+// Делает GET запрос к локальному серверу
+
+fn main(): int {
+    print("=== HTTP Client ===")
+    
+    // Создаём сокет: AF_INET=2, SOCK_STREAM=1, protocol=0
+    let sock = socket(2, 1, 0)
+    if (sock < 0) {
+        print("Error: socket failed")
+        return 1
+    }
+    print("Socket created:")
+    print(sock)
+    
+    // Подключаемся к localhost:8888
+    let addr = ip(127, 0, 0, 1)
+    let result = connect(sock, addr, 8888)
+    if (result < 0) {
+        print("Error: connect failed (is server running on port 8080?)")
+        close(sock)
+        return 1
+    }
+    print("Connected to 127.0.0.1:8080")
+    
+    // Отправляем HTTP GET запрос
+    let request = "GET / HTTP/1.0\r\nHost: localhost\r\n\r\n"
+    send(sock, request, 37)
+    print("Request sent")
+    
+    // Получаем ответ
+    let buf = getbuf()
+    let received = recv(sock, buf, 4000)
+    print("Received bytes:")
+    print(received)
+    
+    if (received > 0) {
+        print("Response:")
+        prints(buf)
+    }
+    
+    close(sock)
+    print("Connection closed")
+    return 0
+}

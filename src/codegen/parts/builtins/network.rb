@@ -126,33 +126,48 @@ module BuiltinNetwork
   def gen_bind(node)
     return unless @target_os == :linux
     
+    # Save sockfd to r12
     eval_expression(node[:args][0])
-    @emitter.emit([0x50]) # push sockfd
+    @emitter.emit([0x49, 0x89, 0xc4]) # mov r12, rax (sockfd)
     
+    # Save IP to r13
     eval_expression(node[:args][1])
-    @emitter.emit([0x50]) # push ip
+    @emitter.emit([0x49, 0x89, 0xc5]) # mov r13, rax (ip)
     
+    # Port in r14 (network byte order)
     eval_expression(node[:args][2])
-    @emitter.emit([0x86, 0xc4]) # xchg al, ah
-    @emitter.emit([0x48, 0x89, 0xc1]) # mov rcx, rax
+    @emitter.emit([0x86, 0xc4]) # xchg al, ah (to network byte order)
+    @emitter.emit([0x49, 0x89, 0xc6]) # mov r14, rax (port)
     
-    @emitter.emit([0x58]) # pop rax (ip)
-    @emitter.emit([0x48, 0x89, 0xc2]) # mov rdx, rax
-    
+    # Build sockaddr_in on stack (16 bytes)
     @emitter.emit([0x48, 0x83, 0xec, 0x10]) # sub rsp, 16
-    @emitter.emit([0x66, 0xc7, 0x04, 0x24, 0x02, 0x00]) # AF_INET
-    @emitter.emit([0x66, 0x89, 0x4c, 0x24, 0x02]) # port
-    @emitter.emit([0x89, 0x54, 0x24, 0x04]) # ip
-    @emitter.emit([0x48, 0xc7, 0x44, 0x24, 0x08, 0x00, 0x00, 0x00, 0x00])
     
-    @emitter.emit([0x5f]) # pop rdi
+    # sin_family = AF_INET (2)
+    @emitter.emit([0x66, 0xc7, 0x04, 0x24, 0x02, 0x00]) # mov word [rsp], 2
+    
+    # sin_port
+    @emitter.emit([0x66, 0x44, 0x89, 0x74, 0x24, 0x02]) # mov [rsp+2], r14w
+    
+    # sin_addr
+    @emitter.emit([0x44, 0x89, 0x6c, 0x24, 0x04]) # mov [rsp+4], r13d
+    
+    # Zero padding
+    @emitter.emit([0x48, 0xc7, 0x44, 0x24, 0x08, 0x00, 0x00, 0x00, 0x00]) # mov qword [rsp+8], 0
+    
+    # rdi = sockfd
+    @emitter.emit([0x4c, 0x89, 0xe7]) # mov rdi, r12
+    
+    # rsi = &sockaddr
     @emitter.emit([0x48, 0x89, 0xe6]) # mov rsi, rsp
+    
+    # rdx = 16
     @emitter.emit([0xba, 0x10, 0x00, 0x00, 0x00]) # mov edx, 16
     
     # syscall 49 = bind
     @emitter.emit([0xb8, 0x31, 0x00, 0x00, 0x00]) # mov eax, 49
     @emitter.emit([0x0f, 0x05])
     
+    # Clean stack
     @emitter.emit([0x48, 0x83, 0xc4, 0x10]) # add rsp, 16
   end
 

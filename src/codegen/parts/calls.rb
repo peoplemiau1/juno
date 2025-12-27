@@ -5,6 +5,9 @@ require_relative "builtins/memory"
 require_relative "builtins/utils"
 require_relative "builtins/io"
 require_relative "builtins/network"
+require_relative "builtins/syscalls"
+require_relative "builtins/threads"
+require_relative "builtins/types"
 
 module GeneratorCalls
   include BuiltinStrings
@@ -13,6 +16,9 @@ module GeneratorCalls
   include BuiltinUtils
   include BuiltinIO
   include BuiltinNetwork
+  include BuiltinSyscalls
+  include BuiltinThreads
+  include BuiltinTypes
 
   BUILTINS = {
     # I/O
@@ -58,7 +64,81 @@ module GeneratorCalls
     "bind" => :gen_bind,
     "listen" => :gen_listen,
     "accept" => :gen_accept,
-    "ip" => :gen_ip
+    "ip" => :gen_ip,
+    
+    # System calls
+    "fork" => :gen_fork,
+    "getpid" => :gen_getpid,
+    "getppid" => :gen_getppid,
+    "getuid" => :gen_getuid,
+    "getgid" => :gen_getgid,
+    "kill" => :gen_kill,
+    "wait" => :gen_wait,
+    "pipe" => :gen_pipe,
+    "dup" => :gen_dup,
+    "dup2" => :gen_dup2,
+    "mkdir" => :gen_mkdir,
+    "rmdir" => :gen_rmdir,
+    "unlink" => :gen_unlink,
+    "chmod" => :gen_chmod,
+    "chdir" => :gen_chdir,
+    "getcwd" => :gen_getcwd,
+    "mmap" => :gen_mmap,
+    "munmap" => :gen_munmap,
+    "memcpy" => :gen_memcpy,
+    "memset" => :gen_memset,
+    "execve" => :gen_execve,
+    
+    # mmap constants
+    "PROT_READ" => :gen_PROT_READ,
+    "PROT_WRITE" => :gen_PROT_WRITE,
+    "PROT_EXEC" => :gen_PROT_EXEC,
+    "MAP_PRIVATE" => :gen_MAP_PRIVATE,
+    "MAP_ANONYMOUS" => :gen_MAP_ANONYMOUS,
+    "MAP_ANON" => :gen_MAP_ANON,
+    
+    # Signal constants
+    "SIGTERM" => :gen_SIGTERM,
+    "SIGKILL" => :gen_SIGKILL,
+    "SIGINT" => :gen_SIGINT,
+    "SIGUSR1" => :gen_SIGUSR1,
+    "SIGUSR2" => :gen_SIGUSR2,
+    
+    # Threading
+    "clone" => :gen_clone,
+    "futex" => :gen_futex,
+    "FUTEX_WAIT" => :gen_FUTEX_WAIT,
+    "FUTEX_WAKE" => :gen_FUTEX_WAKE,
+    "atomic_load" => :gen_atomic_load,
+    "atomic_store" => :gen_atomic_store,
+    "atomic_add" => :gen_atomic_add,
+    "atomic_sub" => :gen_atomic_sub,
+    "atomic_cas" => :gen_atomic_cas,
+    "spin_lock" => :gen_spin_lock,
+    "spin_unlock" => :gen_spin_unlock,
+    "CLONE_VM" => :gen_CLONE_VM,
+    "CLONE_FS" => :gen_CLONE_FS,
+    "CLONE_FILES" => :gen_CLONE_FILES,
+    "CLONE_SIGHAND" => :gen_CLONE_SIGHAND,
+    "CLONE_THREAD" => :gen_CLONE_THREAD,
+    
+    # Pointer arithmetic helpers
+    "ptr_add" => :gen_ptr_add,
+    "ptr_sub" => :gen_ptr_sub,
+    "ptr_diff" => :gen_ptr_diff,
+    
+    # Sized type casts
+    "i8" => :gen_cast_i8,
+    "u8" => :gen_cast_u8,
+    "i16" => :gen_cast_i16,
+    "u16" => :gen_cast_u16,
+    "i32" => :gen_cast_i32,
+    "u32" => :gen_cast_u32,
+    "i64" => :gen_cast_i64,
+    "u64" => :gen_cast_u64,
+    
+    # sizeof
+    "sizeof" => :gen_sizeof
   }
 
   # Constants for magic numbers

@@ -1,1 +1,6 @@
-print("Hello, Juno!")
+// Hello World in Juno
+
+fn main(): int {
+    print("Hello, World!")
+    return 0
+}

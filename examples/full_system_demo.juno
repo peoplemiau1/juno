@@ -1,0 +1,193 @@
+// Juno v1.4 - Full System Programming Demo
+// Demonstrates all low-level capabilities
+
+#define VERSION 14
+#define STACK_SIZE 8192
+
+#ifdef LINUX
+#define OS_NAME "Linux"
+#endif
+
+// Packed binary header (no padding)
+packed struct BinaryHeader {
+    magic: u16
+    version: u8
+    flags: u8
+    size: u32
+}
+
+// Union for type punning
+union Number {
+    as_i64: i64
+    as_u64: u64
+}
+
+// Regular struct
+struct Vector3 {
+    x: i64
+    y: i64
+    z: i64
+}
+
+fn demo_preprocessor(): int {
+    print("--- Preprocessor ---")
+    print("Version:")
+    print(VERSION)
+    print("Stack size:")
+    print(STACK_SIZE)
+    return 0
+}
+
+fn demo_bitwise(): int {
+    print("--- Bitwise Operations ---")
+    
+    // Setting flags
+    let flags = 0
+    flags = flags | (1 << 0)  // Set bit 0
+    flags = flags | (1 << 2)  // Set bit 2
+    flags = flags | (1 << 7)  // Set bit 7
+    print("Flags (bits 0,2,7):")
+    print(flags)  // 133 = 0b10000101
+    
+    // Checking flags
+    let has_bit2 = (flags & (1 << 2)) != 0
+    print("Has bit 2:")
+    print(has_bit2)
+    
+    // XOR toggle
+    flags = flags ^ (1 << 0)  // Toggle bit 0
+    print("After toggle bit 0:")
+    print(flags)  // 132
+    
+    // Hex and binary
+    let hex = 0xCAFE
+    let bin = 0b11110000
+    print("0xCAFE =")
+    print(hex)
+    print("0b11110000 =")
+    print(bin)
+    
+    return 0
+}
+
+fn demo_sized_types(): int {
+    print("--- Sized Types ---")
+    
+    let big = 1000
+    print("1000 as u8:")
+    print(u8(big))  // 232 (overflow)
+    
+    print("1000 as u16:")
+    print(u16(big))  // 1000
+    
+    let val = 0x12345678
+    print("0x12345678 as u8:")
+    print(u8(val))  // 0x78 = 120
+    
+    return 0
+}
+
+fn demo_pointers(): int {
+    print("--- Pointer Arithmetic ---")
+    
+    let data[4]
+    data[0] = 100
+    data[1] = 200
+    data[2] = 300
+    data[3] = 400
+    
+    let ptr = &data[0]
+    print("*ptr:")
+    print(*ptr)
+    
+    // Move pointer forward
+    let ptr2 = ptr_add(ptr, 2)
+    print("*(ptr+2):")
+    print(*ptr2)
+    
+    // Move pointer back
+    let ptr3 = ptr_sub(ptr2, 1)
+    print("*(ptr+2-1):")
+    print(*ptr3)
+    
+    return 0
+}
+
+fn demo_memory(): int {
+    print("--- Memory Operations ---")
+    
+    // Allocate with mmap
+    let prot = PROT_READ() | PROT_WRITE()
+    let flags = MAP_PRIVATE() | MAP_ANONYMOUS()
+    let mem = mmap(0, 4096, prot, flags, 0, 0)
+    
+    if (mem != 0) {
+        // Fill with pattern
+        memset(mem, 0x41, 8)  // 'AAAAAAAA'
+        print("Allocated and filled memory")
+        prints(mem)
+        
+        munmap(mem, 4096)
+        print("Freed memory")
+    }
+    
+    return 0
+}
+
+fn demo_process(): int {
+    print("--- Process Operations ---")
+    
+    let pid = getpid()
+    print("PID:")
+    print(pid)
+    
+    let uid = getuid()
+    print("UID:")
+    print(uid)
+    
+    // Fork
+    let child = fork()
+    if (child == 0) {
+        print("Child process running")
+        exit(0)
+    } else {
+        wait(0)
+        print("Child finished")
+    }
+    
+    return 0
+}
+
+fn demo_atomic(): int {
+    print("--- Atomic Operations ---")
+    
+    let lock = 0
+    
+    spin_lock(&lock)
+    print("Lock acquired")
+    // Critical section here
+    spin_unlock(&lock)
+    print("Lock released")
+    
+    return 0
+}
+
+fn main(): int {
+    print("========================================")
+    print("  Juno v1.4 System Programming Demo")
+    print("========================================")
+    
+    demo_preprocessor()
+    demo_bitwise()
+    demo_sized_types()
+    demo_pointers()
+    demo_memory()
+    demo_process()
+    demo_atomic()
+    
+    print("========================================")
+    print("  All demos completed successfully!")
+    print("========================================")
+    
+    return 0
+}

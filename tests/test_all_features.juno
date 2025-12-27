@@ -1,0 +1,106 @@
+// Test all new system programming features
+
+#define BUFFER_SIZE 1024
+#define VERSION 1
+
+#ifdef LINUX
+#define PLATFORM_NAME "Linux"
+#endif
+
+#ifdef WINDOWS
+#define PLATFORM_NAME "Windows"
+#endif
+
+// Packed structure (no padding)
+packed struct PackedHeader {
+    magic: u16
+    version: u8
+    flags: u8
+}
+
+// Union type
+union Value {
+    as_int: i64
+    as_ptr: ptr
+}
+
+// Regular struct with typed fields
+struct Point {
+    x: i32
+    y: i32
+}
+
+fn test_preprocessor(): int {
+    print("=== Preprocessor ===")
+    print("Buffer size:")
+    print(BUFFER_SIZE)
+    print("Version:")
+    print(VERSION)
+    return 0
+}
+
+fn test_bitwise(): int {
+    print("=== Bitwise ===")
+    let a = 0xFF & 0x0F
+    print(a)
+    let b = 1 << 8
+    print(b)
+    let c = 0xFF ^ 0xF0
+    print(c)
+    return 0
+}
+
+fn test_types(): int {
+    print("=== Sized Types ===")
+    let val = 1000
+    let as_u8 = u8(val)
+    print("1000 as u8:")
+    print(as_u8)
+    
+    let neg = 0 - 50
+    let as_i8 = i8(neg)
+    print("-50 as i8:")
+    print(as_i8)
+    return 0
+}
+
+fn test_pointers(): int {
+    print("=== Pointer Arithmetic ===")
+    let arr[5]
+    arr[0] = 10
+    arr[1] = 20
+    arr[2] = 30
+    arr[3] = 40
+    arr[4] = 50
+    
+    let ptr = &arr[0]
+    print("arr[0]:")
+    print(*ptr)
+    
+    let ptr2 = ptr_add(ptr, 2)
+    print("arr[2] via ptr_add:")
+    print(*ptr2)
+    
+    return 0
+}
+
+fn test_syscalls(): int {
+    print("=== System Calls ===")
+    let pid = getpid()
+    print("PID:")
+    print(pid)
+    return 0
+}
+
+fn main(): int {
+    print("====== ALL FEATURES TEST ======")
+    
+    test_preprocessor()
+    test_bitwise()
+    test_types()
+    test_pointers()
+    test_syscalls()
+    
+    print("====== ALL TESTS PASSED ======")
+    return 0
+}

@@ -1,0 +1,58 @@
+// Простой TCP Echo сервер
+// Слушает порт 9999 и отвечает на сообщения
+
+fn main(): int {
+    print("=== TCP Echo Server ===")
+    
+    // Создаём сокет
+    let sock = socket(2, 1, 0)
+    if (sock < 0) {
+        print("Error: socket failed")
+        return 1
+    }
+    print("Socket created")
+    
+    // Привязываем к 0.0.0.0:12345
+    let addr = ip(0, 0, 0, 0)
+    let result = bind(sock, addr, 12345)
+    if (result < 0) {
+        print("Error: bind failed")
+        close(sock)
+        return 1
+    }
+    print("Bound to port 12345")
+    
+    // Начинаем слушать
+    listen(sock, 5)
+    print("Listening on port 12345...")
+    
+    // Принимаем одно соединение
+    let client = accept(sock)
+    if (client < 0) {
+        print("Error: accept failed")
+        close(sock)
+        return 1
+    }
+    print("Client connected!")
+    
+    // Echo loop - читаем и отправляем обратно
+    let buf = getbuf()
+    let running = 1
+    
+    while (running != 0) {
+        let n = recv(client, buf, 1024)
+        if (n <= 0) {
+            running = 0
+        } else {
+            print("Received:")
+            prints(buf)
+            // Отправляем обратно
+            send(client, buf, n)
+        }
+    }
+    
+    close(client)
+    close(sock)
+    print("Server stopped")
+    return 0
+}

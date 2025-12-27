@@ -1,0 +1,43 @@
+// Simple Calculator in Juno
+
+fn add(a: int, b: int): int {
+    return a + b
+}
+
+fn sub(a: int, b: int): int {
+    return a - b
+}
+
+fn mul(a: int, b: int): int {
+    return a * b
+}
+
+fn div(a: int, b: int): int {
+    if (b == 0) {
+        return 0
+    }
+    return a / b
+}
+
+fn main(): int {
+    print("Calculator Demo")
+    
+    let x = 10
+    let y = 3
+    
+    print("x = 10, y = 3")
+    
+    print("x + y =")
+    print(add(x, y))
+    
+    print("x - y =")
+    print(sub(x, y))
+    
+    print("x * y =")
+    print(mul(x, y))
+    
+    print("x / y =")
+    print(div(x, y))
+    
+    return 0
+}

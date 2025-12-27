@@ -1,15 +1,56 @@
 class CodegenContext
   attr_reader :variables, :var_types, :var_is_ptr, :structs, :arrays
+  attr_reader :var_registers, :used_callee_saved, :unions
   attr_accessor :stack_ptr, :current_fn
+
+  # Sized types: name -> { size: bytes, signed: bool }
+  SIZED_TYPES = {
+    "i8"  => { size: 1, signed: true },
+    "u8"  => { size: 1, signed: false },
+    "i16" => { size: 2, signed: true },
+    "u16" => { size: 2, signed: false },
+    "i32" => { size: 4, signed: true },
+    "u32" => { size: 4, signed: false },
+    "i64" => { size: 8, signed: true },
+    "u64" => { size: 8, signed: false },
+    "int" => { size: 8, signed: true },
+    "ptr" => { size: 8, signed: false },
+    "bool" => { size: 1, signed: false },
+  }
 
   def initialize
     @variables = {}   # name -> stack_offset
-    @var_types = {}   # name -> struct_type_name
+    @var_types = {}   # name -> type name (string)
     @var_is_ptr = {}  # name -> bool
-    @structs = {}     # name -> { size: int, fields: {name: offset} }
+    @structs = {}     # name -> { size: int, fields: {name: offset}, packed: bool }
+    @unions = {}      # name -> { size: int, fields: {name: type} }
     @arrays = {}      # name -> { base_offset: int, size: int, ptr_offset: int }
+    @var_registers = {} # name -> register symbol (:rbx, :r12, etc.)
+    @used_callee_saved = [] # list of callee-saved regs used in current function
     @stack_ptr = 64   # Start after shadow space + internal usage
     @current_fn = nil
+  end
+
+  def type_size(type_name)
+    return 8 if type_name.nil?
+    if SIZED_TYPES[type_name]
+      SIZED_TYPES[type_name][:size]
+    elsif @structs[type_name]
+      @structs[type_name][:size]
+    elsif @unions[type_name]
+      @unions[type_name][:size]
+    else
+      8  # default
+    end
+  end
+
+  def type_signed?(type_name)
+    return true if type_name.nil?
+    SIZED_TYPES[type_name] ? SIZED_TYPES[type_name][:signed] : true
+  end
+
+  def register_union(name, size, fields)
+    @unions[name] = { size: size, fields: fields }
   end
 
   def reset_for_function(name)
@@ -17,8 +58,26 @@ class CodegenContext
     @var_types = {}
     @var_is_ptr = {}
     @arrays = {}
+    @var_registers = {}
+    @used_callee_saved = []
     @stack_ptr = 64
     @current_fn = name
+  end
+
+  # Assign register to variable (from register allocator)
+  def assign_register(var_name, reg)
+    @var_registers[var_name] = reg
+    @used_callee_saved << reg unless @used_callee_saved.include?(reg)
+  end
+
+  # Check if variable is in a register
+  def in_register?(var_name)
+    @var_registers.key?(var_name)
+  end
+
+  # Get register for variable
+  def get_register(var_name)
+    @var_registers[var_name]
   end
 
   def declare_variable(name, size = 8)

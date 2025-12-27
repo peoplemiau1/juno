@@ -28,7 +28,7 @@ class Lexer
       when /\A\/\/.*$/
         cursor += $&.length
         @column += $&.length
-      when /\A(struct|fn|if|else|return|while|let|for|import)\b/
+      when /\A(struct|union|fn|if|else|return|while|let|for|import|packed)\b/
         add_token(:keyword, $1)
         cursor += $&.length
         @column += $&.length
@@ -52,6 +52,18 @@ class Lexer
         add_token(:string, processed)
         cursor += $&.length
         @column += $&.length
+      when /\A0x[0-9a-fA-F]+/
+        add_token(:number, $&.to_i(16))
+        cursor += $&.length
+        @column += $&.length
+      when /\A0b[01]+/
+        add_token(:number, $&.to_i(2))
+        cursor += $&.length
+        @column += $&.length
+      when /\A0o[0-7]+/
+        add_token(:number, $&.to_i(8))
+        cursor += $&.length
+        @column += $&.length
       when /\A\d+/
         add_token(:number, $&.to_i)
         cursor += $&.length
@@ -60,10 +72,38 @@ class Lexer
         add_token(:ident, $&)
         cursor += $&.length
         @column += $&.length
-      when /\A(==|!=|<=|>=|<|>|\+\+|\-\-)/
+      when /\A(==|!=|<=|>=|<<|>>|\+\+|\-\-)/
         add_token(:operator, $&)
         cursor += $&.length
         @column += $&.length
+      when /\A(\|\|)/
+        add_token(:operator, '||')
+        cursor += 2
+        @column += 2
+      when /\A(&&)/
+        add_token(:operator, '&&')
+        cursor += 2
+        @column += 2
+      when /\A\|/
+        add_token(:bitor, '|')
+        cursor += 1
+        @column += 1
+      when /\A\^/
+        add_token(:bitxor, '^')
+        cursor += 1
+        @column += 1
+      when /\A~/
+        add_token(:bitnot, '~')
+        cursor += 1
+        @column += 1
+      when /\A</
+        add_token(:operator, '<')
+        cursor += 1
+        @column += 1
+      when /\A>/
+        add_token(:operator, '>')
+        cursor += 1
+        @column += 1
       when /\A&/
         add_token(:ampersand, '&')
         cursor += 1
@@ -81,10 +121,14 @@ class Lexer
         add_token(:rbracket, ']')
         cursor += 1
         @column += 1
-      when /\A(\(|\)|\{|\}|\.|\,|\+|\-|\/|=|;|:)/
+      when /\A(\(|\)|\{|\}|\.|\,|\+|\-|\/|=|;)/
         add_token(:symbol, $&)
         cursor += $&.length
         @column += $&.length
+      when /\A:/
+        add_token(:colon, ':')
+        cursor += 1
+        @column += 1
       else
         error = JunoLexerError.new(
           "Unexpected character '#{@code[cursor]}'",

@@ -1,0 +1,52 @@
+// Программа поиска простых чисел до N
+// Использует проверку делимости
+
+fn is_prime(n: int): int {
+    if (n < 2) {
+        return 0
+    }
+    if (n == 2) {
+        return 1
+    }
+    if (n == 3) {
+        return 1
+    }
+    
+    // Проверяем делимость на 2
+    let half = n / 2
+    if (half * 2 == n) {
+        return 0
+    }
+    
+    // Проверяем нечётные делители до sqrt(n)
+    let i = 3
+    while (i * i <= n) {
+        let div = n / i
+        if (div * i == n) {
+            return 0
+        }
+        i = i + 2
+    }
+    return 1
+}
+
+fn main(): int {
+    print("=== Поиск простых чисел ===")
+    
+    let limit = 50
+    let count = 0
+    
+    print("Простые числа до 50:")
+    
+    for (n = 2; n <= limit; n++) {
+        if (is_prime(n) != 0) {
+            print(n)
+            count++
+        }
+    }
+    
+    print("Всего найдено:")
+    print(count)
+    
+    return 0
+}

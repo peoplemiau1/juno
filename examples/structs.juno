@@ -1,0 +1,62 @@
+// Structures and Methods in Juno
+
+struct Point {
+    x
+    y
+}
+
+struct Rectangle {
+    x
+    y
+    width
+    height
+}
+
+fn Point.init(px: int, py: int): int {
+    self.x = px
+    self.y = py
+    return 0
+}
+
+fn Point.move(dx: int, dy: int): int {
+    self.x = self.x + dx
+    self.y = self.y + dy
+    return 0
+}
+
+fn Rectangle.area(): int {
+    return self.width * self.height
+}
+
+fn Rectangle.perimeter(): int {
+    return 2 * (self.width + self.height)
+}
+
+fn main(): int {
+    print("Structs Demo")
+    
+    // Point
+    let p = Point
+    p.init(10, 20)
+    print("Point created at (10, 20)")
+    
+    p.move(5, -3)
+    print("After move(5, -3):")
+    print("x =")
+    print(p.x)
+    print("y =")
+    print(p.y)
+    
+    // Rectangle
+    let rect = Rectangle
+    rect.width = 10
+    rect.height = 5
+    
+    print("Rectangle 10x5:")
+    print("Area:")
+    print(rect.area())
+    print("Perimeter:")
+    print(rect.perimeter())
+    
+    return 0
+}

@@ -1,8 +1,77 @@
 module ParserExpressions
   def parse_expression
-    # Priority 3: Comparison (lowest)
+    # Lowest priority: logical OR
+    parse_logical_or
+  end
+
+  def parse_logical_or
+    node = parse_logical_and
+    while match?(:operator) && peek[:value] == '||'
+      consume(:operator)
+      right = parse_logical_and
+      node = { type: :binary_op, op: '||', left: node, right: right }
+    end
+    node
+  end
+
+  def parse_logical_and
+    node = parse_bit_or
+    while match?(:operator) && peek[:value] == '&&'
+      consume(:operator)
+      right = parse_bit_or
+      node = { type: :binary_op, op: '&&', left: node, right: right }
+    end
+    node
+  end
+
+  def parse_bit_or
+    node = parse_bit_xor
+    while match?(:bitor)
+      consume(:bitor)
+      right = parse_bit_xor
+      node = { type: :binary_op, op: '|', left: node, right: right }
+    end
+    node
+  end
+
+  def parse_bit_xor
+    node = parse_bit_and
+    while match?(:bitxor)
+      consume(:bitxor)
+      right = parse_bit_and
+      node = { type: :binary_op, op: '^', left: node, right: right }
+    end
+    node
+  end
+
+  def parse_bit_and
+    node = parse_comparison
+    while match?(:ampersand) && !is_address_of_context?
+      consume(:ampersand)
+      right = parse_comparison
+      node = { type: :binary_op, op: '&', left: node, right: right }
+    end
+    node
+  end
+
+  def is_address_of_context?
+    # If we're at start of expression or after operator, & is address-of
+    false  # In binary context, & is bitwise AND
+  end
+
+  def parse_comparison
+    node = parse_shift
+    while match?(:operator) && ['==', '!=', '<', '>', '<=', '>='].include?(peek[:value])
+      op = consume(:operator)[:value]
+      right = parse_shift
+      node = { type: :binary_op, op: op, left: node, right: right }
+    end
+    node
+  end
+
+  def parse_shift
     node = parse_additive
-    while match?(:operator)
+    while match?(:operator) && ['<<', '>>'].include?(peek[:value])
       op = consume(:operator)[:value]
       right = parse_additive
       node = { type: :binary_op, op: op, left: node, right: right }
@@ -11,7 +80,6 @@ module ParserExpressions
   end
 
   def parse_additive
-    # Priority 2: Addition/Subtraction
     node = parse_term
     while match_symbol?('+') || match_symbol?('-')
       op = consume_symbol[:value]
@@ -22,16 +90,13 @@ module ParserExpressions
   end
 
   def parse_term
-    # Priority 1: Multiplication/Division
-    node = parse_factor
+    node = parse_unary
     while match?(:star) || match_symbol?('/')
       if match?(:star)
-        # Check if this is actually a dereference assignment (*ptr = ...)
-        # by looking ahead: if next is ident followed by '=', stop here
         if peek_next && peek_next[:type] == :ident
           next_next = @tokens[2]
           if next_next && next_next[:type] == :symbol && next_next[:value] == '='
-            break  # This is *ptr = value, not multiplication
+            break
           end
         end
         consume(:star)
@@ -39,10 +104,20 @@ module ParserExpressions
       else
         op = consume_symbol[:value]
       end
-      right = parse_factor
+      right = parse_unary
       node = { type: :binary_op, op: op, left: node, right: right }
     end
     node
+  end
+
+  def parse_unary
+    # Bitwise NOT: ~expr
+    if match?(:bitnot)
+      consume(:bitnot)
+      operand = parse_unary
+      return { type: :unary_op, op: '~', operand: operand }
+    end
+    parse_factor
   end
 
   def parse_factor

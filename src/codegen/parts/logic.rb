@@ -9,6 +9,8 @@ module GeneratorLogic
        gen_fn_call(node)
     when :return
        eval_expression(node[:expression])
+       # Restore callee-saved registers before return
+       @emitter.pop_callee_saved(@ctx.used_callee_saved) unless @ctx.used_callee_saved.empty?
        @emitter.emit_epilogue(256)
     when :if_statement
        gen_if(node)
@@ -50,8 +52,19 @@ module GeneratorLogic
     if node[:name].include?('.')
        save_member_rax(node[:name])
     else
-       off = @ctx.variables[node[:name]] || @ctx.declare_variable(node[:name])
-       @emitter.mov_stack_reg_val(off, CodeEmitter::REG_RAX)
+       # Store type annotation if present
+       if node[:var_type]
+         @ctx.var_types[node[:name]] = node[:var_type]
+       end
+       
+       # Check if variable is in a register
+       if @ctx.in_register?(node[:name])
+         reg = CodeEmitter.reg_code(@ctx.get_register(node[:name]))
+         @emitter.mov_reg_from_rax(reg)
+       else
+         off = @ctx.variables[node[:name]] || @ctx.declare_variable(node[:name])
+         @emitter.mov_stack_reg_val(off, CodeEmitter::REG_RAX)
+       end
     end
   end
 
@@ -110,24 +123,43 @@ module GeneratorLogic
   end
 
   def gen_increment(node)
-    off = @ctx.get_variable_offset(node[:name])
-    unless off
-      puts "Error: Undefined variable '#{node[:name]}'"
-      exit 1
-    end
-    
-    # Load variable
-    @emitter.mov_reg_stack_val(CodeEmitter::REG_RAX, off)
-    
-    # Increment or decrement
-    if node[:op] == "++"
-      @emitter.emit([0x48, 0xff, 0xc0]) # inc rax
+    # Check if variable is in a register
+    if @ctx.in_register?(node[:name])
+      reg = CodeEmitter.reg_code(@ctx.get_register(node[:name]))
+      # Increment/decrement directly in register
+      if node[:op] == "++"
+        if reg >= 8
+          @emitter.emit([0x49, 0xff, 0xc0 + (reg - 8)]) # inc r8-r15
+        else
+          @emitter.emit([0x48, 0xff, 0xc0 + reg]) # inc rax-rdi
+        end
+      else
+        if reg >= 8
+          @emitter.emit([0x49, 0xff, 0xc8 + (reg - 8)]) # dec r8-r15
+        else
+          @emitter.emit([0x48, 0xff, 0xc8 + reg]) # dec rax-rdi
+        end
+      end
     else
-      @emitter.emit([0x48, 0xff, 0xc8]) # dec rax
+      off = @ctx.get_variable_offset(node[:name])
+      unless off
+        puts "Error: Undefined variable '#{node[:name]}'"
+        exit 1
+      end
+      
+      # Load variable
+      @emitter.mov_reg_stack_val(CodeEmitter::REG_RAX, off)
+      
+      # Increment or decrement
+      if node[:op] == "++"
+        @emitter.emit([0x48, 0xff, 0xc0]) # inc rax
+      else
+        @emitter.emit([0x48, 0xff, 0xc8]) # dec rax
+      end
+      
+      # Store back
+      @emitter.mov_stack_reg_val(off, CodeEmitter::REG_RAX)
     end
-    
-    # Store back
-    @emitter.mov_stack_reg_val(off, CodeEmitter::REG_RAX)
   end
 
   def gen_for(node)
@@ -168,12 +200,18 @@ module GeneratorLogic
     when :literal
       @emitter.mov_rax(expr[:value])
     when :variable
-      off = @ctx.get_variable_offset(expr[:name])
-      unless off
-        puts "Error: Undefined variable '#{expr[:name]}'. Known: #{@ctx.variables.keys}"
-        exit 1
+      # Check if variable is in a register
+      if @ctx.in_register?(expr[:name])
+        reg = CodeEmitter.reg_code(@ctx.get_register(expr[:name]))
+        @emitter.mov_rax_from_reg(reg)
+      else
+        off = @ctx.get_variable_offset(expr[:name])
+        unless off
+          puts "Error: Undefined variable '#{expr[:name]}'. Known: #{@ctx.variables.keys}"
+          exit 1
+        end
+        @emitter.mov_reg_stack_val(CodeEmitter::REG_RAX, off)
       end
-      @emitter.mov_reg_stack_val(CodeEmitter::REG_RAX, off)
     when :binary_op
       eval_expression(expr[:left])
       @emitter.emit([0x50]) # push rax (save left)
@@ -188,15 +226,12 @@ module GeneratorLogic
       when "-"
         @emitter.sub_rax_rdx
       when "*"
-        # Use shift if optimized
         if expr[:shift_opt]
-          # RAX already has left operand after xchg
           @emitter.shl_rax_imm(expr[:shift_opt])
         else
           @emitter.imul_rax_rdx
         end
       when "/"
-        # Use shift if optimized
         if expr[:shift_opt]
           @emitter.shr_rax_imm(expr[:shift_opt])
         else
@@ -204,6 +239,35 @@ module GeneratorLogic
         end
       when "==", "!=", "<", ">", "<=", ">="
         @emitter.cmp_rax_rdx(expr[:op])
+      # Bitwise operations
+      when "&"
+        @emitter.and_rax_rdx
+      when "|"
+        @emitter.or_rax_rdx
+      when "^"
+        @emitter.xor_rax_rdx
+      when "<<"
+        # RAX = left, RDX = right (shift count)
+        @emitter.emit([0x48, 0x89, 0xd1]) # mov rcx, rdx
+        @emitter.shl_rax_cl
+      when ">>"
+        @emitter.emit([0x48, 0x89, 0xd1]) # mov rcx, rdx
+        @emitter.shr_rax_cl
+      # Logical operations
+      when "&&"
+        # Result is 1 if both non-zero, else 0
+        @emitter.emit([0x48, 0x85, 0xc0]) # test rax, rax
+        @emitter.emit([0x0f, 0x95, 0xc0]) # setne al
+        @emitter.emit([0x48, 0x0f, 0xb6, 0xc0]) # movzx rax, al
+        @emitter.emit([0x48, 0x85, 0xd2]) # test rdx, rdx
+        @emitter.emit([0x0f, 0x95, 0xc2]) # setne dl
+        @emitter.emit([0x20, 0xd0]) # and al, dl
+        @emitter.emit([0x48, 0x0f, 0xb6, 0xc0]) # movzx rax, al
+      when "||"
+        @emitter.emit([0x48, 0x09, 0xd0]) # or rax, rdx
+        @emitter.emit([0x48, 0x85, 0xc0]) # test rax, rax
+        @emitter.emit([0x0f, 0x95, 0xc0]) # setne al
+        @emitter.emit([0x48, 0x0f, 0xb6, 0xc0]) # movzx rax, al
       end
     when :member_access
        load_member_rax("#{expr[:receiver]}.#{expr[:member]}")
@@ -217,6 +281,21 @@ module GeneratorLogic
        gen_address_of(expr)
     when :dereference
        gen_dereference(expr)
+    when :unary_op
+       gen_unary_op(expr)
+    end
+  end
+
+  def gen_unary_op(expr)
+    eval_expression(expr[:operand])
+    case expr[:op]
+    when '~'
+      @emitter.not_rax
+    when '!'
+      # Logical NOT: 0 -> 1, non-zero -> 0
+      @emitter.emit([0x48, 0x85, 0xc0]) # test rax, rax
+      @emitter.emit([0x0f, 0x94, 0xc0]) # sete al
+      @emitter.emit([0x48, 0x0f, 0xb6, 0xc0]) # movzx rax, al
     end
   end
 
@@ -376,13 +455,22 @@ module GeneratorLogic
     operand = expr[:operand]
     
     if operand[:type] == :variable
-      off = @ctx.get_variable_offset(operand[:name])
-      unless off
-        puts "Error: Undefined variable '#{operand[:name]}' in address-of"
-        exit 1
+      # If variable is in register, we need to spill it to stack first
+      if @ctx.in_register?(operand[:name])
+        reg = CodeEmitter.reg_code(@ctx.get_register(operand[:name]))
+        # Allocate stack slot and store there
+        off = @ctx.declare_variable("__addr_tmp_#{operand[:name]}")
+        @emitter.mov_stack_reg_val(off, reg)
+        @emitter.lea_reg_stack(CodeEmitter::REG_RAX, off)
+      else
+        off = @ctx.get_variable_offset(operand[:name])
+        unless off
+          puts "Error: Undefined variable '#{operand[:name]}' in address-of"
+          exit 1
+        end
+        # LEA RAX, [RBP - offset]
+        @emitter.lea_reg_stack(CodeEmitter::REG_RAX, off)
       end
-      # LEA RAX, [RBP - offset]
-      @emitter.lea_reg_stack(CodeEmitter::REG_RAX, off)
     elsif operand[:type] == :array_access
       # &arr[i] - get address of array element
       name = operand[:name]
