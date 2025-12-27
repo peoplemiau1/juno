@@ -46,6 +46,14 @@ POSITIVE_TESTS=(
   tests/test_two_noopt.juno
   tests/test_all_features.juno
   tests/test_ptr_arith_and_str_plus.juno
+  tests/test_file_io_wrappers.juno
+  tests/test_selfhost_lexer_smoke.juno
+  tests/test_selfhost_parser_smoke.juno
+  tests/test_selfhost_codegen_smoke.juno
+)
+
+FLAT_TESTS=(
+  tests/test_flat_binary.juno
 )
 
 for test_file in "${POSITIVE_TESTS[@]}"; do
@@ -70,6 +78,33 @@ for test_file in "${POSITIVE_TESTS[@]}"; do
     echo ""
 done
 
+for test_file in "${FLAT_TESTS[@]}"; do
+    if [ ! -f "$test_file" ]; then
+        echo "[SKIP] $test_file (not found)"
+        continue
+    fi
+    echo "[RUN-FLAT] $test_file"
+    if ruby main_flat.rb "$test_file"; then
+        if [ ! -f build/output_flat.bin ]; then
+            echo "[FAIL] $test_file - flat binary missing"
+            FAILED=$((FAILED + 1))
+        else
+            ruby -e 'begin; b=File.binread("build/output_flat.bin",4); rescue; exit 1; end; exit 1 if b && b.bytes[0..3] == [0x7f,0x45,0x4c,0x46]' >/dev/null 2>&1
+            if [ $? -eq 0 ]; then
+                echo "[OK] $test_file"
+                PASSED=$((PASSED + 1))
+            else
+                echo "[FAIL] $test_file - not flat output"
+                FAILED=$((FAILED + 1))
+            fi
+        fi
+    else
+        echo "[FAIL] $test_file - compilation error"
+        FAILED=$((FAILED + 1))
+    fi
+    echo ""
+done
+
 # Treat remaining tests as expected-fail (negative tests)
 all_tests=(tests/test_*.juno)
 expected_fail=()
@@ -78,6 +113,11 @@ for tf in "${all_tests[@]}"; do
   for pf in "${POSITIVE_TESTS[@]}"; do
     [ "$tf" = "$pf" ] && skip=true && break
   done
+  if [ "$skip" = false ]; then
+    for ff in "${FLAT_TESTS[@]}"; do
+      [ "$tf" = "$ff" ] && skip=true && break
+    done
+  fi
   $skip || expected_fail+=("$tf")
 done
 
