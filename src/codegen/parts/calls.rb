@@ -105,6 +105,10 @@ module GeneratorCalls
     "SIGUSR2" => :gen_SIGUSR2,
     
     # Threading
+    "thread_create" => :gen_thread_create,
+    "thread_exit" => :gen_thread_exit,
+    "alloc_stack" => :gen_alloc_stack,
+    "usleep" => :gen_usleep,
     "clone" => :gen_clone,
     "futex" => :gen_futex,
     "FUTEX_WAIT" => :gen_FUTEX_WAIT,
