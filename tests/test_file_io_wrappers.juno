@@ -1,0 +1,21 @@
+// Test file I/O wrappers using syscalls
+
+import "../stdlib/std.juno"
+
+fn main() {
+    let path = "build/tmp_io.txt"
+    let content = "hello, io"
+    let len = 9
+
+    // Write
+    let w = os_write_file(path, content, len)
+    if (w != len) { return 100 + w }
+
+    // Read back
+    let buf = getbuf()
+    let r = os_read_file(path, buf, 64)
+    if (r != len) { return 200 + r }
+
+    prints(buf)
+    return r
+}

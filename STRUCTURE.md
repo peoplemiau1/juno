@@ -44,8 +44,8 @@
 - Спецификации
 
 ## Файлы для удаления
-- `all_code.txt` ❌ (дамп кода)
-- `combined_ruby.txt` ❌ (дамп кода)
-- `juno_complete_source.txt` ❌ (дамп кода)
-- `compiler.exe` ❌ (старая версия)
+- `all_code.txt` (дамп кода)
+- `combined_ruby.txt` (дамп кода)
+- `juno_complete_source.txt` (дамп кода)
+- `compiler.exe` (старая версия)
 - Временные файлы в корне → переместить в `/build`

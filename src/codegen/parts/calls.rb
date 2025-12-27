@@ -175,7 +175,8 @@ module GeneratorCalls
 
   def gen_user_fn_call(node)
     num_args = node[:args] ? node[:args].length : 0
-    regs = @target_os == :linux ? 
+    linux_like = (@target_os == :linux || @target_os == :flat)
+    regs = linux_like ?
       [CodeEmitter::REG_RDI, CodeEmitter::REG_RSI, CodeEmitter::REG_RDX, CodeEmitter::REG_RCX, CodeEmitter::REG_R8, CodeEmitter::REG_R9] :
       [CodeEmitter::REG_RCX, CodeEmitter::REG_RDX, CodeEmitter::REG_R8, CodeEmitter::REG_R9]
     
@@ -220,10 +221,11 @@ module GeneratorCalls
     v, m = node[:name].split('.')
     st = @ctx.var_types[v]
     num_args = node[:args] ? node[:args].length : 0
+    linux_like = (@target_os == :linux || @target_os == :flat)
     
     # Linux: this=RDI, args: RSI, RDX, RCX, R8, R9 (5 slots)
     # Win:   this=RCX, args: RDX, R8, R9 (3 slots)
-    if @target_os == :linux
+    if linux_like
       reg_this = CodeEmitter::REG_RDI
       regs = [CodeEmitter::REG_RSI, CodeEmitter::REG_RDX, CodeEmitter::REG_RCX, CodeEmitter::REG_R8, CodeEmitter::REG_R9]
     else
@@ -278,8 +280,9 @@ module GeneratorCalls
   def print_string(arg)
     content = arg[:value]
     label = @linker.add_string(content + "\n")
-    
-    if @target_os == :linux
+
+    linux_like = (@target_os == :linux || @target_os == :flat)
+    if linux_like
       @emitter.mov_rax(1)
       @emitter.mov_reg_reg(CodeEmitter::REG_RDI, CodeEmitter::REG_RAX)
       @emitter.emit([0x48, 0x8d, 0x35])
@@ -328,8 +331,9 @@ module GeneratorCalls
   # Helper method for printing numbers
   def print_number(arg)
     eval_expression(arg)
-    
-    if @target_os == :linux
+
+    linux_like = (@target_os == :linux || @target_os == :flat)
+    if linux_like
       # Save registers
       @emitter.emit([0x50, 0x53, 0x56, 0x52])
       
@@ -448,16 +452,17 @@ module GeneratorCalls
     return unless off
     
     @emitter.mov_reg_stack_val(CodeEmitter::REG_RAX, off)
-    @emitter.emit([0x48, 0x89, 0xc6])
-    @emitter.emit([0x48, 0x31, 0xc9])
-    
+    @emitter.emit([0x48, 0x89, 0xc6])       # mov rsi, rax (preserve base)
+    @emitter.emit([0x48, 0x31, 0xc9])       # xor rcx, rcx
+
     loop_start = @emitter.current_pos
-    @emitter.emit([0x8a, 0x04, 0x0e, 0x84, 0xc0, 0x74, 0x04, 0x48, 0xff, 0xc1])
-    
+    @emitter.emit([0x0f, 0xb6, 0x04, 0x0e]) # movzx eax, byte [rsi+rcx]
+    @emitter.emit([0x84, 0xc0])             # test al, al
+    @emitter.emit([0x74, 0x05])             # je -> done (skip inc+jmp)
+    @emitter.emit([0x48, 0xff, 0xc1])       # inc rcx
     back_off = loop_start - (@emitter.current_pos + 2)
-    @emitter.emit([0xeb, back_off & 0xFF])
-    
-    @emitter.emit([0x48, 0x89, 0xc8])
+    @emitter.emit([0xeb, back_off & 0xFF])  # jmp loop_start
+    @emitter.emit([0x48, 0x89, 0xc8])       # done: mov rax, rcx
   end
 
   def handle_linux_io(node)

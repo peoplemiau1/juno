@@ -1,5 +1,6 @@
 require_relative "../native/pe_builder"
 require_relative "../native/elf_builder"
+require_relative "../native/flat_builder"
 require_relative "parts/context"
 require_relative "parts/linker"
 require_relative "parts/emitter"
@@ -8,6 +9,8 @@ require_relative "parts/calls"
 require_relative "../optimizer/register_allocator"
 
 class NativeGenerator
+STACK_SIZE = 65536
+FLAT_STACK_PTR = 0x90000
   include GeneratorLogic
   include GeneratorCalls
 
@@ -18,8 +21,14 @@ class NativeGenerator
     @ctx = CodegenContext.new
     @emitter = CodeEmitter.new
     @allocator = RegisterAllocator.new
-    base_rva = target_os == :windows ? 0x1000 : 0x401000
+    base_rva =
+      case target_os
+      when :windows then 0x1000
+      when :linux then 0x401000
+      else 0x0
+      end
     @linker = Linker.new(base_rva)
+    @stack_size = STACK_SIZE
     
     if target_os == :windows
       # Register hardcoded imports from PEBuilder
@@ -65,7 +74,12 @@ class NativeGenerator
     @ast.each { |n| gen_function(n) if n[:type] == :function_definition }
     
     final_bytes = @linker.finalize(@emitter.bytes)
-    builder = @target_os == :windows ? PEBuilder.new(final_bytes) : ELFBuilder.new(final_bytes)
+    builder =
+      case @target_os
+      when :windows then PEBuilder.new(final_bytes)
+      when :linux then ELFBuilder.new(final_bytes)
+      else FlatBuilder.new(final_bytes)
+      end
     File.binwrite(output_path, builder.build)
   end
 
@@ -113,16 +127,24 @@ class NativeGenerator
   end
 
   def gen_entry_point
-    @emitter.emit_prologue(256)
+    if @target_os == :flat
+      @emitter.mov_rax(FLAT_STACK_PTR)
+      @emitter.mov_reg_reg(CodeEmitter::REG_RSP, CodeEmitter::REG_RAX)
+    end
+
+    @emitter.emit_prologue(@stack_size)
     @linker.add_fn_patch(@emitter.current_pos + 1, "main")
     @emitter.call_rel32
     # Ignore main return value for process exit; exit code = 0
     @emitter.mov_rax(0)
     if @target_os == :windows
-      @emitter.emit_epilogue(256)
+      @emitter.emit_epilogue(@stack_size)
       @emitter.emit([0x48, 0x31, 0xc0, 0xc3]) # xor rax, rax; ret
-    else
+    elsif @target_os == :linux
       @emitter.emit_sys_exit_rax
+    else
+      @emitter.emit_epilogue(@stack_size)
+      @emitter.emit([0xf4, 0xeb, 0xfd]) # hlt; jmp -1 to keep CPU halted
     end
   end
 
@@ -131,19 +153,15 @@ class NativeGenerator
     @ctx.reset_for_function(node[:name])
     @allocator.reset
     
-    # Analyze and allocate registers for this function
     allocation_result = @allocator.allocate(node[:body])
     allocation_result[:allocations].each do |var_name, reg|
       @ctx.assign_register(var_name, reg)
     end
     
-    # Save callee-saved registers that we'll use
     used_regs = @ctx.used_callee_saved
     
-    @emitter.emit_prologue(256)
+    @emitter.emit_prologue(@stack_size)
     @emitter.push_callee_saved(used_regs) unless used_regs.empty?
-    
-    # Default return value = 0
     @emitter.mov_rax(0)
     
     if node[:name].include?('.')
@@ -180,9 +198,8 @@ class NativeGenerator
 
     node[:body].each { |child| process_node(child) }
     
-    # Restore callee-saved registers before implicit return
     @emitter.pop_callee_saved(used_regs) unless used_regs.empty?
-    @emitter.emit_epilogue(256)
+    @emitter.emit_epilogue(@stack_size)
   end
 
   # Auto-generate main() when absent, executing top-level statements
@@ -191,7 +208,6 @@ class NativeGenerator
     @ctx.reset_for_function("main")
     @allocator.reset
     
-    # Analyze and allocate registers for top-level code
     allocation_result = @allocator.allocate(nodes)
     allocation_result[:allocations].each do |var_name, reg|
       @ctx.assign_register(var_name, reg)
@@ -199,11 +215,11 @@ class NativeGenerator
     
     used_regs = @ctx.used_callee_saved
     
-    @emitter.emit_prologue(256)
+    @emitter.emit_prologue(@stack_size)
     @emitter.push_callee_saved(used_regs) unless used_regs.empty?
     @emitter.mov_rax(0)
     nodes.each { |child| process_node(child) }
     @emitter.pop_callee_saved(used_regs) unless used_regs.empty?
-    @emitter.emit_epilogue(256)
+    @emitter.emit_epilogue(@stack_size)
   end
 end

@@ -116,26 +116,6 @@ fn main(): int {
 }
 ```
 
-### Сокеты (TCP клиент)
-```juno
-fn main(): int {
-    let sock = socket(2, 1, 0)  // AF_INET, SOCK_STREAM
-    
-    let addr = ip(127, 0, 0, 1)
-    connect(sock, addr, 8080)
-    
-    let msg = "GET / HTTP/1.0\r\n\r\n"
-    send(sock, msg, 18)
-    
-    let buf = getbuf()
-    let n = recv(sock, buf, 1024)
-    prints(buf)
-    
-    close(sock)
-    return 0
-}
-```
-
 ### Сокеты (TCP сервер)
 ```juno
 fn main(): int {
@@ -204,17 +184,6 @@ fn main(): int {
 | `prints(s)` | Вывести строку |
 | `read(fd, buf, n)` | Читать из файла |
 | `write(fd, buf, n)` | Писать в файл |
-| `open(path, flags)` | Открыть файл |
-| `close(fd)` | Закрыть файл |
-
-### Память
-| Функция | Описание |
-|---------|----------|
-| `getbuf()` | Получить буфер 4KB |
-| `mmap(...)` | Выделить память |
-| `munmap(addr, len)` | Освободить память |
-| `memset(ptr, val, n)` | Заполнить память |
-| `memcpy(dst, src, n)` | Копировать память |
 
 ### Сокеты
 | Функция | Описание |
@@ -228,6 +197,15 @@ fn main(): int {
 | `recv(sock, buf, len)` | Получить данные |
 | `ip(a, b, c, d)` | Создать IP адрес |
 
+### Память
+| Функция | Описание |
+|---------|----------|
+| `getbuf()` | Получить буфер 4KB |
+| `mmap(...)` | Выделить память |
+| `munmap(addr, len)` | Освободить память |
+| `memset(ptr, val, n)` | Заполнить память |
+| `memcpy(dst, src, n)` | Копировать память |
+
 ### Процессы
 | Функция | Описание |
 |---------|----------|
@@ -235,67 +213,35 @@ fn main(): int {
 | `wait(status)` | Ждать дочерний |
 | `exit(code)` | Завершить процесс |
 | `getpid()` | Получить PID |
-| `getppid()` | Получить PID родителя |
 | `kill(pid, sig)` | Послать сигнал |
 
 ### Атомарные операции
 | Функция | Описание |
 |---------|----------|
 | `atomic_add(ptr, val)` | Атомарное сложение |
-| `atomic_sub(ptr, val)` | Атомарное вычитание |
 | `spin_lock(ptr)` | Захватить spinlock |
 | `spin_unlock(ptr)` | Освободить spinlock |
-
-### Типы
-| Функция | Описание |
-|---------|----------|
-| `i8(val)` | Привести к i8 |
-| `u8(val)` | Привести к u8 |
-| `i16(val)` | Привести к i16 |
-| `u16(val)` | Привести к u16 |
-| `i32(val)` | Привести к i32 |
-| `u32(val)` | Привести к u32 |
-| `ptr_add(ptr, n)` | ptr + n элементов |
-| `ptr_sub(ptr, n)` | ptr - n элементов |
-| `sizeof(type)` | Размер типа |
 
 ## Структура проекта
 
 ```
 juno/
 ├── src/                    # Компилятор
-│   ├── lexer.rb            # Лексер
-│   ├── parser.rb           # Парсер
-│   ├── preprocessor.rb     # Препроцессор
-│   └── codegen/            # Генерация кода
-├── examples/               # Примеры программ
-│   ├── hello.juno          # Hello World
-│   ├── calculator.juno     # Калькулятор
-│   ├── arrays.juno         # Массивы
-│   ├── structs.juno        # Структуры
-│   ├── fibonacci.juno      # Фибоначчи
-│   ├── primes.juno         # Простые числа
-│   ├── tcp_client.juno     # TCP клиент
-│   ├── tcp_server.juno     # TCP сервер
-│   └── sysmon.juno         # Системный монитор
+│   ├── lexer.rb
+│   ├── parser.rb
+│   ├── preprocessor.rb
+│   └── codegen/
+├── examples/               # Примеры
 ├── tests/                  # Тесты
 ├── stdlib/                 # Стандартная библиотека
-├── build/                  # Артефакты сборки
-├── main_linux.rb           # Компилятор (Linux)
-└── main_native.rb          # Компилятор (Windows)
-```
-
-## Установка
-
-Требуется только Ruby 2.7+:
-
-```bash
-git clone https://github.com/example/juno
-cd juno
-ruby main_linux.rb examples/hello.juno
-./build/output_linux
+├── main_linux.rb           # Linux
+└── main_native.rb          # Windows
 ```
 
 ## Лицензия
 
 MIT
+
+---
+
+Подробнее: [CHANGELOG.md](CHANGELOG.md) | [TODO.md](TODO.md) | [STRUCTURE.md](STRUCTURE.md)

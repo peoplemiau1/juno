@@ -72,6 +72,114 @@ fn gcd(a, b) {
     return a
 }
 
+// === System call wrappers (Linux builtins) ===
+
+// Common constants
+fn OS_O_RDONLY() { return 0 }
+fn OS_O_WRONLY() { return 1 }
+fn OS_O_RDWR()   { return 2 }
+fn OS_O_CREAT()  { return 64 }
+fn OS_O_TRUNC()  { return 512 }
+
+fn OS_AF_INET()     { return 2 }
+fn OS_SOCK_STREAM() { return 1 }
+fn OS_SOCK_DGRAM()  { return 2 }
+
+fn OS_PROT_READ()  { return 1 }
+fn OS_PROT_WRITE() { return 2 }
+
+fn OS_MAP_PRIVATE()   { return 2 }
+fn OS_MAP_ANONYMOUS() { return 32 }
+
+// File I/O
+fn os_open(path) {
+    return open(path)
+}
+
+fn os_read(fd, buf, size) {
+    return read(fd, buf, size)
+}
+
+fn os_write(fd, buf, size) {
+    return write(fd, buf, size)
+}
+
+fn os_close(fd) {
+    return close(fd)
+}
+
+// Process and time
+fn os_exit(code) {
+    exit(code)
+}
+
+fn os_sleep(ms) {
+    sleep(ms)
+}
+
+fn os_time() {
+    return time()
+}
+
+// Memory management
+fn os_alloc(size) {
+    return alloc(size)
+}
+
+fn os_free(ptr, size) {
+    free(ptr, size)
+}
+
+// Generic syscall helpers (up to 4 args)
+fn os_syscall1(num, a1) {
+    return syscall(num, a1)
+}
+
+fn os_syscall2(num, a1, a2) {
+    return syscall(num, a1, a2)
+}
+
+fn os_syscall3(num, a1, a2, a3) {
+    return syscall(num, a1, a2, a3)
+}
+
+fn os_syscall4(num, a1, a2, a3, a4) {
+    return syscall(num, a1, a2, a3, a4)
+}
+
+// Networking
+fn os_socket(domain, type, protocol) {
+    return socket(domain, type, protocol)
+}
+
+fn os_connect(sockfd, ip_addr, port) {
+    return connect(sockfd, ip_addr, port)
+}
+
+fn os_send(sockfd, buf, len) {
+    return send(sockfd, buf, len)
+}
+
+fn os_recv(sockfd, buf, len) {
+    return recv(sockfd, buf, len)
+}
+
+fn os_bind(sockfd, ip_addr, port) {
+    return bind(sockfd, ip_addr, port)
+}
+
+fn os_listen(sockfd, backlog) {
+    return listen(sockfd, backlog)
+}
+
+fn os_accept(sockfd) {
+    return accept(sockfd)
+}
+
+fn os_ip(a, b, c, d) {
+    return ip(a, b, c, d)
+}
+
 // === Utility Structures ===
 
 struct Pair {
@@ -88,4 +196,37 @@ fn Pair.swap() {
     let tmp = self.first
     self.first = self.second
     self.second = tmp
+}
+
+// === OS constants ===
+fn OS_O_RDONLY() { return 0 }
+fn OS_O_WRONLY() { return 1 }
+fn OS_O_RDWR()   { return 2 }
+fn OS_O_CREAT()  { return 64 }
+fn OS_O_TRUNC()  { return 512 }
+fn OS_O_APPEND() { return 1024 }
+
+// === File I/O wrappers ===
+// Note: uses low-level syscalls via builtin syscall
+
+fn os_open_sys(path, flags, mode) {
+    return syscall(2, path, flags, mode)
+}
+
+fn os_read_file(path, buf, size) {
+    let fd = os_open_sys(path, OS_O_RDONLY(), 0)
+    if (fd < 0) { return fd }
+    let n = read(fd, buf, size)
+    close(fd)
+    *(buf + n) = 0
+    return n
+}
+
+fn os_write_file(path, buf, len) {
+    let flags = OS_O_CREAT() + OS_O_TRUNC() + OS_O_WRONLY()
+    let fd = os_open_sys(path, flags, 420)  // 0644
+    if (fd < 0) { return fd }
+    let n = write(fd, buf, len)
+    close(fd)
+    return n
 }

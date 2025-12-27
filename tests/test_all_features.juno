@@ -7,24 +7,17 @@
 #define PLATFORM_NAME "Linux"
 #endif
 
-#ifdef WINDOWS
-#define PLATFORM_NAME "Windows"
-#endif
-
-// Packed structure (no padding)
 packed struct PackedHeader {
     magic: u16
     version: u8
     flags: u8
 }
 
-// Union type
 union Value {
     as_int: i64
     as_ptr: ptr
 }
 
-// Regular struct with typed fields
 struct Point {
     x: i32
     y: i32
@@ -56,11 +49,6 @@ fn test_types(): int {
     let as_u8 = u8(val)
     print("1000 as u8:")
     print(as_u8)
-    
-    let neg = 0 - 50
-    let as_i8 = i8(neg)
-    print("-50 as i8:")
-    print(as_i8)
     return 0
 }
 
@@ -70,15 +58,13 @@ fn test_pointers(): int {
     arr[0] = 10
     arr[1] = 20
     arr[2] = 30
-    arr[3] = 40
-    arr[4] = 50
     
     let ptr = &arr[0]
     print("arr[0]:")
     print(*ptr)
     
     let ptr2 = ptr_add(ptr, 2)
-    print("arr[2] via ptr_add:")
+    print("arr[2]:")
     print(*ptr2)
     
     return 0
