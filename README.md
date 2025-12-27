@@ -1,125 +1,54 @@
-# Juno v1.3
+# Juno v1.4
 
-**Juno** — минималистичный системный язык программирования, компилируемый напрямую в нативные исполняемые файлы (PE/ELF x64).
+**Juno** — системный язык программирования с прямой компиляцией в нативный код (x86-64).
 
-## Что нового в v1.3
+## Возможности
 
-- Исправлен критический баг с вызовами функций с 2+ аргументами
-- Организована структура проекта: тесты, примеры и артефакты вынесены в отдельные папки
-- Обновлена документация, добавлен STRUCTURE.md
-- Добавлен .editorconfig для консистентного форматирования
+- **Нативная компиляция** — генерация PE (Windows) и ELF (Linux) без LLVM
+- **Системное программирование** — прямой доступ к syscalls, памяти, сокетам
+- **Препроцессор** — `#define`, `#ifdef`, `#ifndef`, `#endif`
+- **Типизация** — `let x: int = 5`, `fn add(a: int, b: int): int`
+- **Структуры и методы** — ООП-подобный синтаксис
+- **Указатели** — `&x`, `*ptr`, арифметика указателей
+- **Битовые операции** — `&`, `|`, `^`, `~`, `<<`, `>>`
+- **Атомарные операции** — `atomic_add`, `spin_lock`
+- **Сокеты** — TCP клиент/сервер
 
-## Особенности
-
-- Нативная компиляция: прямая генерация машинного кода x64
-- Кроссплатформенность: Windows (PE) и Linux (ELF)
-- Структуры и методы с ООП-подобным синтаксисом
-- Циклы `for` и `while`
-- `insertC` для прямых ассемблерных вставок
-- Минимум зависимостей: нужен только Ruby для компиляции
-
-## Быстрый старт
-
-Подробная инструкция: [QUICKSTART.md](QUICKSTART.md)
-
-```powershell
-# Windows
-ruby main_native.rb demo_v1.juno
-build\output.exe
-echo %ERRORLEVEL%
-
-# Linux
-ruby main_linux.rb demo_v1.juno
-./build/output_linux
-echo $?
-
-# Или используйте быстрый скрипт
-build.bat demo_v1.juno  # Windows
-```
-
-## Синтаксис
+## Hello World
 
 ```juno
-// Структуры
-struct Point { x y }
-
-// Методы
-fn Point.init(px, py) {
-    self.x = px
-    self.y = py
-}
-
-// Функции
-fn add(a, b) {
-    return a + b
-}
-
-// Главная функция
-fn main() {
-    let p = Point
-    p.init(3, 4)
-    
-    // Циклы
-    for (i = 0; i < 10; i++) {
-        // ...
-    }
-    
-    // Условия
-    if (p.x > 0) {
-        p.x = p.x + 1
-    }
-    
-    // Ассемблерные вставки
-    insertC { 0x48 0x31 0xc0 }  // xor rax, rax
-    
-    return p.x + p.y
+fn main(): int {
+    print("Hello, World!")
+    return 0
 }
 ```
 
-## Возможности v1.0
+```bash
+# Linux
+ruby main_linux.rb examples/hello.juno
+./build/output_linux
 
-| Фича | Статус |
-|------|--------|
-| Переменные (`let`) | Поддерживается |
-| Арифметика (`+ - * /`) | Поддерживается |
-| Сравнения (`== != < > <= >=`) | Поддерживается |
-| Инкремент/декремент (`++ --`) | Поддерживается |
-| Условия (`if/else`) | Поддерживается |
-| Цикл `while` | Поддерживается |
-| Цикл `for` | Поддерживается |
-| Функции | Поддерживается |
-| Структуры (`struct`) | Поддерживается |
-| Методы структур | Поддерживается |
-| Ассемблерные вставки (`insertC`) | Поддерживается |
-| Комментарии (`//`) | Поддерживается |
-
-## Структура проекта
-
+# Windows
+ruby main_native.rb examples/hello.juno
+build\output.exe
 ```
-├── src/                # Исходный код компилятора
-│   ├── lexer.rb        # Лексер
-│   ├── parser.rb       # Парсер
-│   ├── codegen/        # Генерация кода
-│   └── native/         # PE/ELF сборщики
-├── stdlib/             # Стандартная библиотека
-├── tests/              # Тесты (test_*.juno)
-├── examples/           # Примеры программ
-├── build/              # Артефакты сборки
-├── main_native.rb      # Компилятор (Windows PE)
-├── main_linux.rb       # Компилятор (Linux ELF)
-├── docs.md             # Полная документация
-└── demo_v1.juno        # Демо всех возможностей
-```
-
-## Документация
-
-Полная документация: [docs.md](docs.md)
 
 ## Примеры
 
+### Переменные и арифметика
 ```juno
-// Факториал
-fn factorial(n) {
+fn main(): int {
+    let x: int = 10
+    let y: int = 3
+    print(x + y)    // 13
+    print(x * y)    // 30
+    return 0
+}
+```
+
+### Условия и циклы
+```juno
+fn factorial(n: int): int {
     let result = 1
     for (i = 1; i <= n; i++) {
         result = result * i
@@ -127,9 +56,186 @@ fn factorial(n) {
     return result
 }
 
-fn main() {
-    return factorial(5)  // 120
+fn main(): int {
+    print(factorial(5))  // 120
+    return 0
 }
+```
+
+### Структуры
+```juno
+struct Point { x y }
+
+fn Point.move(dx: int, dy: int): int {
+    self.x = self.x + dx
+    self.y = self.y + dy
+    return 0
+}
+
+fn main(): int {
+    let p = Point
+    p.x = 10
+    p.y = 20
+    p.move(5, -3)
+    print(p.x)  // 15
+    return 0
+}
+```
+
+### Указатели и массивы
+```juno
+fn main(): int {
+    let arr[5]
+    arr[0] = 100
+    arr[1] = 200
+    
+    let ptr = &arr[0]
+    print(*ptr)  // 100
+    
+    let ptr2 = ptr_add(ptr, 1)
+    print(*ptr2)  // 200
+    
+    return 0
+}
+```
+
+### Битовые операции
+```juno
+fn main(): int {
+    let flags = 0
+    flags = flags | (1 << 0)  // Set bit 0
+    flags = flags | (1 << 2)  // Set bit 2
+    
+    let hex = 0xCAFE
+    let bin = 0b11110000
+    
+    print(flags)  // 5
+    print(hex)    // 51966
+    print(bin)    // 240
+    return 0
+}
+```
+
+### Сокеты (TCP сервер)
+```juno
+fn main(): int {
+    let sock = socket(2, 1, 0)
+    let addr = ip(0, 0, 0, 0)
+    
+    bind(sock, addr, 8888)
+    listen(sock, 10)
+    
+    print("Listening on port 8888...")
+    
+    let client = accept(sock)
+    print("Client connected!")
+    
+    let response = "HTTP/1.0 200 OK\r\n\r\nHello!"
+    send(client, response, 30)
+    
+    close(client)
+    close(sock)
+    return 0
+}
+```
+
+### Системные вызовы
+```juno
+fn main(): int {
+    let pid = getpid()
+    print("PID:")
+    print(pid)
+    
+    let child = fork()
+    if (child == 0) {
+        print("Child process")
+        exit(0)
+    } else {
+        wait(0)
+        print("Child finished")
+    }
+    
+    return 0
+}
+```
+
+### Препроцессор
+```juno
+#define VERSION 1
+#define BUFFER_SIZE 1024
+
+#ifdef LINUX
+#define PLATFORM "Linux"
+#endif
+
+fn main(): int {
+    print("Version:")
+    print(VERSION)
+    return 0
+}
+```
+
+## Встроенные функции
+
+### I/O
+| Функция | Описание |
+|---------|----------|
+| `print(x)` | Вывести число |
+| `prints(s)` | Вывести строку |
+| `read(fd, buf, n)` | Читать из файла |
+| `write(fd, buf, n)` | Писать в файл |
+
+### Сокеты
+| Функция | Описание |
+|---------|----------|
+| `socket(domain, type, proto)` | Создать сокет |
+| `bind(sock, ip, port)` | Привязать к адресу |
+| `listen(sock, backlog)` | Слушать соединения |
+| `accept(sock)` | Принять соединение |
+| `connect(sock, ip, port)` | Подключиться |
+| `send(sock, buf, len)` | Отправить данные |
+| `recv(sock, buf, len)` | Получить данные |
+| `ip(a, b, c, d)` | Создать IP адрес |
+
+### Память
+| Функция | Описание |
+|---------|----------|
+| `getbuf()` | Получить буфер 4KB |
+| `mmap(...)` | Выделить память |
+| `munmap(addr, len)` | Освободить память |
+| `memset(ptr, val, n)` | Заполнить память |
+| `memcpy(dst, src, n)` | Копировать память |
+
+### Процессы
+| Функция | Описание |
+|---------|----------|
+| `fork()` | Создать процесс |
+| `wait(status)` | Ждать дочерний |
+| `exit(code)` | Завершить процесс |
+| `getpid()` | Получить PID |
+| `kill(pid, sig)` | Послать сигнал |
+
+### Атомарные операции
+| Функция | Описание |
+|---------|----------|
+| `atomic_add(ptr, val)` | Атомарное сложение |
+| `spin_lock(ptr)` | Захватить spinlock |
+| `spin_unlock(ptr)` | Освободить spinlock |
+
+## Структура проекта
+
+```
+juno/
+├── src/                    # Компилятор
+│   ├── lexer.rb
+│   ├── parser.rb
+│   ├── preprocessor.rb
+│   └── codegen/
+├── examples/               # Примеры
+├── tests/                  # Тесты
+├── stdlib/                 # Стандартная библиотека
+├── main_linux.rb           # Linux
+└── main_native.rb          # Windows
 ```
 
 ## Лицензия
@@ -137,7 +243,5 @@ fn main() {
 MIT
 
 ---
-
-**Juno v1.3** — минималистичный системный язык программирования.
 
 Подробнее: [CHANGELOG.md](CHANGELOG.md) | [TODO.md](TODO.md) | [STRUCTURE.md](STRUCTURE.md)

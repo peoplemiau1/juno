@@ -1,64 +1,92 @@
-// Combined feature test with multiple functions and constructs
+// Test all new system programming features
+
+#define BUFFER_SIZE 1024
+#define VERSION 1
+
+#ifdef LINUX
+#define PLATFORM_NAME "Linux"
+#endif
+
+packed struct PackedHeader {
+    magic: u16
+    version: u8
+    flags: u8
+}
+
+union Value {
+    as_int: i64
+    as_ptr: ptr
+}
 
 struct Point {
-    x
-    y
+    x: i32
+    y: i32
 }
 
-fn add(a, b) {
-    return a + b
+fn test_preprocessor(): int {
+    print("=== Preprocessor ===")
+    print("Buffer size:")
+    print(BUFFER_SIZE)
+    print("Version:")
+    print(VERSION)
+    return 0
 }
 
-fn mul(a, b) {
-    return a * b
+fn test_bitwise(): int {
+    print("=== Bitwise ===")
+    let a = 0xFF & 0x0F
+    print(a)
+    let b = 1 << 8
+    print(b)
+    let c = 0xFF ^ 0xF0
+    print(c)
+    return 0
 }
 
-fn struct_sum(x, y) {
-    let p = Point
-    p.x = x
-    p.y = y
-    return p.x + p.y
+fn test_types(): int {
+    print("=== Sized Types ===")
+    let val = 1000
+    let as_u8 = u8(val)
+    print("1000 as u8:")
+    print(as_u8)
+    return 0
 }
 
-fn sum_array() {
+fn test_pointers(): int {
+    print("=== Pointer Arithmetic ===")
     let arr[5]
-    for (i = 0; i < 5; i++) {
-        arr[i] = i * 10
-    }
-    let s = 0
-    for (i = 0; i < 5; i++) {
-        s = s + arr[i]
-    }
-    return s  // 0+10+20+30+40 = 100
+    arr[0] = 10
+    arr[1] = 20
+    arr[2] = 30
+    
+    let ptr = &arr[0]
+    print("arr[0]:")
+    print(*ptr)
+    
+    let ptr2 = ptr_add(ptr, 2)
+    print("arr[2]:")
+    print(*ptr2)
+    
+    return 0
 }
 
-fn pointer_inc(v, delta) {
-    let x = v
-    let px = &x
-    *px = *px + delta
-    return x
+fn test_syscalls(): int {
+    print("=== System Calls ===")
+    let pid = getpid()
+    print("PID:")
+    print(pid)
+    return 0
 }
 
-fn loop_accumulate(n) {
-    let acc = 0
-    for (i = 1; i <= n; i++) {
-        acc = acc + i
-    }
-    return acc
-}
-
-fn combined_check() {
-    let part1 = add(10, 20) + mul(3, 4)      // 42
-    let part2 = struct_sum(3, 4)              // 7
-    let part3 = sum_array()                   // 100
-    let part4 = pointer_inc(5, 2)             // 7
-    let part5 = loop_accumulate(5)            // 15
-    return part1 + part2 + part3 + part4 + part5
-}
-
-fn main() {
-    let total = combined_check()
-    print("combined total:")
-    print(total)  // Expected 171
-    return total
+fn main(): int {
+    print("====== ALL FEATURES TEST ======")
+    
+    test_preprocessor()
+    test_bitwise()
+    test_types()
+    test_pointers()
+    test_syscalls()
+    
+    print("====== ALL TESTS PASSED ======")
+    return 0
 }

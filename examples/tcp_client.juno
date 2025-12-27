@@ -1,0 +1,40 @@
+// Простой TCP клиент
+// Подключается к серверу и обменивается данными
+
+fn main(): int {
+    print("=== TCP Client ===")
+    
+    // Создаём сокет
+    let sock = socket(2, 1, 0)
+    if (sock < 0) {
+        print("Socket error")
+        return 1
+    }
+    print("Socket OK")
+    
+    // Подключаемся к localhost:7777
+    let addr = ip(127, 0, 0, 1)
+    let result = connect(sock, addr, 7777)
+    if (result < 0) {
+        print("Connect failed - run: nc -l 7777")
+        close(sock)
+        return 1
+    }
+    print("Connected!")
+    
+    // Отправляем сообщение
+    let msg = "Hello from Juno!\n"
+    send(sock, msg, 17)
+    print("Message sent")
+    
+    // Читаем ответ
+    let buf = getbuf()
+    let n = recv(sock, buf, 1024)
+    if (n > 0) {
+        print("Received:")
+        prints(buf)
+    }
+    
+    close(sock)
+    return 0
+}

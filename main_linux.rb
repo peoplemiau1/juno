@@ -4,29 +4,37 @@ require_relative "src/parser"
 require_relative "src/importer"
 require_relative "src/optimizer/optimizer"
 require_relative "src/codegen/native_generator"
+require_relative "src/preprocessor"
 require_relative "src/errors"
 
 def compile_linux(input_file)
   code = File.read(input_file)
   
   begin
-    puts "Step 1: Lexing..."
+    puts "Step 1: Preprocessing..."
+    preprocessor = Preprocessor.new
+    preprocessor.define("LINUX")
+    preprocessor.define("__JUNO__")
+    preprocessor.define("__x86_64__")
+    code = preprocessor.process(code, input_file)
+    
+    puts "Step 2: Lexing..."
     lexer = Lexer.new(code, input_file)
     tokens = lexer.tokenize
 
-    puts "Step 2: Parsing..."
+    puts "Step 3: Parsing..."
     parser = Parser.new(tokens, input_file, code)
     ast = parser.parse
 
-    puts "Step 3: Resolving imports..."
+    puts "Step 4: Resolving imports..."
     importer = Importer.new(File.dirname(input_file))
     ast = importer.resolve(ast, input_file)
 
-    puts "Step 4: Optimizing..."
+    puts "Step 5: Optimizing..."
     optimizer = Optimizer.new(ast)
     ast = optimizer.optimize
 
-    puts "Step 5: Native Code Generation (Linux ELF)..."
+    puts "Step 6: Native Code Generation (Linux ELF)..."
     generator = NativeGenerator.new(ast, :linux)
     FileUtils.mkdir_p("build")
     output_path = File.join("build", "output_linux")

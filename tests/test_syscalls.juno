@@ -1,0 +1,35 @@
+// Test system calls
+
+fn main(): int {
+    print("=== System Calls Test ===")
+    
+    // Get PID
+    let pid = getpid()
+    print("My PID:")
+    print(pid)
+    
+    // Get UID
+    let uid = getuid()
+    print("My UID:")
+    print(uid)
+    
+    // Memory operations with memset
+    let buf = getbuf()
+    memset(buf, 65, 10)  // Fill with 'A'
+    print("Buffer after memset:")
+    prints(buf)
+    
+    // Fork test
+    let child = fork()
+    if (child == 0) {
+        print("I am child process")
+        exit(0)
+    } else {
+        print("I am parent, child PID:")
+        print(child)
+        wait(0)
+        print("Child finished")
+    }
+    
+    return 0
+}

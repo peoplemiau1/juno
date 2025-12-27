@@ -1,0 +1,75 @@
+// System Programming Demo
+// Demonstrates low-level capabilities of Juno
+
+fn main(): int {
+    print("=== Juno System Programming Demo ===")
+    
+    // 1. Bitwise operations
+    print("--- Bitwise ---")
+    let flags = (1 << 0) | (1 << 2) | (1 << 4)  // bits 0, 2, 4
+    print("Flags:")
+    print(flags)
+    
+    let has_bit2 = (flags & (1 << 2)) != 0
+    print("Has bit 2:")
+    print(has_bit2)
+    
+    // 2. Hex literals
+    print("--- Hex/Binary ---")
+    let hex = 0xDEAD
+    print("0xDEAD =")
+    print(hex)
+    
+    let bin = 0b11110000
+    print("0b11110000 =")
+    print(bin)
+    
+    // 3. Process info
+    print("--- Process Info ---")
+    let pid = getpid()
+    print("PID:")
+    print(pid)
+    
+    let uid = getuid()
+    print("UID:")
+    print(uid)
+    
+    // 4. Memory allocation with mmap
+    print("--- Memory (mmap) ---")
+    let prot = PROT_READ() | PROT_WRITE()
+    let map_flags = MAP_PRIVATE() | MAP_ANONYMOUS()
+    let mem = mmap(0, 4096, prot, map_flags, 0, 0)
+    print("mmap returned:")
+    print(mem)
+    
+    if (mem != 0) {
+        // Write to allocated memory
+        memset(mem, 66, 10)  // Fill with 'B'
+        prints(mem)
+        munmap(mem, 4096)
+        print("Memory freed")
+    }
+    
+    // 5. Spinlock demo
+    print("--- Spinlock ---")
+    let lock = 0
+    spin_lock(&lock)
+    print("Critical section")
+    spin_unlock(&lock)
+    print("Lock released")
+    
+    // 6. Fork demo
+    print("--- Fork ---")
+    let child = fork()
+    if (child == 0) {
+        print("Child process")
+        exit(42)
+    } else {
+        print("Parent waiting...")
+        wait(0)
+        print("Child exited")
+    }
+    
+    print("=== Demo Complete ===")
+    return 0
+}

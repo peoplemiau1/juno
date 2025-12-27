@@ -1,0 +1,289 @@
+// MicroHTTPD - Minimal HTTP Server in Juno
+// Demonstrates: sockets, fork, memory, string handling
+
+#define PORT 8888
+#define BACKLOG 10
+#define BUF_SIZE 4096
+#define VERSION 1
+
+#ifdef LINUX
+#define SERVER_NAME "MicroHTTPD/1.0 (Juno)"
+#endif
+
+// HTTP response codes
+#define HTTP_200 200
+#define HTTP_404 404
+#define HTTP_500 500
+
+// Statistics
+let g_requests = 0
+let g_bytes_sent = 0
+
+// Send HTTP response header
+fn send_header(client: int, code: int, content_type: ptr, content_len: int): int {
+    let buf = getbuf()
+    
+    // Build response line
+    if (code == HTTP_200) {
+        let resp = "HTTP/1.0 200 OK\r\n"
+        send(client, resp, 17)
+    } else {
+        if (code == HTTP_404) {
+            let resp = "HTTP/1.0 404 Not Found\r\n"
+            send(client, resp, 24)
+        } else {
+            let resp = "HTTP/1.0 500 Error\r\n"
+            send(client, resp, 20)
+        }
+    }
+    
+    // Content-Type
+    let ct = "Content-Type: text/html\r\n"
+    send(client, ct, 25)
+    
+    // Server header
+    let srv = "Server: MicroHTTPD/1.0\r\n"
+    send(client, srv, 24)
+    
+    // Connection close
+    let conn = "Connection: close\r\n"
+    send(client, conn, 19)
+    
+    // End headers
+    let end = "\r\n"
+    send(client, end, 2)
+    
+    return 0
+}
+
+// Send HTML page
+fn send_html_page(client: int, title: ptr, body: ptr): int {
+    let html1 = "<!DOCTYPE html><html><head><title>"
+    send(client, html1, 34)
+    
+    send(client, title, len(title))
+    
+    let html2 = "</title><style>body{font-family:monospace;margin:40px;background:#1a1a2e;color:#eee}h1{color:#0f0}pre{background:#0d0d1a;padding:20px;border-radius:8px}</style></head><body>"
+    send(client, html2, 167)
+    
+    send(client, body, len(body))
+    
+    let html3 = "</body></html>"
+    send(client, html3, 14)
+    
+    return 0
+}
+
+// Handle index page
+fn handle_index(client: int): int {
+    send_header(client, HTTP_200, "text/html", 0)
+    
+    let title = "MicroHTTPD"
+    let body = "<h1>Welcome to MicroHTTPD</h1><p>A minimal HTTP server written in Juno.</p><h2>Endpoints:</h2><ul><li><a href='/'>/ - This page</a></li><li><a href='/status'>/status - Server status</a></li><li><a href='/info'>/info - System info</a></li><li><a href='/api'>/api - JSON API</a></li></ul><p><em>Powered by Juno v1.4</em></p>"
+    
+    send_html_page(client, title, body)
+    return 0
+}
+
+// Handle status page
+fn handle_status(client: int): int {
+    send_header(client, HTTP_200, "text/html", 0)
+    
+    let html = "<!DOCTYPE html><html><head><title>Status</title></head><body style='font-family:monospace;background:#1a1a2e;color:#eee;margin:40px'>"
+    send(client, html, 131)
+    
+    let h1 = "<h1 style='color:#0f0'>Server Status</h1><pre>"
+    send(client, h1, 46)
+    
+    // Request count
+    let req = "Requests handled: "
+    send(client, req, 18)
+    
+    // Convert number to string and send
+    let buf = getbuf()
+    let count = g_requests
+    
+    // Simple number printing
+    if (count < 10) {
+        let digit = count + 48
+        memset(buf, digit, 1)
+        memset(ptr_add(buf, 1), 0, 1)
+    } else {
+        memset(buf, 48 + (count / 10), 1)
+        memset(ptr_add(buf, 1), 48 + (count - (count / 10) * 10), 1)
+        memset(ptr_add(buf, 2), 0, 1)
+    }
+    send(client, buf, 2)
+    
+    let nl = "\nServer PID: "
+    send(client, nl, 12)
+    
+    let pid = getpid()
+    if (pid < 10000) {
+        // Simple conversion for 4-digit PID
+        let d1 = pid / 1000
+        let d2 = (pid / 100) - d1 * 10
+        let d3 = (pid / 10) - (pid / 100) * 10
+        let d4 = pid - (pid / 10) * 10
+        memset(buf, 48 + d1, 1)
+        memset(ptr_add(buf, 1), 48 + d2, 1)
+        memset(ptr_add(buf, 2), 48 + d3, 1)
+        memset(ptr_add(buf, 3), 48 + d4, 1)
+        send(client, buf, 4)
+    }
+    
+    let end = "\nStatus: Running</pre></body></html>"
+    send(client, end, 37)
+    
+    return 0
+}
+
+// Handle info page  
+fn handle_info(client: int): int {
+    send_header(client, HTTP_200, "text/html", 0)
+    
+    let title = "System Info"
+    
+    let pid = getpid()
+    let uid = getuid()
+    
+    let body = "<h1>System Information</h1><pre>Platform: Linux x86_64\nCompiler: Juno v1.4\nFeatures:\n  - Native x64 codegen\n  - Preprocessor\n  - Sized types (i8-u64)\n  - Bitwise ops\n  - Pointer arithmetic\n  - System calls\n  - Atomic operations\n  - Network sockets</pre>"
+    
+    send_html_page(client, title, body)
+    return 0
+}
+
+// Handle API endpoint (JSON)
+fn handle_api(client: int): int {
+    let header = "HTTP/1.0 200 OK\r\nContent-Type: application/json\r\nServer: MicroHTTPD/1.0\r\nConnection: close\r\n\r\n"
+    send(client, header, 91)
+    
+    let json = "{server:MicroHTTPD,version:1.0,language:Juno,status:running}"
+    send(client, json, 59)
+    
+    return 0
+}
+
+// Handle 404
+fn handle_404(client: int): int {
+    send_header(client, HTTP_404, "text/html", 0)
+    
+    let title = "404 Not Found"
+    let body = "<h1 style='color:red'>404 - Not Found</h1><p>The requested page was not found.</p><p><a href='/'>Go to homepage</a></p>"
+    
+    send_html_page(client, title, body)
+    return 0
+}
+
+// Parse request and route
+fn handle_request(client: int, request: ptr): int {
+    // Simple routing based on URL
+    // GET / HTTP/1.x -> check character at position 4
+    
+    let ptr4 = ptr_add(request, 4)
+    let c4 = u8(*ptr4)
+    
+    // '/' = 47, 's' = 115, 'i' = 105, 'a' = 97
+    
+    if (c4 == 47) {
+        // Check next char
+        let ptr5 = ptr_add(request, 5)
+        let c5 = u8(*ptr5)
+        
+        if (c5 == 32) {
+            // "/ " -> index
+            return handle_index(client)
+        }
+        if (c5 == 115) {
+            // "/s" -> status
+            return handle_status(client)
+        }
+        if (c5 == 105) {
+            // "/i" -> info
+            return handle_info(client)
+        }
+        if (c5 == 97) {
+            // "/a" -> api
+            return handle_api(client)
+        }
+    }
+    
+    return handle_404(client)
+}
+
+// Handle one client connection
+fn handle_client(client: int): int {
+    let buf = getbuf()
+    
+    // Read request
+    let n = recv(client, buf, BUF_SIZE)
+    
+    if (n > 0) {
+        g_requests++
+        handle_request(client, buf)
+    }
+    
+    close(client)
+    return 0
+}
+
+// Main server loop (single-threaded for simplicity)
+fn server_loop(sock: int): int {
+    print("Waiting for connections...")
+    
+    let max_requests = 5
+    let handled = 0
+    
+    while (handled < max_requests) {
+        let client = accept(sock)
+        
+        if (client >= 0) {
+            print("Client connected!")
+            handle_client(client)
+            handled++
+            print("Request handled")
+        }
+    }
+    
+    print("Max requests reached, shutting down")
+    return 0
+}
+
+// Entry point
+fn main(): int {
+    print("========================================")
+    print("  MicroHTTPD - Juno HTTP Server")
+    print("  Port: 8888")
+    print("========================================")
+    
+    // Create socket
+    let sock = socket(2, 1, 0)
+    if (sock < 0) {
+        print("ERROR: Cannot create socket")
+        return 1
+    }
+    print("Socket created")
+    
+    // Bind to port
+    let addr = ip(0, 0, 0, 0)
+    let result = bind(sock, addr, PORT)
+    if (result < 0) {
+        print("ERROR: Cannot bind to port 8888")
+        close(sock)
+        return 1
+    }
+    print("Bound to port 8888")
+    
+    // Listen
+    listen(sock, BACKLOG)
+    print("Listening...")
+    print("")
+    print("Open in browser: http://localhost:8888")
+    print("")
+    
+    // Main loop
+    server_loop(sock)
+    
+    close(sock)
+    return 0
+}

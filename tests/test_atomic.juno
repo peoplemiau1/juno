@@ -1,0 +1,30 @@
+// Test atomic operations
+
+fn main(): int {
+    print("=== Atomic Operations ===")
+    
+    let counter = 0
+    
+    // Atomic add
+    let old = atomic_add(&counter, 5)
+    print("atomic_add returned (old):")
+    print(old)
+    print("counter now:")
+    print(counter)
+    
+    // Atomic add again
+    old = atomic_add(&counter, 10)
+    print("atomic_add returned:")
+    print(old)
+    print("counter now:")
+    print(counter)
+    
+    // Spinlock test
+    let lock = 0
+    spin_lock(&lock)
+    print("Lock acquired")
+    spin_unlock(&lock)
+    print("Lock released")
+    
+    return 0
+}

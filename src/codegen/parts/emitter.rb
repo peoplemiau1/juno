@@ -3,7 +3,16 @@ class CodeEmitter
 
   REG_RAX = 0; REG_RCX = 1; REG_RDX = 2; REG_RBX = 3
   REG_RSP = 4; REG_RBP = 5; REG_RSI = 6; REG_RDI = 7
-  REG_R8 = 8;  REG_R9 = 9;  REG_R11 = 11
+  REG_R8 = 8;  REG_R9 = 9;  REG_R10 = 10; REG_R11 = 11
+  REG_R12 = 12; REG_R13 = 13; REG_R14 = 14; REG_R15 = 15
+
+  # Map symbol names to register codes
+  REG_MAP = {
+    :rax => REG_RAX, :rcx => REG_RCX, :rdx => REG_RDX, :rbx => REG_RBX,
+    :rsp => REG_RSP, :rbp => REG_RBP, :rsi => REG_RSI, :rdi => REG_RDI,
+    :r8 => REG_R8, :r9 => REG_R9, :r10 => REG_R10, :r11 => REG_R11,
+    :r12 => REG_R12, :r13 => REG_R13, :r14 => REG_R14, :r15 => REG_R15
+  }
 
   def initialize
     @bytes = []
@@ -103,6 +112,19 @@ class CodeEmitter
   def add_rax_rdx; emit([0x48, 0x01, 0xd0]); end
   def sub_rax_rdx; emit([0x48, 0x29, 0xd0]); end # sub rax, rdx
   def imul_rax_rdx; emit([0x48, 0x0f, 0xaf, 0xc2]); end
+
+  # --- Bitwise operations ---
+  def and_rax_rdx; emit([0x48, 0x21, 0xd0]); end  # and rax, rdx
+  def or_rax_rdx; emit([0x48, 0x09, 0xd0]); end   # or rax, rdx
+  def xor_rax_rdx; emit([0x48, 0x31, 0xd0]); end  # xor rax, rdx
+  def not_rax; emit([0x48, 0xf7, 0xd0]); end      # not rax
+  
+  # Shift left RAX by CL (low byte of RCX)
+  def shl_rax_cl; emit([0x48, 0xd3, 0xe0]); end   # shl rax, cl
+  
+  # Shift right RAX by CL
+  def shr_rax_cl; emit([0x48, 0xd3, 0xe8]); end   # shr rax, cl (logical)
+  def sar_rax_cl; emit([0x48, 0xd3, 0xf8]); end   # sar rax, cl (arithmetic)
   
   # Shift left RAX by immediate (for multiply by power of 2)
   def shl_rax_imm(count)
@@ -164,5 +186,130 @@ class CodeEmitter
     emit([0x48, 0x89, 0xc7]) # mov rdi, rax (exit code from rax)
     emit([0x48, 0xc7, 0xc0, 60, 0, 0, 0]) # mov rax, 60 (sys_exit)
     emit([0x0f, 0x05]) # syscall
+  end
+
+  # --- Register allocation support ---
+  
+  # Save callee-saved registers (RBX, R12-R15)
+  def push_callee_saved(regs)
+    regs.each do |reg|
+      reg_code = REG_MAP[reg] || reg
+      push_reg(reg_code)
+    end
+  end
+
+  # Restore callee-saved registers (in reverse order)
+  def pop_callee_saved(regs)
+    regs.reverse.each do |reg|
+      reg_code = REG_MAP[reg] || reg
+      pop_reg(reg_code)
+    end
+  end
+
+  # Push single register
+  def push_reg(reg_code)
+    if reg_code >= 8
+      emit([0x41, 0x50 + (reg_code - 8)]) # push r8-r15
+    else
+      emit([0x50 + reg_code]) # push rax-rdi
+    end
+  end
+
+  # Pop single register
+  def pop_reg(reg_code)
+    if reg_code >= 8
+      emit([0x41, 0x58 + (reg_code - 8)]) # pop r8-r15
+    else
+      emit([0x58 + reg_code]) # pop rax-rdi
+    end
+  end
+
+  # MOV REG, imm64 (for any register)
+  def mov_reg_imm64(reg_code, val)
+    rex = 0x48
+    rex |= 0x01 if reg_code >= 8 # REX.B
+    emit([rex, 0xb8 + (reg_code & 7)] + [val].pack("Q<").bytes)
+  end
+
+  # MOV RAX, REG (load from any register to RAX)
+  def mov_rax_from_reg(src_reg)
+    mov_reg_reg(REG_RAX, src_reg)
+  end
+
+  # MOV REG, RAX (store RAX to any register)
+  def mov_reg_from_rax(dst_reg)
+    mov_reg_reg(dst_reg, REG_RAX)
+  end
+
+  # Get register code from symbol
+  def self.reg_code(sym)
+    REG_MAP[sym] || sym
+  end
+
+  # --- Sized memory operations ---
+  
+  # Load with size: 1, 2, 4, 8 bytes
+  def mov_rax_mem_sized(size, signed = true)
+    case size
+    when 1
+      if signed
+        emit([0x48, 0x0f, 0xbe, 0x00]) # movsx rax, byte [rax]
+      else
+        emit([0x48, 0x0f, 0xb6, 0x00]) # movzx rax, byte [rax]
+      end
+    when 2
+      if signed
+        emit([0x48, 0x0f, 0xbf, 0x00]) # movsx rax, word [rax]
+      else
+        emit([0x48, 0x0f, 0xb7, 0x00]) # movzx rax, word [rax]
+      end
+    when 4
+      if signed
+        emit([0x48, 0x63, 0x00]) # movsxd rax, dword [rax]
+      else
+        emit([0x8b, 0x00]) # mov eax, [rax] (zero-extends to rax)
+      end
+    else # 8
+      emit([0x48, 0x8b, 0x00]) # mov rax, [rax]
+    end
+  end
+
+  # Store RAX to [RDI] with size
+  def mov_mem_rax_sized(size)
+    case size
+    when 1
+      emit([0x88, 0x07]) # mov [rdi], al
+    when 2
+      emit([0x66, 0x89, 0x07]) # mov [rdi], ax
+    when 4
+      emit([0x89, 0x07]) # mov [rdi], eax
+    else # 8
+      emit([0x48, 0x89, 0x07]) # mov [rdi], rax
+    end
+  end
+
+  # Load from stack with size
+  def mov_rax_stack_sized(offset, size, signed = true)
+    lea_reg_stack(REG_RAX, offset)
+    mov_rax_mem_sized(size, signed)
+  end
+
+  # Store to stack with size
+  def mov_stack_rax_sized(offset, size)
+    lea_reg_stack(REG_RDI, offset)
+    mov_mem_rax_sized(size)
+  end
+
+  # Truncate RAX to size (mask upper bits)
+  def truncate_rax(size)
+    case size
+    when 1
+      emit([0x48, 0x0f, 0xb6, 0xc0]) # movzx rax, al
+    when 2
+      emit([0x48, 0x0f, 0xb7, 0xc0]) # movzx rax, ax
+    when 4
+      emit([0x89, 0xc0]) # mov eax, eax (zero-extends)
+    end
+    # 8 bytes - no truncation needed
   end
 end

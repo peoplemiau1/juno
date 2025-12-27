@@ -1,0 +1,277 @@
+// MiniShell - Simple Unix Shell in Juno
+// Demonstrates: fork, exec, wait, pipes, signals, memory management
+
+#define MAX_INPUT 256
+#define MAX_ARGS 16
+#define VERSION 1
+
+#ifdef LINUX
+#define SHELL_PROMPT "jsh> "
+#endif
+
+// Command history entry
+struct HistoryEntry {
+    cmd: ptr
+    next: ptr
+}
+
+// Global state
+let g_running = 1
+let g_history_head = 0
+let g_history_count = 0
+let g_last_exit_code = 0
+
+// Built-in commands
+fn builtin_exit(args: ptr): int {
+    print("Goodbye!")
+    g_running = 0
+    return 0
+}
+
+fn builtin_help(args: ptr): int {
+    print("MiniShell v1.0 - Built-in commands:")
+    print("  help     - Show this help")
+    print("  exit     - Exit shell")
+    print("  pwd      - Print working directory")
+    print("  cd DIR   - Change directory")
+    print("  pid      - Show shell PID")
+    print("  history  - Show command history")
+    print("  clear    - Clear screen")
+    print("  status   - Show last exit code")
+    print("  mem      - Memory info")
+    print("  env      - Show environment")
+    return 0
+}
+
+fn builtin_pwd(args: ptr): int {
+    let buf = getbuf()
+    getcwd(buf, 1024)
+    prints(buf)
+    return 0
+}
+
+fn builtin_cd(args: ptr): int {
+    // For now, just go home
+    let result = chdir("/tmp")
+    if (result < 0) {
+        print("cd: failed")
+        return 1
+    }
+    return 0
+}
+
+fn builtin_pid(args: ptr): int {
+    let pid = getpid()
+    let uid = getuid()
+    print("Shell PID:")
+    print(pid)
+    print("User ID:")
+    print(uid)
+    return 0
+}
+
+fn builtin_history(args: ptr): int {
+    print("Command history:")
+    print(g_history_count)
+    return 0
+}
+
+fn builtin_clear(args: ptr): int {
+    // ANSI escape: clear screen
+    print("\x1b[2J\x1b[H")
+    return 0
+}
+
+fn builtin_status(args: ptr): int {
+    print("Last exit code:")
+    print(g_last_exit_code)
+    return 0
+}
+
+fn builtin_mem(args: ptr): int {
+    print("=== Memory Info ===")
+    
+    // Allocate test memory
+    let prot = PROT_READ() | PROT_WRITE()
+    let flags = MAP_PRIVATE() | MAP_ANONYMOUS()
+    let mem = mmap(0, 4096, prot, flags, 0, 0)
+    
+    if (mem != 0) {
+        print("Test allocation: OK")
+        print("Address:")
+        print(mem)
+        munmap(mem, 4096)
+        print("Freed: OK")
+    } else {
+        print("Allocation failed!")
+    }
+    
+    return 0
+}
+
+fn builtin_env(args: ptr): int {
+    print("=== Environment ===")
+    print("Shell: MiniShell v1.0")
+    print("Platform: Linux x86_64")
+    print("Compiler: Juno v1.4")
+    
+    let pid = getpid()
+    print("PID:")
+    print(pid)
+    
+    let buf = getbuf()
+    getcwd(buf, 1024)
+    print("CWD:")
+    prints(buf)
+    
+    return 0
+}
+
+// Check if command is built-in and execute
+fn try_builtin(cmd: ptr): int {
+    // Simple string comparison using first chars
+    let c0 = *cmd
+    
+    // "exit" starts with 'e' (101)
+    if (c0 == 101) {
+        return builtin_exit(cmd)
+    }
+    
+    // "help" starts with 'h' (104)
+    if (c0 == 104) {
+        return builtin_help(cmd)
+    }
+    
+    // "pwd" starts with 'p' (112)
+    if (c0 == 112) {
+        let c1 = *(ptr_add(cmd, 0))
+        // Check second char for 'w' vs 'i'
+        let ptr1 = ptr_add(cmd, 1)
+        let c1_val = u8(*ptr1)
+        if (c1_val == 119) {
+            return builtin_pwd(cmd)
+        }
+        if (c1_val == 105) {
+            return builtin_pid(cmd)
+        }
+    }
+    
+    // "cd" starts with 'c' (99)
+    if (c0 == 99) {
+        let ptr1 = ptr_add(cmd, 1)
+        let c1 = u8(*ptr1)
+        if (c1 == 100) {
+            return builtin_cd(cmd)
+        }
+        if (c1 == 108) {
+            return builtin_clear(cmd)
+        }
+    }
+    
+    // "history" starts with 'h' but we already handled help
+    // "status" starts with 's' (115)
+    if (c0 == 115) {
+        return builtin_status(cmd)
+    }
+    
+    // "mem" starts with 'm' (109)
+    if (c0 == 109) {
+        return builtin_mem(cmd)
+    }
+    
+    // "env" starts with 'e' but exit is also 'e'
+    // Check second char
+    if (c0 == 101) {
+        let ptr1 = ptr_add(cmd, 1)
+        let c1 = u8(*ptr1)
+        if (c1 == 110) {
+            return builtin_env(cmd)
+        }
+    }
+    
+    return 0 - 1  // Not a builtin
+}
+
+// Execute external command
+fn execute_external(cmd: ptr): int {
+    print("External command not implemented yet")
+    print("Use built-in commands: help, exit, pwd, cd, pid, mem, env, status, clear")
+    return 127
+}
+
+// Process one command
+fn process_command(input: ptr): int {
+    // Skip empty input
+    let first = u8(*input)
+    if (first == 0) {
+        return 0
+    }
+    if (first == 10) {
+        return 0
+    }
+    
+    // Increment history
+    g_history_count++
+    
+    // Try built-in first
+    let result = try_builtin(input)
+    if (result != 0 - 1) {
+        g_last_exit_code = result
+        return result
+    }
+    
+    // Execute external
+    result = execute_external(input)
+    g_last_exit_code = result
+    return result
+}
+
+// Print prompt
+fn show_prompt(): int {
+    print("jsh> ")
+    return 0
+}
+
+// Main shell loop
+fn shell_loop(): int {
+    let input_buf = getbuf()
+    
+    while (g_running != 0) {
+        // Show prompt (without newline would be better)
+        show_prompt()
+        
+        // Read input
+        let n = read(0, input_buf, MAX_INPUT)
+        
+        if (n <= 0) {
+            // EOF or error
+            print("")
+            g_running = 0
+        } else {
+            // Process command (newline will be handled)
+            process_command(input_buf)
+        }
+    }
+    
+    return g_last_exit_code
+}
+
+// Entry point
+fn main(): int {
+    print("=====================================")
+    print("  MiniShell v1.0 - Juno Shell")
+    print("  Type 'help' for commands")
+    print("=====================================")
+    
+    let pid = getpid()
+    print("Shell started with PID:")
+    print(pid)
+    print("")
+    
+    let exit_code = shell_loop()
+    
+    print("Shell exited with code:")
+    print(exit_code)
+    
+    return exit_code
+}

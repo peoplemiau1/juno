@@ -1,0 +1,308 @@
+// SysMon - System Monitor in Juno
+// Demonstrates: syscalls, memory, process management, file I/O
+
+#define VERSION 1
+#define REFRESH_DELAY 1000000
+
+#ifdef LINUX
+#define PLATFORM "Linux x86_64"
+#endif
+
+// Process info structure
+packed struct ProcInfo {
+    pid: i32
+    ppid: i32
+    state: u8
+    nice: i8
+}
+
+// Memory stats
+struct MemStats {
+    total: i64
+    used: i64
+    free: i64
+    cached: i64
+}
+
+// Global state
+let g_running = 1
+let g_sample_count = 0
+
+// ANSI escape sequences
+fn clear_screen(): int {
+    // print ESC[2J ESC[H
+    let buf = getbuf()
+    memset(buf, 27, 1)       // ESC
+    memset(ptr_add(buf, 1), 91, 1)  // [
+    memset(ptr_add(buf, 2), 50, 1)  // 2
+    memset(ptr_add(buf, 3), 74, 1)  // J
+    memset(ptr_add(buf, 4), 27, 1)  // ESC
+    memset(ptr_add(buf, 5), 91, 1)  // [
+    memset(ptr_add(buf, 6), 72, 1)  // H
+    memset(ptr_add(buf, 7), 0, 1)
+    write(1, buf, 7)
+    return 0
+}
+
+fn print_header(): int {
+    print("========================================")
+    print("  SysMon v1.0 - System Monitor (Juno)")
+    print("========================================")
+    print("")
+    return 0
+}
+
+fn print_separator(): int {
+    print("----------------------------------------")
+    return 0
+}
+
+// Get process info
+fn show_process_info(): int {
+    print("[Process Info]")
+    
+    let pid = getpid()
+    print("  Current PID:")
+    print(pid)
+    
+    let ppid = getppid()
+    print("  Parent PID:")
+    print(ppid)
+    
+    let uid = getuid()
+    print("  User ID:")
+    print(uid)
+    
+    let gid = getgid()
+    print("  Group ID:")
+    print(gid)
+    
+    return 0
+}
+
+// Show working directory
+fn show_cwd(): int {
+    print("[Working Directory]")
+    let buf = getbuf()
+    getcwd(buf, 1024)
+    print("  ")
+    prints(buf)
+    return 0
+}
+
+// Memory allocation test
+fn show_memory_test(): int {
+    print("[Memory Test]")
+    
+    // Allocate page
+    let prot = PROT_READ() | PROT_WRITE()
+    let flags = MAP_PRIVATE() | MAP_ANONYMOUS()
+    
+    let page1 = mmap(0, 4096, prot, flags, 0, 0)
+    if (page1 != 0) {
+        print("  Allocated 4KB page")
+        
+        // Write pattern
+        memset(page1, 0x42, 4096)
+        print("  Filled with pattern 0x42")
+        
+        // Verify first byte
+        let first = u8(*page1)
+        print("  First byte:")
+        print(first)
+        
+        munmap(page1, 4096)
+        print("  Freed page")
+    } else {
+        print("  Allocation failed!")
+    }
+    
+    return 0
+}
+
+// Show bitwise operations
+fn show_bitwise_demo(): int {
+    print("[Bitwise Operations]")
+    
+    // Permission flags demo
+    let perms = 0
+    let READ = 1 << 2
+    let WRITE = 1 << 1
+    let EXEC = 1 << 0
+    
+    perms = perms | READ   // Add read
+    perms = perms | WRITE  // Add write
+    print("  RW permissions:")
+    print(perms)  // Should be 6 (110 binary)
+    
+    // Check flags
+    let can_read = (perms & READ) != 0
+    let can_exec = (perms & EXEC) != 0
+    print("  Can read:")
+    print(can_read)
+    print("  Can exec:")
+    print(can_exec)
+    
+    // Hex literal demo
+    let hex_val = 0xDEAD
+    print("  0xDEAD =")
+    print(hex_val)
+    
+    // Binary literal demo
+    let bin_val = 0b11110000
+    print("  0b11110000 =")
+    print(bin_val)
+    
+    return 0
+}
+
+// Type casting demo
+fn show_type_casting(): int {
+    print("[Type Casting]")
+    
+    let big = 1000
+    print("  1000 as u8:")
+    print(u8(big))  // Overflow to 232
+    
+    let neg = 0 - 128
+    print("  -128 as i8:")
+    print(i8(neg))  // Should be -128
+    
+    let wide = 0x12345678
+    print("  0x12345678 as u16:")
+    print(u16(wide))  // 0x5678 = 22136
+    
+    return 0
+}
+
+// Pointer arithmetic demo
+fn show_pointer_ops(): int {
+    print("[Pointer Arithmetic]")
+    
+    let arr[8]
+    let i = 0
+    while (i < 8) {
+        arr[i] = (i + 1) * 10
+        i++
+    }
+    
+    let ptr = &arr[0]
+    print("  arr[0]:")
+    print(*ptr)
+    
+    let ptr3 = ptr_add(ptr, 3)
+    print("  arr[3] via ptr_add:")
+    print(*ptr3)
+    
+    let ptr1 = ptr_sub(ptr3, 2)
+    print("  arr[1] via ptr_sub:")
+    print(*ptr1)
+    
+    return 0
+}
+
+// Atomic operations demo
+fn show_atomic_ops(): int {
+    print("[Atomic Operations]")
+    
+    let counter = 0
+    
+    // Atomic add
+    let old = atomic_add(&counter, 5)
+    print("  atomic_add(0, 5) old value:")
+    print(old)
+    print("  counter now:")
+    print(counter)
+    
+    // Another add
+    old = atomic_add(&counter, 3)
+    print("  atomic_add(5, 3) old value:")
+    print(old)
+    print("  counter now:")
+    print(counter)
+    
+    // Spinlock demo
+    let lock = 0
+    spin_lock(&lock)
+    print("  Spinlock acquired")
+    spin_unlock(&lock)
+    print("  Spinlock released")
+    
+    return 0
+}
+
+// Fork demo
+fn show_fork_demo(): int {
+    print("[Fork Demo]")
+    
+    let child = fork()
+    
+    if (child == 0) {
+        // Child process
+        print("  Child: Hello from child!")
+        let my_pid = getpid()
+        print("  Child PID:")
+        print(my_pid)
+        exit(42)
+    } else {
+        // Parent process
+        print("  Parent: Created child with PID:")
+        print(child)
+        
+        let status = 0
+        wait(&status)
+        print("  Parent: Child exited")
+    }
+    
+    return 0
+}
+
+// Print system summary
+fn print_summary(): int {
+    print("[Summary]")
+    print("  Samples collected:")
+    print(g_sample_count)
+    print("  Platform: " )
+    print(PLATFORM)
+    print("  Juno version: 1.4")
+    return 0
+}
+
+fn main(): int {
+    print_header()
+    
+    // Run all demos
+    show_process_info()
+    print_separator()
+    
+    show_cwd()
+    print_separator()
+    
+    show_memory_test()
+    print_separator()
+    
+    show_bitwise_demo()
+    print_separator()
+    
+    show_type_casting()
+    print_separator()
+    
+    show_pointer_ops()
+    print_separator()
+    
+    show_atomic_ops()
+    print_separator()
+    
+    show_fork_demo()
+    print_separator()
+    
+    g_sample_count = 9
+    print_summary()
+    
+    print("")
+    print("========================================")
+    print("  All demos completed successfully!")
+    print("========================================")
+    
+    return 0
+}

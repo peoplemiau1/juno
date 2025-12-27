@@ -10,6 +10,8 @@ module ParserStatements
       when 'return' then parse_return
       when 'fn'     then parse_fn_definition
       when 'struct' then parse_struct_definition
+      when 'packed' then parse_packed_struct
+      when 'union'  then parse_union_definition
       when 'import' then parse_import
       else raise "Unknown keyword: #{token[:value]}"
       end
@@ -113,11 +115,25 @@ module ParserStatements
     
     consume_symbol('(')
     params = []
+    param_types = {}
     until match_symbol?(')')
-      params << consume_ident
+      param_name = consume_ident
+      # Check for type annotation: fn add(a: int, b: int)
+      if match?(:colon)
+        consume(:colon)
+        param_types[param_name] = consume_ident
+      end
+      params << param_name
       consume_symbol(',') if match_symbol?(',')
     end
     consume_symbol(')')
+    
+    # Check for return type: fn add(a, b): int
+    return_type = nil
+    if match?(:colon)
+      consume(:colon)
+      return_type = consume_ident
+    end
     
     consume_symbol('{')
     body = []
@@ -129,7 +145,10 @@ module ParserStatements
     # Auto-inject self for methods
     params.unshift("self") if name.include?('.') && !params.include?("self")
     
-    { type: :function_definition, name: name, params: params, body: body }
+    node = { type: :function_definition, name: name, params: params, body: body }
+    node[:param_types] = param_types unless param_types.empty?
+    node[:return_type] = return_type if return_type
+    node
   end
 
   def parse_struct_definition
@@ -137,14 +156,59 @@ module ParserStatements
     name = consume_ident
     consume_symbol('{')
     fields = []
+    field_types = {}
     until match_symbol?('}')
       if match_keyword?('let')
         consume_keyword('let')
       end
-      fields << consume_ident
+      field_name = consume_ident
+      if match?(:colon)
+        consume(:colon)
+        field_types[field_name] = consume_ident
+      end
+      fields << field_name
     end
     consume_symbol('}')
-    { type: :struct_definition, name: name, fields: fields }
+    node = { type: :struct_definition, name: name, fields: fields }
+    node[:field_types] = field_types unless field_types.empty?
+    node
+  end
+
+  def parse_packed_struct
+    consume_keyword('packed')
+    consume_keyword('struct')
+    name = consume_ident
+    consume_symbol('{')
+    fields = []
+    field_types = {}
+    until match_symbol?('}')
+      field_name = consume_ident
+      if match?(:colon)
+        consume(:colon)
+        field_types[field_name] = consume_ident
+      end
+      fields << field_name
+    end
+    consume_symbol('}')
+    { type: :struct_definition, name: name, fields: fields, field_types: field_types, packed: true }
+  end
+
+  def parse_union_definition
+    consume_keyword('union')
+    name = consume_ident
+    consume_symbol('{')
+    fields = []
+    field_types = {}
+    until match_symbol?('}')
+      field_name = consume_ident
+      if match?(:colon)
+        consume(:colon)
+        field_types[field_name] = consume_ident
+      end
+      fields << field_name
+    end
+    consume_symbol('}')
+    { type: :union_definition, name: name, fields: fields, field_types: field_types }
   end
 
   def parse_let
@@ -162,8 +226,17 @@ module ParserStatements
       return { type: :array_decl, name: name, size: size }
     end
     
+    # Check for type annotation: let x: int = 5
+    var_type = nil
+    if match?(:colon)
+      consume(:colon)
+      var_type = consume_ident  # int, ptr, str, or struct name
+    end
+    
     consume_symbol('=')
-    { type: :assignment, name: name, expression: parse_expression }
+    node = { type: :assignment, name: name, expression: parse_expression }
+    node[:var_type] = var_type if var_type
+    node
   end
 
   def parse_increment

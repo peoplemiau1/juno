@@ -1,0 +1,71 @@
+// Simple Echo Server - tests network functionality
+// Echoes back whatever client sends
+
+fn main(): int {
+    print("=== Echo Server ===")
+    
+    // Create socket
+    let sock = socket(2, 1, 0)  // AF_INET, SOCK_STREAM
+    print("Socket fd:")
+    print(sock)
+    
+    if (sock < 0) {
+        print("Socket failed!")
+        return 1
+    }
+    
+    // Set SO_REUSEADDR
+    let opt = 1
+    // setsockopt would go here but let's skip for now
+    
+    // Bind
+    let addr = ip(0, 0, 0, 0)
+    let port = 9999
+    print("Binding to port 9999...")
+    
+    let res = bind(sock, addr, port)
+    print("Bind result:")
+    print(res)
+    
+    if (res < 0) {
+        print("Bind failed!")
+        close(sock)
+        return 1
+    }
+    
+    // Listen
+    listen(sock, 5)
+    print("Listening...")
+    
+    // Accept one connection
+    print("Waiting for client...")
+    let client = accept(sock)
+    print("Client fd:")
+    print(client)
+    
+    if (client >= 0) {
+        print("Client connected!")
+        
+        // Echo loop
+        let buf = getbuf()
+        let running = 1
+        
+        while (running == 1) {
+            let n = recv(client, buf, 1024)
+            print("Received bytes:")
+            print(n)
+            
+            if (n > 0) {
+                send(client, buf, n)
+            } else {
+                running = 0
+            }
+        }
+        
+        close(client)
+    }
+    
+    close(sock)
+    print("Done")
+    return 0
+}
