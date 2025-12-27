@@ -1,0 +1,13 @@
+// Flat binary smoke: write "Juno" into VGA text memory and halt
+fn main() {
+    let vga = 753664 // 0xB8000
+    let p0 = vga
+    *p0 = 0x1F4A // 'J' | attr 0x1F
+    let p1 = p0 + 2
+    *p1 = 0x1F75 // 'u'
+    let p2 = p1 + 2
+    *p2 = 0x1F6E // 'n'
+    let p3 = p2 + 2
+    *p3 = 0x1F6F // 'o'
+    return 0
+}
