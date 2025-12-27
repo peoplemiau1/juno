@@ -1,54 +1,43 @@
 # Juno TODO
 
-## Выполнено в v1.4
+## v1.4 (текущая)
 
-### Системное программирование
+### Готово
 - [x] Битовые операции (`&`, `|`, `^`, `~`, `<<`, `>>`)
 - [x] Логические операции (`&&`, `||`)
-- [x] Hex/binary/octal литералы (`0xFF`, `0b1010`, `0o755`)
-- [x] Размерные типы (`i8`, `u8`, `i16`, `u16`, `i32`, `u32`, `i64`, `u64`)
-- [x] Приведение типов (`u8(val)`, `i32(val)`)
-- [x] Арифметика указателей (`ptr_add`, `ptr_sub`, `ptr_diff`)
-- [x] `sizeof()`
-- [x] Union типы
-- [x] Packed структуры
-- [x] Препроцессор (`#define`, `#ifdef`, `#ifndef`, `#else`, `#endif`)
+- [x] Hex/bin/oct литералы (`0xFF`, `0b1010`, `0o755`)
+- [x] Препроцессор (`#define`, `#ifdef`, `#ifndef`, `#endif`)
+- [x] Размерные типы (`i8`-`u64`)
+- [x] Приведение типов (`u8()`, `i32()`)
+- [x] Арифметика указателей (`ptr_add`, `ptr_sub`)
+- [x] TCP сокеты
+- [x] 40+ системных вызовов
+- [x] Атомарные операции
+- [x] Многопоточность (`thread_create`, `sleep`)
+- [x] Spinlock
 
-### Системные вызовы (Linux)
-- [x] Процессы: `fork`, `wait`, `exit`, `getpid`, `getppid`, `getuid`, `getgid`, `kill`
-- [x] Файлы: `open`, `close`, `read`, `write`, `mkdir`, `rmdir`, `unlink`, `chmod`, `chdir`, `getcwd`
-- [x] Память: `mmap`, `munmap`, `memcpy`, `memset`
-- [x] Каналы: `pipe`, `dup`, `dup2`
+## v1.5 (планируется)
 
-### Сокеты
-- [x] `socket(domain, type, protocol)`
-- [x] `bind(sock, ip, port)`
-- [x] `listen(sock, backlog)`
-- [x] `accept(sock)`
-- [x] `connect(sock, ip, port)`
-- [x] `send(sock, buf, len)`
-- [x] `recv(sock, buf, len)`
-- [x] `ip(a, b, c, d)`
-
-### Атомарные операции
-- [x] `atomic_add`, `atomic_sub`
-- [x] `atomic_load`, `atomic_store`
-- [x] `atomic_cas`
-- [x] `spin_lock`, `spin_unlock`
-
-### Компилятор
-- [x] Регистровый аллокатор (RBX, R12-R15)
-- [x] Синтаксис типов (`let x: int`, `fn f(a: int): int`)
-
-## В разработке
-
+### Высокий приоритет
 - [ ] Type checker
 - [ ] Windows сокеты (Winsock)
-- [ ] LSP
+- [ ] Улучшенные сообщения об ошибках
+- [ ] Методы структур с self
+
+### Средний приоритет
+- [ ] LSP (Language Server Protocol)
+- [ ] Многострочные комментарии
+- [ ] Enum типы
+- [ ] Match выражения
+
+### Низкий приоритет
 - [ ] Самохостинг
+- [ ] Debug info (DWARF/PDB)
+- [ ] Пакетный менеджер
 
 ## Ограничения
 
-1. Сокеты только Linux
-2. Максимум 6 аргументов функции
-3. Нет garbage collector
+- Сокеты только Linux
+- Максимум 6 аргументов функции
+- Нет garbage collector
+- Методы с self временно не работают
