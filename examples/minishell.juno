@@ -113,7 +113,7 @@ fn builtin_env(args: ptr): int {
     print("=== Environment ===")
     print("Shell: MiniShell v1.0")
     print("Platform: Linux x86_64")
-    print("Compiler: Juno v1.4")
+    print("Compiler: Juno v1.5")
     
     let pid = getpid()
     print("PID:")

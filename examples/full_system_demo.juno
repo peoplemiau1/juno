@@ -1,4 +1,4 @@
-// Juno v1.4 - Full System Programming Demo
+// Juno v1.5 - Full System Programming Demo
 // Demonstrates all low-level capabilities
 
 #define VERSION 14
@@ -174,7 +174,7 @@ fn demo_atomic(): int {
 
 fn main(): int {
     print("========================================")
-    print("  Juno v1.4 System Programming Demo")
+    print("  Juno v1.5 System Programming Demo")
     print("========================================")
     
     demo_preprocessor()

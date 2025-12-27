@@ -264,7 +264,7 @@ fn print_summary(): int {
     print(g_sample_count)
     print("  Platform: " )
     print(PLATFORM)
-    print("  Juno version: 1.4")
+    print("  Juno version: 1.5")
     return 0
 }
 

@@ -79,7 +79,7 @@ fn handle_index(client: int): int {
     send_header(client, HTTP_200, "text/html", 0)
     
     let title = "MicroHTTPD"
-    let body = "<h1>Welcome to MicroHTTPD</h1><p>A minimal HTTP server written in Juno.</p><h2>Endpoints:</h2><ul><li><a href='/'>/ - This page</a></li><li><a href='/status'>/status - Server status</a></li><li><a href='/info'>/info - System info</a></li><li><a href='/api'>/api - JSON API</a></li></ul><p><em>Powered by Juno v1.4</em></p>"
+    let body = "<h1>Welcome to MicroHTTPD</h1><p>A minimal HTTP server written in Juno.</p><h2>Endpoints:</h2><ul><li><a href='/'>/ - This page</a></li><li><a href='/status'>/status - Server status</a></li><li><a href='/info'>/info - System info</a></li><li><a href='/api'>/api - JSON API</a></li></ul><p><em>Powered by Juno v1.5</em></p>"
     
     send_html_page(client, title, body)
     return 0
@@ -147,7 +147,7 @@ fn handle_info(client: int): int {
     let pid = getpid()
     let uid = getuid()
     
-    let body = "<h1>System Information</h1><pre>Platform: Linux x86_64\nCompiler: Juno v1.4\nFeatures:\n  - Native x64 codegen\n  - Preprocessor\n  - Sized types (i8-u64)\n  - Bitwise ops\n  - Pointer arithmetic\n  - System calls\n  - Atomic operations\n  - Network sockets</pre>"
+    let body = "<h1>System Information</h1><pre>Platform: Linux x86_64\nCompiler: Juno v1.5\nFeatures:\n  - Native x64 codegen\n  - Preprocessor\n  - Sized types (i8-u64)\n  - Bitwise ops\n  - Pointer arithmetic\n  - System calls\n  - Atomic operations\n  - Network sockets</pre>"
     
     send_html_page(client, title, body)
     return 0
