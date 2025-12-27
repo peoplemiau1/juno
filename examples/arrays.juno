@@ -1,15 +1,5 @@
 // Arrays and Loops in Juno
 
-fn sum_array(arr: ptr, size: int): int {
-    let total = 0
-    let i = 0
-    while (i < size) {
-        total = total + arr[i]
-        i++
-    }
-    return total
-}
-
 fn main(): int {
     print("Array Demo")
     
@@ -24,7 +14,10 @@ fn main(): int {
     print("Array: [10, 20, 30, 40, 50]")
     
     // Sum
-    let total = sum_array(&numbers[0], 5)
+    let total = 0
+    for (i = 0; i < 5; i++) {
+        total = total + numbers[i]
+    }
     print("Sum:")
     print(total)
     
@@ -37,6 +30,15 @@ fn main(): int {
     }
     print("Max:")
     print(max)
+    
+    // Pointer access
+    let ptr = &numbers[0]
+    print("First via pointer:")
+    print(*ptr)
+    
+    let ptr2 = ptr_add(ptr, 2)
+    print("Third via ptr_add:")
+    print(*ptr2)
     
     return 0
 }
