@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="juno-logo.png" alt="Juno" width="200"/>
+  <img src="juno.png" alt="Juno" width="200"/>
 </p>
 
 <h1 align="center">Juno</h1>

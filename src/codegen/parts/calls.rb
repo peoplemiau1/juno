@@ -105,7 +105,6 @@ module GeneratorCalls
     
     # Heap (malloc/free)
     "malloc" => :gen_malloc,
-    "free" => :gen_free,
     "realloc" => :gen_realloc,
     "heap_init" => :gen_heap_init,
     

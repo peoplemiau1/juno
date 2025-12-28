@@ -202,49 +202,43 @@ module BuiltinStringsV2
     return unless @target_os == :linux
     setup_strings_v2
     
-    eval_expression(node[:args][0])
-    # rax = number
+    args = node[:args] || []
+    if args.empty?
+      @emitter.emit([0x48, 0x31, 0xc0])  # xor rax, rax
+      return
+    end
     
-    @linker.add_data_patch(@emitter.current_pos + 2, "itoa_buffer")
-    @emitter.emit([0x48, 0xbf] + [0] * 8)  # mov rdi, itoa_buffer
-    @emitter.emit([0x48, 0x83, 0xc7, 0x1e])  # add rdi, 30 (end of buffer)
-    @emitter.emit([0xc6, 0x07, 0x00])  # mov byte [rdi], 0 (null term)
+    eval_expression(args[0])
+    # rax = number to convert
     
-    @emitter.emit([0x48, 0x89, 0xc0])  # mov rax, rax
-    @emitter.emit([0x49, 0x89, 0xfc])  # mov r12, rdi (save end)
-    @emitter.emit([0x4d, 0x31, 0xed])  # xor r13, r13 (negative flag)
+    # Get buffer address using lea (like concat does)
+    @emitter.emit([0x48, 0x8d, 0x1d])  # lea rbx, [rip+offset]
+    @linker.add_data_patch(@emitter.current_pos, "itoa_buffer")
+    @emitter.emit([0x00, 0x00, 0x00, 0x00])
+    @emitter.emit([0x48, 0x83, 0xc3, 0x1f])  # add rbx, 31
+    @emitter.emit([0xc6, 0x03, 0x00])  # mov byte [rbx], 0 (null term)
+    @emitter.emit([0x49, 0x89, 0xd8])  # mov r8, rbx (save end pos)
     
-    # Handle negative
+    # Handle zero case
     @emitter.emit([0x48, 0x85, 0xc0])  # test rax, rax
-    @emitter.emit([0x79, 0x05])  # jns positive
-    @emitter.emit([0x48, 0xf7, 0xd8])  # neg rax
-    @emitter.emit([0x49, 0xff, 0xc5])  # inc r13 (set negative flag)
+    @emitter.emit([0x75, 0x08])  # jnz not_zero
+    @emitter.emit([0x48, 0xff, 0xcb])  # dec rbx
+    @emitter.emit([0xc6, 0x03, 0x30])  # mov byte [rbx], '0'
+    @emitter.emit([0xeb, 0x17])  # jmp done
     
-    # Handle 0
-    @emitter.emit([0x48, 0x85, 0xc0])  # test rax, rax
-    @emitter.emit([0x75, 0x0a])  # jnz convert
-    @emitter.emit([0x48, 0xff, 0xcf])  # dec rdi
-    @emitter.emit([0xc6, 0x07, 0x30])  # mov byte [rdi], '0'
-    @emitter.emit([0xeb, 0x19])  # jmp done
-    
-    # Convert loop
-    @emitter.emit([0x48, 0xc7, 0xc1, 0x0a, 0x00, 0x00, 0x00])  # mov rcx, 10
+    # not_zero: convert loop
+    @emitter.emit([0xb9, 0x0a, 0x00, 0x00, 0x00])  # mov ecx, 10
+    # loop:
     @emitter.emit([0x48, 0x31, 0xd2])  # xor rdx, rdx
     @emitter.emit([0x48, 0xf7, 0xf1])  # div rcx
-    @emitter.emit([0x48, 0x83, 0xc2, 0x30])  # add rdx, '0'
-    @emitter.emit([0x48, 0xff, 0xcf])  # dec rdi
-    @emitter.emit([0x88, 0x17])  # mov [rdi], dl
+    @emitter.emit([0x80, 0xc2, 0x30])  # add dl, '0'
+    @emitter.emit([0x48, 0xff, 0xcb])  # dec rbx
+    @emitter.emit([0x88, 0x13])  # mov [rbx], dl
     @emitter.emit([0x48, 0x85, 0xc0])  # test rax, rax
-    @emitter.emit([0x75, 0xeb])  # jnz loop
+    @emitter.emit([0x75, 0xee])  # jnz loop
     
-    # Add minus if negative
-    @emitter.emit([0x4d, 0x85, 0xed])  # test r13, r13
-    @emitter.emit([0x74, 0x05])  # jz done
-    @emitter.emit([0x48, 0xff, 0xcf])  # dec rdi
-    @emitter.emit([0xc6, 0x07, 0x2d])  # mov byte [rdi], '-'
-    
-    # done - rdi points to start of string
-    @emitter.emit([0x48, 0x89, 0xf8])  # mov rax, rdi
+    # done:
+    @emitter.emit([0x48, 0x89, 0xd8])  # mov rax, rbx
   end
 
   # str_upper(s) - Convert to uppercase in-place
