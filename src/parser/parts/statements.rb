@@ -76,9 +76,11 @@ module ParserStatements
 
   def parse_if
     consume_keyword('if')
-    consume_symbol('(')
+    # Parentheses optional: if (x) or if x
+    has_paren = match_symbol?('(')
+    consume_symbol('(') if has_paren
     cond = parse_expression
-    consume_symbol(')')
+    consume_symbol(')') if has_paren
     consume_symbol('{')
     body = []
     until match_symbol?('}')
@@ -272,9 +274,11 @@ module ParserStatements
 
   def parse_while
     consume_keyword('while')
-    consume_symbol('(')
+    # Parentheses optional
+    has_paren = match_symbol?('(')
+    consume_symbol('(') if has_paren
     cond = parse_expression
-    consume_symbol(')')
+    consume_symbol(')') if has_paren
     consume_symbol('{')
     body = []
     until match_symbol?('}')
