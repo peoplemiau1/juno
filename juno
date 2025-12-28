@@ -96,7 +96,9 @@ def cmd_build(args)
     exit 1
   end
   
-  compile(files[0], options)
+  # Resolve path relative to user's directory
+  input_file = File.expand_path(files[0], USER_DIR)
+  compile(input_file, options)
 end
 
 def cmd_run(args)
@@ -123,7 +125,9 @@ def cmd_run(args)
   
   enable_hell_mode(:hell) if hell
   
-  binary = compile(files[0], options)
+  # Resolve path relative to user's directory
+  input_file = File.expand_path(files[0], USER_DIR)
+  binary = compile(input_file, options)
   puts "\e[36m▶ Running...\e[0m"
   puts "─" * 40
   system(binary)
@@ -165,7 +169,10 @@ def cmd_new(args)
   name = args[0] || "main"
   filename = name.end_with?(".juno") ? name : "#{name}.juno"
   
-  if File.exist?(filename)
+  # Create in user's directory
+  filepath = File.expand_path(filename, USER_DIR)
+  
+  if File.exist?(filepath)
     puts "Error: #{filename} already exists"
     exit 1
   end
@@ -179,7 +186,7 @@ def cmd_new(args)
     }
   JUNO
   
-  File.write(filename, template)
+  File.write(filepath, template)
   puts "\e[32m✓ Created #{filename}\e[0m"
 end
 
@@ -227,6 +234,7 @@ def cmd_help
 end
 
 # Main
+USER_DIR = Dir.pwd
 Dir.chdir(JUNO_ROOT)
 
 command = ARGV[0]

@@ -1,131 +1,93 @@
 # Синтаксис Juno
 
-## Содержание
-
-- [Переменные](#переменные)
-- [Функции](#функции)
-- [Generics](#generics)
-- [Структуры](#структуры)
-- [Условия и циклы](#условия)
-- [Указатели](#указатели)
-- [Массивы](#массивы)
-
 ## Переменные
 
 ```juno
-let x = 10              // Без типа
-let y: int = 20         // С типом
-let arr[5]              // Массив из 5 элементов
+let x = 10              // число
+let name = "hello"      // строка
+let arr[5]              // массив из 5 элементов
 ```
 
-## Типы данных
+## Типы
 
-| Тип | Размер | Описание |
-|-----|--------|----------|
-| `int` / `i64` | 8 байт | Знаковое целое |
-| `u64` | 8 байт | Беззнаковое целое |
-| `i32` / `u32` | 4 байта | 32-бит целое |
-| `i16` / `u16` | 2 байта | 16-бит целое |
-| `i8` / `u8` | 1 байт | 8-бит целое |
-| `ptr` | 8 байт | Указатель |
+| Тип | Описание |
+|-----|----------|
+| `int` | целое число (64 бит) |
+| `string` | строка |
+| `ptr` | указатель |
 
 ## Функции
+
+```juno
+fn имя(параметры): тип_возврата {
+    // тело
+    return значение
+}
+```
+
+Пример:
 
 ```juno
 fn add(a: int, b: int): int {
     return a + b
 }
 
+fn greet(name: string) {
+    print("Hello, ")
+    print(name)
+}
+
 fn main(): int {
-    let result = add(10, 20)
-    print(result)
+    let sum = add(10, 20)
+    greet("World")
     return 0
 }
 ```
 
-## Generics
+## Generics (шаблоны)
 
-Параметрический полиморфизм с мономорфизацией на этапе компиляции.
-
-### Generic функции
+Функции и структуры могут быть параметризованы типами:
 
 ```juno
 fn identity<T>(x: T): T {
     return x
 }
 
-fn swap<T>(a, b) {
-    let temp = *a
-    *a = *b
-    *b = temp
+struct Box<T> {
+    value: T
 }
 
 fn main(): int {
     let num = identity<int>(42)
     let str = identity<string>("hello")
     
-    let x = 10
-    let y = 20
-    swap<int>(&x, &y)
+    let box = Box<int>
+    box.value = 100
     
     return 0
 }
-```
-
-### Generic структуры
-
-```juno
-struct Box<T> {
-    value: T
-}
-
-struct Pair<K, V> {
-    key: K
-    val: V
-}
-
-fn main(): int {
-    let intBox = Box<int>
-    intBox.value = 100
-    
-    let pair = Pair<int, int>
-    pair.key = 1
-    pair.val = 42
-    
-    return 0
-}
-```
-
-### Мономорфизация
-
-Компилятор создаёт специализированные версии для каждого типа:
-
-```juno
-// Исходный код
-fn identity<T>(x: T): T { return x }
-let a = identity<int>(1)
-let b = identity<string>("hi")
-
-// После мономорфизации (внутренне)
-fn identity__int(x: int): int { return x }
-fn identity__string(x: string): string { return x }
-let a = identity__int(1)
-let b = identity__string("hi")
 ```
 
 ## Структуры
 
 ```juno
 struct Point {
-    x
-    y
+    x: int
+    y: int
+}
+
+// Метод структуры
+fn Point.move(dx: int, dy: int) {
+    self.x = self.x + dx
+    self.y = self.y + dy
 }
 
 fn main(): int {
     let p = Point
     p.x = 10
     p.y = 20
-    print(p.x)
+    p.move(5, 5)
+    // p.x = 15, p.y = 25
     return 0
 }
 ```
@@ -133,117 +95,114 @@ fn main(): int {
 ## Условия
 
 ```juno
+if (условие) {
+    // если true
+} else {
+    // если false
+}
+```
+
+Пример:
+
+```juno
 if (x > 0) {
     print("positive")
+} else if (x < 0) {
+    print("negative")
 } else {
-    print("negative or zero")
+    print("zero")
 }
 ```
 
 ## Циклы
 
+### while
+
 ```juno
-// while
 let i = 0
 while (i < 10) {
-    print(i)
+    print_int(i)
     i++
 }
+```
 
-// for
+### for
+
+```juno
 for (i = 0; i < 10; i++) {
-    print(i)
+    print_int(i)
 }
 ```
 
 ## Операторы
 
-### Арифметические
+### Арифметика
+
 ```juno
-a + b       // Сложение
-a - b       // Вычитание
-a * b       // Умножение
-a / b       // Деление
+a + b    // сложение
+a - b    // вычитание
+a * b    // умножение
+a / b    // деление
 ```
 
-### Сравнения
-```juno
-a == b      // Равно
-a != b      // Не равно
-a < b       // Меньше
-a > b       // Больше
-a <= b      // Меньше или равно
-a >= b      // Больше или равно
-```
+### Сравнение
 
-### Битовые
 ```juno
-a & b       // AND
-a | b       // OR
-a ^ b       // XOR
-~a          // NOT
-a << n      // Сдвиг влево
-a >> n      // Сдвиг вправо
+a == b   // равно
+a != b   // не равно
+a < b    // меньше
+a > b    // больше
+a <= b   // меньше или равно
+a >= b   // больше или равно
 ```
 
 ### Логические
+
 ```juno
-a && b      // Логическое AND
-a || b      // Логическое OR
+a && b   // И
+a || b   // ИЛИ
+```
+
+### Битовые
+
+```juno
+a & b    // AND
+a | b    // OR
+a ^ b    // XOR
+~a       // NOT
+a << n   // сдвиг влево
+a >> n   // сдвиг вправо
 ```
 
 ## Указатели
 
 ```juno
 let x = 10
-let ptr = &x        // Взять адрес
-let val = *ptr      // Разыменование
-*ptr = 20           // Запись по указателю
-
-// Арифметика указателей
-let ptr2 = ptr_add(ptr, 1)  // ptr + 1 элемент
-let ptr3 = ptr_sub(ptr, 1)  // ptr - 1 элемент
+let ptr = &x      // взять адрес
+let val = *ptr    // прочитать значение
+*ptr = 20         // записать значение
 ```
 
 ## Массивы
 
 ```juno
-let arr[10]         // Массив из 10 элементов
-arr[0] = 100        // Запись
-let val = arr[0]    // Чтение
-let ptr = &arr[0]   // Указатель на первый элемент
-```
-
-## Литералы
-
-```juno
-let dec = 255       // Десятичное
-let hex = 0xFF      // Шестнадцатеричное
-let bin = 0b11111111 // Двоичное
-let oct = 0o377     // Восьмеричное
-let str = "Hello"   // Строка
-```
-
-## Препроцессор
-
-```juno
-#define VERSION 1
-#define BUFFER_SIZE 1024
-
-#ifdef LINUX
-    // Код только для Linux
-#endif
-
-#ifndef WINDOWS
-    // Код если не Windows
-#endif
+let arr[10]       // создать массив
+arr[0] = 100      // записать
+let x = arr[0]    // прочитать
+let ptr = &arr[0] // указатель на элемент
 ```
 
 ## Комментарии
 
 ```juno
-// Однострочный комментарий
+// однострочный комментарий
 
-/* Многострочный
+/* многострочный
    комментарий */
+```
+
+## Импорт
+
+```juno
+import "path/to/file.juno"
 ```

@@ -1,62 +1,49 @@
-# Juno - Быстрый старт
+# Быстрый старт
 
-## Установка
+## 1. Установка
 
 ```bash
-git clone https://github.com/user/juno.git
+git clone https://github.com/peoplemiau1/juno.git
 cd juno
 ./install.sh
 source ~/.bashrc
 ```
 
-Теперь команда `juno` доступна из любой директории!
+## 2. Первая программа
 
-## Первая программа
-
-```bash
-juno new hello
-```
-
-Создаётся файл `hello.juno`:
+Создай файл `hello.juno`:
 
 ```juno
 fn main(): int {
-    print("Hello, Juno!")
+    print("Hello!")
     return 0
 }
 ```
 
-Запуск:
+Запусти:
 
 ```bash
 juno run hello.juno
 ```
 
-## CLI Команды
+## 3. Команды
 
-```bash
-juno build app.juno           # Компиляция
-juno build app.juno -o myapp  # С именем
-juno build app.juno --hell    # С обфускацией
-juno run app.juno             # Компиляция + запуск
-juno test                     # Все тесты
-juno test simple              # Один тест
-juno new myproject            # Новый файл
-juno help                     # Справка
-```
+| Команда | Что делает |
+|---------|-----------|
+| `juno build file.juno` | Компилирует в `build/output` |
+| `juno run file.juno` | Компилирует и запускает |
+| `juno build file.juno -o name` | Компилирует в `build/name` |
+| `juno build file.juno --hell` | Компилирует с обфускацией |
+| `juno test` | Запускает тесты |
+| `juno new name` | Создаёт новый файл |
 
-## Примеры кода
+## 4. Основы языка
 
 ### Переменные
 
 ```juno
-fn main(): int {
-    let x = 10
-    let y = 20
-    let sum = x + y
-    print_int(sum)
-    return 0
-}
+let x = 10
+let name = "Juno"
 ```
 
 ### Функции
@@ -67,28 +54,31 @@ fn add(a: int, b: int): int {
 }
 
 fn main(): int {
-    let result = add(5, 3)
+    let result = add(2, 3)
     print_int(result)
     return 0
 }
 ```
 
-### Generics
+### Условия
 
 ```juno
-fn identity<T>(x: T): T {
-    return x
+if (x > 0) {
+    print("positive")
+} else {
+    print("not positive")
+}
+```
+
+### Циклы
+
+```juno
+for (i = 0; i < 10; i++) {
+    print_int(i)
 }
 
-struct Box<T> {
-    value: T
-}
-
-fn main(): int {
-    let num = identity<int>(42)
-    let b = Box<int>
-    b.value = 100
-    return 0
+while (x > 0) {
+    x--
 }
 ```
 
@@ -100,15 +90,10 @@ struct Point {
     y: int
 }
 
-fn Point.init(px: int, py: int) {
-    self.x = px
-    self.y = py
-}
-
 fn main(): int {
     let p = Point
-    p.init(3, 4)
-    print_int(p.x)
+    p.x = 10
+    p.y = 20
     return 0
 }
 ```
@@ -116,51 +101,41 @@ fn main(): int {
 ### Массивы
 
 ```juno
-fn main(): int {
-    let arr[5]
-    arr[0] = 10
-    arr[1] = 20
-    print_int(arr[0])
-    return 0
-}
+let arr[10]
+arr[0] = 100
+arr[1] = 200
 ```
 
 ### Указатели
 
 ```juno
-fn swap(a, b) {
-    let temp = *a
-    *a = *b
-    *b = temp
-}
-
-fn main(): int {
-    let x = 10
-    let y = 20
-    swap(&x, &y)
-    print_int(x)  // 20
-    return 0
-}
+let x = 10
+let ptr = &x    // адрес x
+let val = *ptr  // значение по адресу
+*ptr = 20       // запись по адресу
 ```
 
-### Циклы
+### Generics
 
 ```juno
-fn main(): int {
-    for (i = 0; i < 10; i++) {
-        print_int(i)
-    }
-    
-    let x = 0
-    while (x < 5) {
-        print_int(x)
-        x++
-    }
-    return 0
+fn identity<T>(x: T): T {
+    return x
 }
+
+let a = identity<int>(42)
 ```
 
-## Hell Mode (Обфускация)
+## 5. Примеры
+
+Смотри папку `examples/`:
+
+```bash
+juno run examples/echo_server.juno  # TCP сервер
+juno run examples/client.juno       # TCP клиент
+juno run examples/http_hello.juno   # HTTP сервер
+```
+
+## 6. Обфускация
 
 Защита от реверс-инжиниринга:
 
@@ -168,61 +143,8 @@ fn main(): int {
 juno build secret.juno --hell
 ```
 
-Включает:
-- Полиморфные инструкции
-- Anti-debug
-- Мёртвый код
+Добавляет:
+- Мусорный код
 - Шифрование строк
-
-## Встроенные функции
-
-| Функция | Описание |
-|---------|----------|
-| `print(x)` | Вывод строки |
-| `print_int(n)` | Вывод числа |
-| `input()` | Ввод строки |
-| `len(x)` | Длина |
-| `alloc(n)` | Выделить память |
-| `free(ptr, n)` | Освободить |
-| `exit(code)` | Завершить |
-| `sleep(ms)` | Пауза |
-| `time()` | Unix timestamp |
-| `rand()` | Случайное число |
-
-## Сеть
-
-```juno
-fn main(): int {
-    let sock = socket()
-    bind(sock, 8080)
-    listen(sock)
-    let client = accept(sock)
-    send(client, "Hello!")
-    close(client)
-    close(sock)
-    return 0
-}
-```
-
-## Тесты
-
-```bash
-juno test           # Все тесты
-juno test simple    # Конкретный тест
-```
-
-## Примеры
-
-```bash
-juno run examples/echo_server.juno   # TCP сервер
-juno run examples/client.juno        # TCP клиент
-juno run examples/http_hello.juno    # HTTP сервер
-juno run examples/hell_demo.juno --hell  # Обфускация
-```
-
-## Дальше
-
-- [README.md](README.md) - Обзор
-- [docs/syntax.md](docs/syntax.md) - Синтаксис
-- [docs/builtins.md](docs/builtins.md) - Функции
-- [docs/threading.md](docs/threading.md) - Потоки
+- Анти-отладку
+- Полиморфные инструкции

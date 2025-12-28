@@ -1,28 +1,34 @@
-# Juno v1.6
+# Juno
 
-**Juno** — системный язык программирования с прямой компиляцией в машинный код x86-64.
+Компилируемый язык программирования для Linux и Windows. Генерирует нативные исполняемые файлы (ELF/PE) без внешних зависимостей.
 
-## Особенности
+## Возможности
 
-- **Нативная компиляция** — PE (Windows) и ELF (Linux) без LLVM
-- **Generics** — параметрический полиморфизм с мономорфизацией
-- **Hell Mode** — полиморфная обфускация для защиты от реверс-инжиниринга
-- **CLI** — удобный интерфейс командной строки
-- **Системное программирование** — syscalls, память, сокеты, потоки
-- **Минимализм** — только Ruby для сборки компилятора
+- Компиляция в машинный код x86-64
+- Generics (шаблоны)
+- ООП со структурами и методами
+- Указатели и ручное управление памятью
+- Сокеты и многопоточность
+- Обфускация кода (защита от реверса)
 
-## Быстрый старт
-
-### Установка
+## Установка
 
 ```bash
-git clone https://github.com/user/juno.git
+git clone https://github.com/peoplemiau1/juno.git
 cd juno
 ./install.sh
 source ~/.bashrc
 ```
 
-### Hello World
+## Использование
+
+```bash
+juno build program.juno        # компиляция
+juno run program.juno          # компиляция и запуск
+juno build program.juno --hell # с обфускацией
+```
+
+## Пример
 
 ```juno
 fn main(): int {
@@ -31,83 +37,12 @@ fn main(): int {
 }
 ```
 
-```bash
-juno run hello.juno
-```
-
-## CLI Команды
-
-| Команда | Описание |
-|---------|----------|
-| `juno build <file>` | Компиляция в бинарник |
-| `juno run <file>` | Компиляция и запуск |
-| `juno test` | Запуск всех тестов |
-| `juno new <name>` | Создать новый файл |
-| `juno help` | Справка |
-
-### Опции компиляции
-
-```bash
-juno build app.juno -o myapp      # Имя выходного файла
-juno build app.juno --hell        # Максимальная обфускация
-juno build app.juno --obfuscate   # Стандартная обфускация
-```
-
-## Generics
-
-```juno
-// Generic функция
-fn identity<T>(x: T): T {
-    return x
-}
-
-// Generic структура
-struct Box<T> {
-    value: T
-}
-
-fn main(): int {
-    let num = identity<int>(42)
-    let b = Box<int>
-    b.value = 100
-    return 0
-}
-```
-
-## Hell Mode (Anti-Reverse-Engineering)
-
-```bash
-juno build secret.juno --hell
-```
-
-Включает:
-- Полиморфные инструкции (разный машинный код каждый раз)
-- Anti-debug (ptrace detection, timing checks)
-- Мёртвый код и opaque predicates
-- Шифрование строк
-
 ## Документация
 
-| Документ | Описание |
-|----------|----------|
-| [Быстрый старт](docs/getting-started.md) | Установка и первая программа |
-| [Синтаксис](docs/syntax.md) | Переменные, функции, структуры, generics |
-| [Встроенные функции](docs/builtins.md) | I/O, строки, память |
-| [Системные вызовы](docs/syscalls.md) | Процессы, файлы, сокеты |
-| [Многопоточность](docs/threading.md) | Потоки, атомики, мьютексы |
-| [Примеры](docs/examples.md) | Готовые программы |
-
-## Примеры
-
-```
-examples/
-├── hello.juno          # Hello World
-├── echo_server.juno    # Echo TCP сервер
-├── client.juno         # TCP клиент
-├── http_hello.juno     # HTTP сервер
-├── hell_demo.juno      # Демо обфускации
-└── junofetch.juno      # Системная информация
-```
+- [Быстрый старт](QUICKSTART.md)
+- [Синтаксис](docs/syntax.md)
+- [Встроенные функции](docs/builtins.md)
+- [Примеры](docs/examples.md)
 
 ## Лицензия
 
