@@ -93,6 +93,7 @@ module GeneratorCalls
     
     # HTTPS
     "curl_get" => :gen_curl_get,
+    "curl_post" => :gen_curl_post,
     
     # mmap constants
     "PROT_READ" => :gen_PROT_READ,

@@ -1,0 +1,54 @@
+// TCP Chat Server
+// Simple chat server that broadcasts messages to all clients
+
+fn main(): int {
+    let server = socket(2, 1, 0)
+    
+    if (server < 0) {
+        prints("Failed to create socket")
+        return 1
+    }
+    
+    let addr = ip(0, 0, 0, 0)
+    let port = 9000
+    
+    if (bind(server, addr, port) < 0) {
+        prints("Failed to bind")
+        return 1
+    }
+    
+    listen(server, 10)
+    
+    prints("Chat server started on port 9000")
+    prints("Connect with: nc localhost 9000")
+    
+    while (1) {
+        let client = accept(server)
+        
+        if (client > 0) {
+            prints("Client connected!")
+            
+            // Send welcome
+            let welcome = "Welcome to Juno Chat!\n"
+            send(client, welcome, 21)
+            
+            // Echo loop
+            let buf = getbuf()
+            while (1) {
+                let n = recv(client, buf, 4096)
+                if (n <= 0) {
+                    prints("Client disconnected")
+                    break
+                }
+                
+                // Echo back
+                send(client, buf, n)
+            }
+            
+            close(client)
+        }
+    }
+    
+    close(server)
+    return 0
+}

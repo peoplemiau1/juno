@@ -254,6 +254,18 @@ SIGINT()         // 2
 | `recv(sock, buf, len)` | Получить |
 | `ip(a, b, c, d)` | Создать IP |
 | `curl_get(url)` | HTTP GET запрос |
+| `curl_post(url, data)` | HTTP POST запрос |
+
+### Константы сокетов
+
+```juno
+// domain
+AF_INET = 2      // IPv4
+
+// type  
+SOCK_STREAM = 1  // TCP
+SOCK_DGRAM = 2   // UDP
+```
 
 ### TCP Сервер
 
@@ -293,8 +305,39 @@ fn main(): int {
 
 ```juno
 fn main(): int {
-    let response = curl_get("https://example.com")
+    // GET запрос
+    let response = curl_get("https://api.example.com/data")
     prints(response)
+    
+    // POST запрос с JSON
+    let data = "{\"key\":\"value\"}"
+    let result = curl_post("https://api.example.com/post", data)
+    prints(result)
+    
+    return 0
+}
+```
+
+### Telegram Bot
+
+```juno
+fn send_telegram(token: string, chat_id: string, text: string) {
+    let url = concat("https://api.telegram.org/bot", token)
+    let url2 = concat(url, "/sendMessage")
+    
+    let body1 = concat("{\"chat_id\":\"", chat_id)
+    let body2 = concat(body1, "\",\"text\":\"")
+    let body3 = concat(body2, text)
+    let body = concat(body3, "\"}")
+    
+    curl_post(url2, body)
+}
+
+fn main(): int {
+    let token = "123456:ABC-DEF..."
+    let chat = "987654321"
+    
+    send_telegram(token, chat, "Hello from Juno!")
     return 0
 }
 ```
