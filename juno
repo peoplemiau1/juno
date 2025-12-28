@@ -103,7 +103,7 @@ def cmd_run(args)
   
   compile(input, tmp)
   system(tmp)
-  code = $?.exitstatus
+  code = $?.exitstatus || 0
   
   File.delete(tmp) if File.exist?(tmp)
   exit code
