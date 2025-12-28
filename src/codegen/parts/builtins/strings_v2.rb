@@ -149,7 +149,7 @@ module BuiltinStringsV2
     # end:
   end
 
-  # str_to_int(s) - Parse string to integer
+  # str_to_int(s) / atoi - Parse string to integer
   def gen_str_to_int(node)
     return unless @target_os == :linux
     
@@ -157,33 +157,21 @@ module BuiltinStringsV2
     return @emitter.emit([0x48, 0x31, 0xc0]) if args.empty?
     
     eval_expression(args[0])
-    @emitter.emit([0x48, 0x89, 0xc6])  # mov rsi, rax (string)
+    @emitter.emit([0x48, 0x89, 0xc6])  # mov rsi, rax
     @emitter.emit([0x48, 0x31, 0xc0])  # xor rax, rax (result)
-    @emitter.emit([0x48, 0x31, 0xc9])  # xor rcx, rcx (negative flag)
     
-    # Check for minus sign
-    @emitter.emit([0x80, 0x3e, 0x2d])  # cmp byte [rsi], '-'
-    @emitter.emit([0x75, 0x05])  # jne parse
-    @emitter.emit([0x48, 0xff, 0xc1])  # inc rcx (set negative)
-    @emitter.emit([0x48, 0xff, 0xc6])  # inc rsi
-    
-    # Parse digits
-    @emitter.emit([0x0f, 0xb6, 0x1e])  # movzx ebx, byte [rsi]
-    @emitter.emit([0x80, 0xfb, 0x30])  # cmp bl, '0'
-    @emitter.emit([0x72, 0x12])  # jb done
-    @emitter.emit([0x80, 0xfb, 0x39])  # cmp bl, '9'
-    @emitter.emit([0x77, 0x0d])  # ja done
-    @emitter.emit([0x80, 0xeb, 0x30])  # sub bl, '0'
-    @emitter.emit([0x48, 0x6b, 0xc0, 0x0a])  # imul rax, 10
-    @emitter.emit([0x48, 0x01, 0xd8])  # add rax, rbx
-    @emitter.emit([0x48, 0xff, 0xc6])  # inc rsi
-    @emitter.emit([0xeb, 0xe7])  # jmp parse_loop
-    
-    # done - apply sign
-    @emitter.emit([0x48, 0x85, 0xc9])  # test rcx, rcx
-    @emitter.emit([0x74, 0x03])  # jz positive
-    @emitter.emit([0x48, 0xf7, 0xd8])  # neg rax
-    # positive/done
+    # loop: offset 0
+    @emitter.emit([0x0f, 0xb6, 0x1e])  # movzx ebx, byte [rsi] (3)
+    @emitter.emit([0x80, 0xfb, 0x30])  # cmp bl, '0' (3)
+    @emitter.emit([0x72, 0x14])        # jb done (2) -> +20
+    @emitter.emit([0x80, 0xfb, 0x39])  # cmp bl, '9' (3)
+    @emitter.emit([0x77, 0x0f])        # ja done (2) -> +15
+    @emitter.emit([0x80, 0xeb, 0x30])  # sub bl, '0' (3)
+    @emitter.emit([0x48, 0x6b, 0xc0, 0x0a])  # imul rax, 10 (4)
+    @emitter.emit([0x48, 0x01, 0xd8])  # add rax, rbx (3)
+    @emitter.emit([0x48, 0xff, 0xc6])  # inc rsi (3)
+    @emitter.emit([0xeb, 0xe4])        # jmp loop (2) -> -28
+    # done: offset 28
   end
 
   # int_to_str(n) - Convert integer to string
