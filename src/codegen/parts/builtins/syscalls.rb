@@ -258,6 +258,57 @@ module BuiltinSyscalls
   end
 
   # Constants for mmap
+  # lseek(fd, offset, whence) - reposition file offset
+  # whence: SEEK_SET=0, SEEK_CUR=1, SEEK_END=2
+  def gen_lseek(node)
+    return unless @target_os == :linux
+    eval_expression(node[:args][0])
+    @emitter.emit([0x48, 0x89, 0xc7])  # mov rdi, rax (fd)
+    eval_expression(node[:args][1])
+    @emitter.emit([0x48, 0x89, 0xc6])  # mov rsi, rax (offset)
+    eval_expression(node[:args][2])
+    @emitter.emit([0x48, 0x89, 0xc2])  # mov rdx, rax (whence)
+    @emitter.emit([0xb8, 0x08, 0x00, 0x00, 0x00])  # mov eax, 8 (lseek)
+    @emitter.emit([0x0f, 0x05])
+  end
+
+  # lseek whence constants
+  def gen_SEEK_SET(node); @emitter.mov_rax(0); end
+  def gen_SEEK_CUR(node); @emitter.mov_rax(1); end
+  def gen_SEEK_END(node); @emitter.mov_rax(2); end
+
+  # memfd_create(name, flags) - create anonymous file in memory
+  # Returns: file descriptor on success, -1 on error
+  # Flags: MFD_CLOEXEC = 1, MFD_ALLOW_SEALING = 2
+  def gen_memfd_create(node)
+    return unless @target_os == :linux
+    
+    args = node[:args] || []
+    
+    # name (can be empty string)
+    if args[0]
+      eval_expression(args[0])
+      @emitter.emit([0x48, 0x89, 0xc7])  # mov rdi, rax
+    else
+      @emitter.emit([0x48, 0x31, 0xff])  # xor rdi, rdi
+    end
+    
+    # flags
+    if args[1]
+      eval_expression(args[1])
+      @emitter.emit([0x48, 0x89, 0xc6])  # mov rsi, rax
+    else
+      @emitter.emit([0x48, 0x31, 0xf6])  # xor rsi, rsi
+    end
+    
+    @emitter.emit([0xb8, 0x3f, 0x01, 0x00, 0x00])  # mov eax, 319 (memfd_create)
+    @emitter.emit([0x0f, 0x05])  # syscall
+  end
+
+  # memfd_create flags
+  def gen_MFD_CLOEXEC(node); @emitter.mov_rax(1); end
+  def gen_MFD_ALLOW_SEALING(node); @emitter.mov_rax(2); end
+
   # PROT_READ = 1, PROT_WRITE = 2, PROT_EXEC = 4
   # MAP_PRIVATE = 2, MAP_ANONYMOUS = 32
   def gen_PROT_READ(node); @emitter.mov_rax(1); end

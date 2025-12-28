@@ -28,8 +28,11 @@ class Lexer
       when /\A\/\/.*$/
         cursor += $&.length
         @column += $&.length
-      when /\A(struct|union|fn|if|else|return|while|let|for|import|packed)\b/
-        add_token(:keyword, $1)
+      when /\A(struct|union|fn|func|def|if|else|return|while|let|for|import|packed)\b/
+        # Normalize func/def -> fn
+        kw = $1
+        kw = "fn" if kw == "func" || kw == "def"
+        add_token(:keyword, kw)
         cursor += $&.length
         @column += $&.length
       when /\AinsertC\s*\{/

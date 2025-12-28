@@ -98,6 +98,17 @@ module GeneratorCalls
     "memcpy" => :gen_memcpy,
     "memset" => :gen_memset,
     "execve" => :gen_execve,
+    "lseek" => :gen_lseek,
+    "memfd_create" => :gen_memfd_create,
+    
+    # lseek constants
+    "SEEK_SET" => :gen_SEEK_SET,
+    "SEEK_CUR" => :gen_SEEK_CUR,
+    "SEEK_END" => :gen_SEEK_END,
+    
+    # memfd_create constants
+    "MFD_CLOEXEC" => :gen_MFD_CLOEXEC,
+    "MFD_ALLOW_SEALING" => :gen_MFD_ALLOW_SEALING,
     
     # HTTPS
     "curl_get" => :gen_curl_get,
