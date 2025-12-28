@@ -87,6 +87,10 @@ class CodegenContext
   end
 
   def get_variable_offset(name)
+    # Auto-declare if not exists (bulletproof)
+    unless @variables[name]
+      declare_variable(name, 8)
+    end
     @variables[name]
   end
 
