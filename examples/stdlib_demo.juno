@@ -1,0 +1,77 @@
+// Standard Library Demo
+// Demonstrates: malloc, strings, files, vectors
+
+fn main(): int {
+    prints("=== Juno StdLib Demo ===")
+    
+    // --- MEMORY ---
+    prints("\n[Memory]")
+    let ptr = malloc(1024)
+    if (ptr != 0) {
+        prints("Allocated 1KB")
+        memset(ptr, 0, 1024)
+        free(ptr)
+        prints("Freed")
+    }
+    
+    // --- STRINGS ---
+    prints("\n[Strings]")
+    
+    let num = 12345
+    let s = int_to_str(num)
+    prints("int_to_str(12345):")
+    prints(s)
+    
+    let str = "42"
+    let n = str_to_int(str)
+    prints("str_to_int(42):")
+    print(n)
+    
+    let hello = "hello"
+    prints("str_len(hello):")
+    print(str_len(hello))
+    
+    // --- VECTORS ---
+    prints("\n[Vector]")
+    let v = vec_new(16)
+    
+    vec_push(v, 10)
+    vec_push(v, 20)
+    vec_push(v, 30)
+    
+    prints("Pushed 10, 20, 30")
+    prints("vec_len:")
+    print(vec_len(v))
+    
+    prints("vec_get(1):")
+    print(vec_get(v, 1))
+    
+    let popped = vec_pop(v)
+    prints("vec_pop:")
+    print(popped)
+    
+    // --- FILES ---
+    prints("\n[Files]")
+    
+    // Write
+    let fd = file_open("/tmp/juno_test.txt", 1)
+    if (fd > 0) {
+        file_writeln(fd, "Hello from Juno!")
+        file_writeln(fd, "Line 2")
+        file_close(fd)
+        prints("Wrote /tmp/juno_test.txt")
+    }
+    
+    // Read
+    if (file_exists("/tmp/juno_test.txt") == 1) {
+        prints("File exists!")
+        let content = file_read_all("/tmp/juno_test.txt")
+        if (content != 0) {
+            prints("Content:")
+            prints(content)
+        }
+    }
+    
+    prints("\n=== Done ===")
+    return 0
+}
