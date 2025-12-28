@@ -1,0 +1,42 @@
+// memfd_create demo - anonymous memory-backed file
+// Useful for: IPC, temporary storage, executable memory
+
+fn main(): int {
+    prints("=== memfd_create Demo ===")
+    
+    // Create anonymous file
+    fd = memfd_create("juno_memfd", MFD_CLOEXEC())
+    prints("Created memfd, fd:")
+    print(fd)
+    
+    if (fd < 0) {
+        prints("Error: memfd_create failed")
+        return 1
+    }
+    
+    // Write data to memfd
+    msg = "Hello from memfd!"
+    len = str_len(msg)
+    written = write(fd, msg, len)
+    prints("Bytes written:")
+    print(written)
+    
+    // Seek back to start
+    lseek(fd, 0, 0)
+    
+    // Read data back
+    buf = malloc(64)
+    bytes_read = read(fd, buf, 64)
+    prints("Bytes read:")
+    print(bytes_read)
+    
+    prints("Content:")
+    prints(buf)
+    
+    // Cleanup
+    free(buf)
+    close(fd)
+    
+    prints("=== Done ===")
+    return 0
+}
