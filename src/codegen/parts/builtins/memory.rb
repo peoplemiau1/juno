@@ -24,18 +24,30 @@ module BuiltinMemory
     @emitter.emit([0x0f, 0x05])                               # syscall
   end
 
-  # free(ptr, size) - deallocate via munmap
+  # free(ptr) or free(ptr, size) - deallocate
   def gen_free(node)
     return unless @target_os == :linux
     
-    eval_expression(node[:args][0])
-    @emitter.emit([0x50]) # push ptr
+    args = node[:args] || []
+    return if args.empty?
     
-    eval_expression(node[:args][1])
-    @emitter.emit([0x48, 0x89, 0xc6]) # mov rsi, rax (size)
-    @emitter.emit([0x5f])             # pop rdi (ptr)
+    eval_expression(args[0])
     
-    @emitter.emit([0xb8, 0x0b, 0x00, 0x00, 0x00]) # mov eax, 11
-    @emitter.emit([0x0f, 0x05])
+    if args.length >= 2
+      # munmap with explicit size
+      @emitter.emit([0x50]) # push ptr
+      eval_expression(args[1])
+      @emitter.emit([0x48, 0x89, 0xc6]) # mov rsi, rax (size)
+      @emitter.emit([0x5f])             # pop rdi (ptr)
+      @emitter.emit([0xb8, 0x0b, 0x00, 0x00, 0x00]) # mov eax, 11 (munmap)
+      @emitter.emit([0x0f, 0x05])
+    else
+      # Simple free - get size from header at ptr-8
+      @emitter.emit([0x48, 0x83, 0xe8, 0x08]) # sub rax, 8
+      @emitter.emit([0x48, 0x89, 0xc7])       # mov rdi, rax
+      @emitter.emit([0x48, 0x8b, 0x37])       # mov rsi, [rdi] (size)
+      @emitter.emit([0xb8, 0x0b, 0x00, 0x00, 0x00]) # mov eax, 11
+      @emitter.emit([0x0f, 0x05])
+    end
   end
 end
