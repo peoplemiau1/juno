@@ -1,0 +1,64 @@
+// lib_linux Demo - Convenient system wrappers
+// Instead of raw syscalls, use friendly functions!
+
+fn main(): int {
+    prints("=== lib_linux Demo ===\n")
+    
+    // System info (no more reading /proc manually!)
+    prints("\n[System Info]\n")
+    prints("Hostname: ")
+    prints(hostname())
+    prints("\n")
+    
+    prints("Kernel:   ")
+    prints(kernel_version())
+    prints("\n")
+    
+    prints("Uptime:   ")
+    print(uptime())
+    prints(" seconds\n")
+    
+    prints("Load:     ")
+    prints(loadavg())
+    prints("\n")
+    
+    prints("CPUs:     ")
+    print(num_cpus())
+    prints("\n")
+    
+    // Process info
+    prints("\n[Process Info]\n")
+    prints("PID:      ")
+    print(pid())
+    prints("\n")
+    
+    prints("UID:      ")
+    print(uid())
+    prints("\n")
+    
+    prints("CWD:      ")
+    prints(cwd())
+    prints("\n")
+    
+    prints("Root:     ")
+    if is_root() {
+        prints("yes")
+    } else {
+        prints("no")
+    }
+    prints("\n")
+    
+    // Execute commands (instead of fork+exec+pipe magic!)
+    prints("\n[Command Execution]\n")
+    prints("$ uname -a\n")
+    prints(exec_cmd("uname -a"))
+    
+    prints("\n$ date\n")
+    prints(exec_cmd("date"))
+    
+    prints("\n$ whoami\n")
+    prints(exec_cmd("whoami"))
+    
+    prints("\n=== Done ===\n")
+    return 0
+}

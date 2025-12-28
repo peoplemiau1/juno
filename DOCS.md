@@ -169,6 +169,28 @@ struct Box<T> { value: T }
 | `rand()` | Случайное число |
 | `time()` | Unix timestamp |
 
+### lib_linux (Удобные обёртки)
+
+| Функция | Описание |
+|---------|----------|
+| `hostname()` | Имя хоста |
+| `kernel_version()` | Версия ядра |
+| `uptime()` | Аптайм в секундах |
+| `loadavg()` | Средняя нагрузка |
+| `num_cpus()` | Количество CPU |
+| `pid()` | ID процесса |
+| `uid()` | ID пользователя |
+| `cwd()` | Текущая директория |
+| `is_root()` | Root? (1/0) |
+| `exec_cmd(cmd)` | Выполнить команду |
+
+```juno
+// Вместо сырых syscall:
+prints(hostname())        // вместо file_read_all("/etc/hostname")
+print(uptime())          // вместо парсинга /proc/uptime
+prints(exec_cmd("ls"))   // вместо fork+execve+pipe
+```
+
 ---
 
 ## Сеть и HTTP

@@ -13,6 +13,7 @@ require_relative "builtins/heap"
 require_relative "builtins/strings_v2"
 require_relative "builtins/file_api"
 require_relative "builtins/collections"
+require_relative "builtins/lib_linux"
 
 module GeneratorCalls
   include BuiltinStrings
@@ -29,6 +30,7 @@ module GeneratorCalls
   include BuiltinStringsV2
   include BuiltinFileAPI
   include BuiltinCollections
+  include BuiltinLibLinux
 
   BUILTINS = {
     # I/O
@@ -206,7 +208,20 @@ module GeneratorCalls
     "u64" => :gen_cast_u64,
     
     # sizeof
-    "sizeof" => :gen_sizeof
+    "sizeof" => :gen_sizeof,
+    
+    # lib_linux - convenient system wrappers
+    "exec_cmd" => :gen_exec_cmd,
+    "hostname" => :gen_hostname,
+    "uptime" => :gen_uptime,
+    "loadavg" => :gen_loadavg,
+    "kernel_version" => :gen_kernel_version,
+    "num_cpus" => :gen_num_cpus,
+    "env_get" => :gen_env_get,
+    "is_root" => :gen_is_root,
+    "pid" => :gen_pid,
+    "uid" => :gen_uid,
+    "cwd" => :gen_cwd
   }
 
   # Constants for magic numbers
