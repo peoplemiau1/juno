@@ -1,28 +1,41 @@
-# Быстрый старт
+# Начало работы
 
 ## Требования
 
-- Ruby 2.7+
-- Linux x86-64 или Windows x64
+- Ruby 2.7 или новее
+- Linux x64 или Windows x64
 
 ## Установка
 
+### Вариант 1: С CLI (рекомендуется)
+
 ```bash
-git clone https://github.com/user/juno
+git clone https://github.com/peoplemiau1/juno.git
 cd juno
 ./install.sh
 source ~/.bashrc
 ```
 
-Теперь команда `juno` доступна глобально!
+После этого команда `juno` доступна из любой папки.
 
-## Hello World
+### Вариант 2: Без установки
 
 ```bash
-juno new hello
+git clone https://github.com/peoplemiau1/juno.git
+cd juno
+
+# Linux
+ruby main_linux.rb program.juno
+./build/output_linux
+
+# Windows
+ruby main_native.rb program.juno
+build\output.exe
 ```
 
-Создаётся `hello.juno`:
+## Первая программа
+
+Создай `hello.juno`:
 
 ```juno
 fn main(): int {
@@ -31,59 +44,34 @@ fn main(): int {
 }
 ```
 
-Запуск:
+Запусти:
 
 ```bash
 juno run hello.juno
 ```
 
-## CLI Команды
-
-| Команда | Описание |
-|---------|----------|
-| `juno build <file>` | Компиляция |
-| `juno run <file>` | Компиляция и запуск |
-| `juno test` | Запуск тестов |
-| `juno new <name>` | Новый файл |
-| `juno help` | Справка |
-
-### Опции
-
-```bash
-juno build app.juno -o myapp    # Имя выходного файла
-juno build app.juno --hell      # Обфускация
+Вывод:
 ```
-
-## Альтернативный способ (без CLI)
-
-```bash
-# Linux
-ruby main_linux.rb hello.juno
-./build/output_linux
-
-# Windows
-ruby main_native.rb hello.juno
-.\build\output.exe
+Hello, Juno!
 ```
 
 ## Структура проекта
 
 ```
 juno/
-├── juno                # CLI
-├── install.sh          # Установщик
-├── main_linux.rb       # Компилятор Linux
-├── main_native.rb      # Компилятор Windows
-├── src/                # Исходники компилятора
-│   ├── polymorph/      # Обфускация
-│   └── monomorphizer.rb # Generics
-├── examples/           # Примеры
-├── tests/              # Тесты
-└── build/              # Бинарники
+├── juno              # CLI утилита
+├── install.sh        # Установщик
+├── main_linux.rb     # Компилятор для Linux
+├── main_native.rb    # Компилятор для Windows
+├── src/              # Исходники компилятора
+├── examples/         # Примеры программ
+├── tests/            # Тесты
+├── stdlib/           # Стандартная библиотека
+└── build/            # Скомпилированные программы
 ```
 
-## Следующие шаги
+## Что дальше
 
-- [Синтаксис](syntax.md) - переменные, функции, generics
-- [Встроенные функции](builtins.md) - I/O, память
-- [Примеры](examples.md) - готовые программы
+1. [Синтаксис языка](syntax.md) — переменные, функции, структуры
+2. [Встроенные функции](builtins.md) — ввод/вывод, память, строки
+3. [Примеры](examples.md) — готовые программы
