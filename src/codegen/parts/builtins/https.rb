@@ -142,4 +142,140 @@ module BuiltinHTTPS
     offset = end_addr - parent_end - 5
     @emitter.bytes[parent_end + 1, 4] = [offset].pack("l<").bytes
   end
+
+  # curl_post(url, data) - HTTP POST
+  # Returns response in buffer
+  def gen_curl_post(node)
+    return unless @target_os == :linux
+    setup_https_data
+    
+    @linker.add_data("curl_path", "/usr/bin/curl\x00")
+    @linker.add_data("curl_s", "-s\x00")
+    @linker.add_data("curl_X", "-X\x00")
+    @linker.add_data("curl_POST", "POST\x00")
+    @linker.add_data("curl_d", "-d\x00")
+    @linker.add_data("curl_H", "-H\x00")
+    @linker.add_data("curl_json", "Content-Type: application/json\x00")
+    
+    # Save URL and data
+    eval_expression(node[:args][0])
+    @emitter.emit([0x49, 0x89, 0xc4])  # mov r12, rax (url)
+    
+    eval_expression(node[:args][1])
+    @emitter.emit([0x49, 0x89, 0xc5])  # mov r13, rax (data)
+    
+    # pipe
+    @emitter.emit([0x48, 0x83, 0xec, 0x10])
+    @emitter.emit([0x48, 0x89, 0xe7])
+    @emitter.emit([0xb8, 0x16, 0x00, 0x00, 0x00])
+    @emitter.emit([0x0f, 0x05])
+    
+    # fork
+    @emitter.emit([0xb8, 0x39, 0x00, 0x00, 0x00])
+    @emitter.emit([0x0f, 0x05])
+    
+    @emitter.emit([0x48, 0x85, 0xc0])
+    child_jmp = @emitter.current_pos
+    @emitter.emit([0x0f, 0x84, 0x00, 0x00, 0x00, 0x00])
+    
+    # PARENT
+    @emitter.emit([0x8b, 0x7c, 0x24, 0x04])
+    @emitter.emit([0xb8, 0x03, 0x00, 0x00, 0x00])
+    @emitter.emit([0x0f, 0x05])
+    
+    @emitter.emit([0x8b, 0x3c, 0x24])
+    @linker.add_data_patch(@emitter.current_pos + 2, "https_buf")
+    @emitter.emit([0x48, 0xbe] + [0] * 8)
+    @emitter.emit([0x49, 0x89, 0xf6])  # r14 = buf
+    @emitter.emit([0xba, 0x00, 0x20, 0x00, 0x00])
+    @emitter.emit([0xb8, 0x00, 0x00, 0x00, 0x00])
+    @emitter.emit([0x0f, 0x05])
+    @emitter.emit([0x49, 0x89, 0xc7])  # r15 = bytes
+    
+    # Null term
+    @emitter.emit([0x4c, 0x89, 0xf0])
+    @emitter.emit([0x4c, 0x01, 0xf8])
+    @emitter.emit([0xc6, 0x00, 0x00])
+    
+    @emitter.emit([0x8b, 0x3c, 0x24])
+    @emitter.emit([0xb8, 0x03, 0x00, 0x00, 0x00])
+    @emitter.emit([0x0f, 0x05])
+    
+    # wait
+    @emitter.emit([0x48, 0xc7, 0xc7, 0xff, 0xff, 0xff, 0xff])
+    @emitter.emit([0x48, 0x8d, 0x74, 0x24, 0x08])
+    @emitter.emit([0x31, 0xd2])
+    @emitter.emit([0x4d, 0x31, 0xc0])
+    @emitter.emit([0xb8, 0x3d, 0x00, 0x00, 0x00])
+    @emitter.emit([0x0f, 0x05])
+    
+    @emitter.emit([0x4c, 0x89, 0xf0])  # rax = buf
+    @emitter.emit([0x48, 0x83, 0xc4, 0x10])
+    parent_end = @emitter.current_pos
+    @emitter.emit([0xe9, 0x00, 0x00, 0x00, 0x00])
+    
+    # CHILD
+    child_addr = @emitter.current_pos
+    offset = child_addr - child_jmp - 6
+    @emitter.bytes[child_jmp + 2, 4] = [offset].pack("l<").bytes
+    
+    @emitter.emit([0x8b, 0x3c, 0x24])
+    @emitter.emit([0xb8, 0x03, 0x00, 0x00, 0x00])
+    @emitter.emit([0x0f, 0x05])
+    
+    @emitter.emit([0x8b, 0x7c, 0x24, 0x04])
+    @emitter.emit([0xbe, 0x01, 0x00, 0x00, 0x00])
+    @emitter.emit([0xb8, 0x21, 0x00, 0x00, 0x00])
+    @emitter.emit([0x0f, 0x05])
+    
+    # argv: curl -s -X POST -H "Content-Type: application/json" -d DATA URL
+    @emitter.emit([0x48, 0x83, 0xec, 0x60])  # 96 bytes
+    
+    @linker.add_data_patch(@emitter.current_pos + 2, "curl_path")
+    @emitter.emit([0x48, 0xb8] + [0] * 8)
+    @emitter.emit([0x48, 0x89, 0x04, 0x24])  # [0] = curl
+    
+    @linker.add_data_patch(@emitter.current_pos + 2, "curl_s")
+    @emitter.emit([0x48, 0xb8] + [0] * 8)
+    @emitter.emit([0x48, 0x89, 0x44, 0x24, 0x08])  # [1] = -s
+    
+    @linker.add_data_patch(@emitter.current_pos + 2, "curl_X")
+    @emitter.emit([0x48, 0xb8] + [0] * 8)
+    @emitter.emit([0x48, 0x89, 0x44, 0x24, 0x10])  # [2] = -X
+    
+    @linker.add_data_patch(@emitter.current_pos + 2, "curl_POST")
+    @emitter.emit([0x48, 0xb8] + [0] * 8)
+    @emitter.emit([0x48, 0x89, 0x44, 0x24, 0x18])  # [3] = POST
+    
+    @linker.add_data_patch(@emitter.current_pos + 2, "curl_H")
+    @emitter.emit([0x48, 0xb8] + [0] * 8)
+    @emitter.emit([0x48, 0x89, 0x44, 0x24, 0x20])  # [4] = -H
+    
+    @linker.add_data_patch(@emitter.current_pos + 2, "curl_json")
+    @emitter.emit([0x48, 0xb8] + [0] * 8)
+    @emitter.emit([0x48, 0x89, 0x44, 0x24, 0x28])  # [5] = content-type
+    
+    @linker.add_data_patch(@emitter.current_pos + 2, "curl_d")
+    @emitter.emit([0x48, 0xb8] + [0] * 8)
+    @emitter.emit([0x48, 0x89, 0x44, 0x24, 0x30])  # [6] = -d
+    
+    @emitter.emit([0x4c, 0x89, 0x6c, 0x24, 0x38])  # [7] = r13 (data)
+    @emitter.emit([0x4c, 0x89, 0x64, 0x24, 0x40])  # [8] = r12 (url)
+    @emitter.emit([0x48, 0xc7, 0x44, 0x24, 0x48, 0x00, 0x00, 0x00, 0x00])  # [9] = NULL
+    
+    @linker.add_data_patch(@emitter.current_pos + 2, "curl_path")
+    @emitter.emit([0x48, 0xbf] + [0] * 8)
+    @emitter.emit([0x48, 0x89, 0xe6])
+    @emitter.emit([0x48, 0x31, 0xd2])
+    @emitter.emit([0xb8, 0x3b, 0x00, 0x00, 0x00])
+    @emitter.emit([0x0f, 0x05])
+    
+    @emitter.emit([0xb8, 0x3c, 0x00, 0x00, 0x00])
+    @emitter.emit([0xbf, 0x01, 0x00, 0x00, 0x00])
+    @emitter.emit([0x0f, 0x05])
+    
+    end_addr = @emitter.current_pos
+    offset = end_addr - parent_end - 5
+    @emitter.bytes[parent_end + 1, 4] = [offset].pack("l<").bytes
+  end
 end

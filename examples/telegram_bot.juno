@@ -1,0 +1,47 @@
+// Telegram Bot Example
+// Replace YOUR_BOT_TOKEN with your actual bot token from @BotFather
+
+fn send_message(token: string, chat_id: string, text: string) {
+    // Build URL: https://api.telegram.org/botTOKEN/sendMessage
+    let url = concat("https://api.telegram.org/bot", token)
+    let url2 = concat(url, "/sendMessage")
+    
+    // Build JSON body
+    let body1 = concat("{\"chat_id\":\"", chat_id)
+    let body2 = concat(body1, "\",\"text\":\"")
+    let body3 = concat(body2, text)
+    let body = concat(body3, "\"}")
+    
+    let response = curl_post(url2, body)
+    prints(response)
+}
+
+fn get_updates(token: string, offset: int): string {
+    let url = concat("https://api.telegram.org/bot", token)
+    let url2 = concat(url, "/getUpdates?timeout=30&offset=")
+    
+    // Convert offset to string (simplified)
+    let buf = getbuf()
+    // For now just use 0
+    let url3 = concat(url2, "0")
+    
+    let response = curl_get(url3)
+    return response
+}
+
+fn main(): int {
+    let token = "YOUR_BOT_TOKEN"
+    
+    prints("Telegram Bot Started!")
+    prints("Checking for updates...")
+    
+    // Get updates
+    let updates = get_updates(token, 0)
+    prints("Updates:")
+    prints(updates)
+    
+    // Send test message (replace with your chat_id)
+    // send_message(token, "YOUR_CHAT_ID", "Hello from Juno!")
+    
+    return 0
+}
