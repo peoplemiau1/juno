@@ -1,0 +1,133 @@
+// ShadowNet v1.0 - Simple HTTP Server
+
+fn my_strlen(s: ptr): int {
+    let len = 0
+    let cur = s
+    let c = *cur
+    while (c != 0) {
+        len = len + 1
+        cur = ptr_add(cur, 1)
+        c = *cur
+    }
+    return len
+}
+
+fn starts_with(buf: ptr, prefix: ptr): int {
+    let i = 0
+    let c = *ptr_add(prefix, i)
+    while (c != 0) {
+        if (*ptr_add(buf, i) != c) {
+            return 0
+        }
+        i = i + 1
+        c = *ptr_add(prefix, i)
+    }
+    return 1
+}
+
+fn get_path(buf: ptr): ptr {
+    let i = 0
+    // Skip method (GET/POST)
+    while (*ptr_add(buf, i) != 32 && *ptr_add(buf, i) != 0) {
+        i = i + 1
+    }
+    return ptr_add(buf, i + 1)
+}
+
+fn handle(fd: int): int {
+    let buf = getbuf()
+    let n = recv(fd, buf, 4096)
+    
+    if (n <= 0) {
+        close(fd)
+        return 0
+    }
+    
+    let path = get_path(buf)
+    
+    // Route: /hello
+    if (starts_with(path, "/hello") == 1) {
+        let resp = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nHello from Juno!"
+        send(fd, resp, 60)
+        close(fd)
+        return 0
+    }
+    
+    // Route: /time  
+    if (starts_with(path, "/time") == 1) {
+        send(fd, "HTTP/1.1 200 OK\r\n\r\nServer running", 33)
+        close(fd)
+        return 0
+    }
+    
+    // Route: /echo (POST body)
+    if (starts_with(path, "/echo") == 1) {
+        // Find body after \r\n\r\n
+        let i = 0
+        while (i < n - 4) {
+            if (*ptr_add(buf, i) == 13) {
+                if (*ptr_add(buf, i+1) == 10) {
+                    if (*ptr_add(buf, i+2) == 13) {
+                        if (*ptr_add(buf, i+3) == 10) {
+                            let body = ptr_add(buf, i + 4)
+                            send(fd, "HTTP/1.1 200 OK\r\n\r\n", 19)
+                            send(fd, body, n - i - 4)
+                            close(fd)
+                            return 0
+                        }
+                    }
+                }
+            }
+            i = i + 1
+        }
+        send(fd, "HTTP/1.1 200 OK\r\n\r\n(no body)", 28)
+        close(fd)
+        return 0
+    }
+    
+    // Route: /status
+    if (starts_with(path, "/status") == 1) {
+        let resp = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"status\":\"ok\",\"server\":\"ShadowNet\"}"
+        send(fd, resp, 86)
+        close(fd)
+        return 0
+    }
+    
+    // Default: help
+    let help = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nShadowNet v1.0\n\nRoutes:\n  /hello - Hello message\n  /time - Unix timestamp\n  /echo - Echo POST body\n  /status - JSON status\n"
+    send(fd, help, my_strlen(help))
+    close(fd)
+    return 0
+}
+
+fn main(): int {
+    prints("=== ShadowNet v1.0 ===")
+    
+    let server = socket(2, 1, 0)
+    if (server < 0) {
+        prints("[-] Socket failed")
+        return 1
+    }
+    
+    let addr = ip(0, 0, 0, 0)
+    if (bind(server, addr, 8080) < 0) {
+        prints("[-] Bind failed")  
+        return 1
+    }
+    
+    listen(server, 100)
+    prints("[+] Server on http://localhost:8080")
+    prints("[+] curl localhost:8080/hello")
+    prints("[+] curl localhost:8080/time") 
+    prints("[+] curl -d 'test' localhost:8080/echo")
+    prints("[+] curl localhost:8080/status")
+    
+    while (1) {
+        let client = accept(server)
+        if (client > 0) {
+            handle(client)
+        }
+    }
+    
+    return 0
+}
