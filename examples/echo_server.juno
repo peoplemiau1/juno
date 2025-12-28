@@ -1,71 +1,38 @@
-// Simple Echo Server - tests network functionality
-// Echoes back whatever client sends
+// Простой Echo Server на Juno
+// Запуск: ruby main_linux.rb examples/echo_server.juno && ./build/output_linux
 
-fn main(): int {
-    print("=== Echo Server ===")
+fn main() {
+    print("Starting Echo Server on port 8080...")
     
-    // Create socket
-    let sock = socket(2, 1, 0)  // AF_INET, SOCK_STREAM
-    print("Socket fd:")
-    print(sock)
+    // Создаём сокет (TCP по умолчанию)
+    let server = socket()
     
-    if (sock < 0) {
-        print("Socket failed!")
-        return 1
-    }
+    // Привязываем к порту 8080 (слушает на всех интерфейсах)
+    bind(server, 8080)
     
-    // Set SO_REUSEADDR
-    let opt = 1
-    // setsockopt would go here but let's skip for now
+    // Начинаем слушать
+    listen(server)
     
-    // Bind
-    let addr = ip(0, 0, 0, 0)
-    let port = 9999
-    print("Binding to port 9999...")
+    print("Waiting for connection...")
     
-    let res = bind(sock, addr, port)
-    print("Bind result:")
-    print(res)
+    // Принимаем подключение
+    let client = accept(server)
     
-    if (res < 0) {
-        print("Bind failed!")
-        close(sock)
-        return 1
-    }
+    print("Client connected!")
     
-    // Listen
-    listen(sock, 5)
-    print("Listening...")
+    // Буфер для приёма данных
+    let buf[128]
     
-    // Accept one connection
-    print("Waiting for client...")
-    let client = accept(sock)
-    print("Client fd:")
-    print(client)
+    // Получаем данные
+    let n = recv(client, buf, 128)
     
-    if (client >= 0) {
-        print("Client connected!")
-        
-        // Echo loop
-        let buf = getbuf()
-        let running = 1
-        
-        while (running == 1) {
-            let n = recv(client, buf, 1024)
-            print("Received bytes:")
-            print(n)
-            
-            if (n > 0) {
-                send(client, buf, n)
-            } else {
-                running = 0
-            }
-        }
-        
-        close(client)
-    }
+    // Отправляем обратно (эхо)
+    send(client, buf, n)
     
-    close(sock)
-    print("Done")
+    // Закрываем соединения
+    close(client)
+    close(server)
+    
+    print("Done!")
     return 0
 }

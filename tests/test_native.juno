@@ -1,2 +1,5 @@
-print("Native Juno is working!")
-let result = 100
+fn main() {
+    print("Native Juno is working!")
+    let result = 100
+    return 0
+}

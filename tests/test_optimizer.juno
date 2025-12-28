@@ -24,5 +24,9 @@ fn main() {
     let y = x + 5           // Should become 15 at compile time
     
     // Result: 30 + 40 + 16 + 0 + 42 + 33 + 15 = 176
-    return a + b + c + d + e + f + y
+    let result = a + b + c + d + e + f + y
+    if (result == 176) {
+        return 0
+    }
+    return 1
 }

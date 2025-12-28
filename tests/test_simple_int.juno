@@ -1,4 +1,7 @@
-let x = 42
-print("The answer is:")
-print(x)
-print("Done!")
+fn main() {
+    let x = 42
+    print("The answer is:")
+    print(x)
+    print("Done!")
+    return 0
+}

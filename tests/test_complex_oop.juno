@@ -3,17 +3,21 @@ struct Math {
 }
 
 fn Math.add(a, b) {
-    f = self.factor
-    res = a + b
-    val = res + f
+    let f = self.factor
+    let res = a + b
+    let val = res + f
     return val
 }
 
 fn main() {
-    m = Math
+    let m = Math
     m.factor = 10
-    output_int(m.factor) // ДОЛЖНО БЫТЬ 10
+    print(m.factor)
     
-    val = m.add(2, 3)
-    output_int(val)      // ДОЛЖНО БЫТЬ 15
+    let val = m.add(2, 3)
+    print(val)
+    if (val == 15) {
+        return 0
+    }
+    return 1
 }

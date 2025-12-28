@@ -6,5 +6,8 @@ fn add(a, b) {
 
 fn main() {
     let sum = add(10, 20)
-    return sum
+    if (sum == 30) {
+        return 0
+    }
+    return 1
 }

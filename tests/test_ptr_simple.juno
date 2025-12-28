@@ -9,5 +9,9 @@ fn main() {
     let x2 = x
     
     // 10 + 42 = 52
-    return val + x2
+    let result = val + x2
+    if (result == 52) {
+        return 0
+    }
+    return 1
 }

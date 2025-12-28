@@ -13,29 +13,30 @@ fn Entity.check() {
 }
 
 fn main() {
-    output("--- JUNO FULL TEST ---")
+    print("--- JUNO FULL TEST ---")
     
     // 1. Математика
-    a = 10
-    b = 2
-    res = a * b + 5
-    output("Math check (25):")
-    output_int(res)
+    let a = 10
+    let b = 2
+    let res = a * b + 5
+    print("Math check (25):")
+    print(res)
     
     // 2. Структуры и Методы
-    e = Entity
+    let e = Entity
     e.init(7)
     
-    output("Entity ID (7):")
-    output_int(e.id)
+    print("Entity ID (7):")
+    print(e.id)
     
     // 3. Условия
-    is_ok = e.check()
+    let is_ok = e.check()
     if (is_ok) {
-        output("Condition: Success")
+        print("Condition: Success")
     } else {
-        output("Condition: Failed")
+        print("Condition: Failed")
     }
     
-    output("--- TEST COMPLETE ---")
+    print("--- TEST COMPLETE ---")
+    return 0
 }

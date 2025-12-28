@@ -17,5 +17,9 @@ fn main() {
     let elem = *p
     
     // 10 + 42 + 10 = 62
-    return val + x2 + elem
+    let result = val + x2 + elem
+    if (result == 62) {
+        return 0
+    }
+    return 1
 }

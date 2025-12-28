@@ -7,5 +7,9 @@ fn add(a, b) {
 fn main() {
     let x = add(10, 20)
     let y = 5 * 8
-    return x + y
+    let result = x + y
+    if (result == 70) {
+        return 0
+    }
+    return 1
 }

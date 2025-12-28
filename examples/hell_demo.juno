@@ -1,0 +1,21 @@
+// HELL MODE DEMO - Anti-Reverse Engineering
+// Compile with: ruby main_linux.rb examples/hell_demo.juno --hell
+
+fn secret_algorithm(x) {
+    let result = x * 31337
+    result = result + 1337
+    result = result / 7
+    return result
+}
+
+fn main() {
+    print("=== HELL MODE DEMO ===")
+    print("This binary is obfuscated!")
+    
+    let secret = secret_algorithm(42)
+    print("Secret value:")
+    print(secret)
+    
+    print("Good luck reversing this!")
+    return 0
+}

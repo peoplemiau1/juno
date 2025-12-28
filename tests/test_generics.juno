@@ -1,0 +1,48 @@
+// Тест полиморфной компиляции (generics)
+
+// Generic функция identity
+fn identity<T>(x) {
+    return x
+}
+
+// Generic функция swap (возвращает сумму для теста)
+fn add_generic<T>(a, b) {
+    return a + b
+}
+
+// Generic структура Box
+struct Box<T> {
+    value
+}
+
+// Метод для Box
+fn Box<T>.set(v) {
+    self.value = v
+}
+
+fn Box<T>.get() {
+    return self.value
+}
+
+fn main() {
+    // Использование generic функции с int
+    let x = identity<int>(42)
+    
+    // Использование generic функции с разными "типами"
+    let y = identity<num>(100)
+    
+    // Generic сложение
+    let sum = add_generic<int>(10, 20)
+    
+    // Generic структура
+    let b = Box<int>
+    b.set(77)
+    let val = b.get()
+    
+    // Проверка: 42 + 100 + 30 + 77 = 249
+    let result = x + y + sum + val
+    if (result == 249) {
+        return 0
+    }
+    return 1
+}

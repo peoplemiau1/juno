@@ -1,1 +1,4 @@
-// empty
+// Test empty program with just main
+fn main() {
+    return 0
+}

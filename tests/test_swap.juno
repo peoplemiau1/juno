@@ -11,5 +11,9 @@ fn main() {
     let y = 200
     swap(&x, &y)
     // After swap: x=200, y=100
-    return x + y
+    let sum = x + y
+    if (sum == 300) {
+        return 0
+    }
+    return 1
 }

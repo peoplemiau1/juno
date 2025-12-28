@@ -4,12 +4,12 @@ fn main() {
     output("=== JUNO v1.0 TEST ===")
     
     // 1. Math with all operators
-    a = 20
-    b = 4
-    sum = a + b
-    diff = a - b
-    prod = a * b
-    quot = a / b
+    let a = 20
+    let b = 4
+    let sum = a + b
+    let diff = a - b
+    let prod = a * b
+    let quot = a / b
     
     output("20 + 4 =")
     output_int(sum)
@@ -22,7 +22,7 @@ fn main() {
     
     // 2. While loop
     output("While loop 3 to 1:")
-    count = 3
+    let count = 3
     while (count != 0) {
         output_int(count)
         count--
@@ -35,4 +35,5 @@ fn main() {
     }
     
     output("=== ALL TESTS PASSED ===")
+    return 0
 }

@@ -294,7 +294,55 @@ fn main() {
 }
 ```
 
+### 14. Полиморфная компиляция (Generics) (NEW in v1.3)
+
+Juno поддерживает нативную полиморфную компиляцию через мономорфизацию:
+
+```juno
+// Generic функция
+fn identity<T>(x) {
+    return x
+}
+
+// Generic структура
+struct Box<T> {
+    value
+}
+
+// Generic метод
+fn Box<T>.set(v) {
+    self.value = v
+}
+
+fn Box<T>.get() {
+    return self.value
+}
+
+fn main() {
+    // Вызов generic функции с конкретным типом
+    let x = identity<int>(42)
+    
+    // Создание generic структуры
+    let b = Box<int>
+    b.set(100)
+    let val = b.get()
+    
+    return x + val  // 142
+}
+```
+
+**Особенности:**
+- Мономорфизация: для каждого уникального набора типов создаётся специализированная версия функции/структуры
+- Нулевая стоимость в рантайме - всё разрешается на этапе компиляции
+- Поддержка generic структур и их методов
+
 ## Changelog
+
+### v1.3
+- ✅ Полиморфная компиляция (generics) с мономорфизацией
+- ✅ Generic функции: `fn name<T>(args)`
+- ✅ Generic структуры: `struct Name<T> { fields }`
+- ✅ Generic методы: `fn Struct<T>.method(args)`
 
 ### v1.2
 - Импорт модулей (`import "path/module.juno"`)

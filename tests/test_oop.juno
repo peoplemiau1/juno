@@ -1,6 +1,6 @@
 struct Point {
-    let x
-    let y
+    x
+    y
 }
 
 fn Point.set(val) {
@@ -8,9 +8,10 @@ fn Point.set(val) {
 }
 
 fn main() {
-    p = Point
+    let p = Point
     p.set(123)
-    output_member_int(p.x)
+    if (p.x == 123) {
+        return 0
+    }
+    return 1
 }
-
-main()

@@ -1,6 +1,9 @@
-let count = 3
-while (count != 0) {
-    print("Looping...")
-    count--
+fn main() {
+    let count = 3
+    while (count != 0) {
+        print("Looping...")
+        count--
+    }
+    print("Done!")
+    return 0
 }
-print("Done!")

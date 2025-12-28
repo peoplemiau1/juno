@@ -1,0 +1,13 @@
+// Простой тест generic функции
+
+fn identity<T>(x) {
+    return x
+}
+
+fn main() {
+    let x = identity<int>(42)
+    if (x == 42) {
+        return 0
+    }
+    return 1
+}

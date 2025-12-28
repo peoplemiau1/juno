@@ -6,5 +6,8 @@ fn add(a, b) {
 
 fn main() {
     let sum = add(100, 200)
-    return sum
+    if (sum == 300) {
+        return 0
+    }
+    return 1
 }

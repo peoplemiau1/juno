@@ -31,5 +31,9 @@ fn main() {
     let elem = *p       // elem = 10
     
     // Result: 10 + 42 + 200 + 100 + 10 = 362
-    return val + x2 + a + b + elem
+    let result = val + x2 + a + b + elem
+    if (result == 362) {
+        return 0
+    }
+    return 1
 }

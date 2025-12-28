@@ -3,5 +3,8 @@ fn main() {
     let x = 10
     let ptr = &x
     *ptr = 42
-    return x
+    if (x == 42) {
+        return 0
+    }
+    return 1
 }

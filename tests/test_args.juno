@@ -5,6 +5,9 @@ fn greet(times) {
     }
 }
 
-print("Starting greet...")
-greet(3)
-print("Done!")
+fn main() {
+    print("Starting greet...")
+    greet(3)
+    print("Done!")
+    return 0
+}

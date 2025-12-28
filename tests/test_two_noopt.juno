@@ -16,5 +16,8 @@ fn main() {
     let x = get100()
     let y = get200()
     let sum = add_nums(x, y)
-    return sum
+    if (sum == 300) {
+        return 0
+    }
+    return 1
 }

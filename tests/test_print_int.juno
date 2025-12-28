@@ -3,12 +3,15 @@ fn add(a, b) {
     return result
 }
 
-let x = 42
-print("x = ")
-print(x)
+fn main() {
+    let x = 42
+    print("x = ")
+    print(x)
 
-let sum = add(100, 200)
-print("100 + 200 = ")
-print(sum)
+    let sum = add(100, 200)
+    print("100 + 200 = ")
+    print(sum)
 
-print("Done!")
+    print("Done!")
+    return 0
+}

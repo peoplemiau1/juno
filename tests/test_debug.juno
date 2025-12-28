@@ -1,4 +1,8 @@
 // Тест прямого сравнения
 fn main() {
-    return (0 < 5)
+    let result = (0 < 5)
+    if (result == 1) {
+        return 0
+    }
+    return 1
 }

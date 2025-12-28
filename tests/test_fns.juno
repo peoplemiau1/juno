@@ -9,7 +9,10 @@ fn test_math() {
     print("Function math works!")
 }
 
-print("Main start")
-say_hello()
-test_math()
-print("Main end")
+fn main() {
+    print("Main start")
+    say_hello()
+    test_math()
+    print("Main end")
+    return 0
+}

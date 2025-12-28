@@ -1,11 +1,14 @@
-let check = 1
-if (check != 0) {
-    print("IF branch works!")
-}
+fn main() {
+    let check = 1
+    if (check != 0) {
+        print("IF branch works!")
+    }
 
-let skip = 0
-if (skip != 0) {
-    print("This should NOT be printed")
-}
+    let skip = 0
+    if (skip != 0) {
+        print("This should NOT be printed")
+    }
 
-print("End of test")
+    print("End of test")
+    return 0
+}

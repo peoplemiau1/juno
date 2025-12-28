@@ -7,5 +7,8 @@ fn get_value(ptr) {
 fn main() {
     let x = 77
     let v = get_value(&x)
-    return v
+    if (v == 77) {
+        return 0
+    }
+    return 1
 }

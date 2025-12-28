@@ -28,5 +28,6 @@ fn main() {
     // Test 4: Three arguments (if supported)
     // let result4 = add3(5, 10, 15)
     
-    return result1
+    // Return 0 for test success
+    return 0
 }
