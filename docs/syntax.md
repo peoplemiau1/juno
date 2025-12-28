@@ -1,5 +1,15 @@
 # Синтаксис Juno
 
+## Содержание
+
+- [Переменные](#переменные)
+- [Функции](#функции)
+- [Generics](#generics)
+- [Структуры](#структуры)
+- [Условия и циклы](#условия)
+- [Указатели](#указатели)
+- [Массивы](#массивы)
+
 ## Переменные
 
 ```juno
@@ -31,6 +41,76 @@ fn main(): int {
     print(result)
     return 0
 }
+```
+
+## Generics
+
+Параметрический полиморфизм с мономорфизацией на этапе компиляции.
+
+### Generic функции
+
+```juno
+fn identity<T>(x: T): T {
+    return x
+}
+
+fn swap<T>(a, b) {
+    let temp = *a
+    *a = *b
+    *b = temp
+}
+
+fn main(): int {
+    let num = identity<int>(42)
+    let str = identity<string>("hello")
+    
+    let x = 10
+    let y = 20
+    swap<int>(&x, &y)
+    
+    return 0
+}
+```
+
+### Generic структуры
+
+```juno
+struct Box<T> {
+    value: T
+}
+
+struct Pair<K, V> {
+    key: K
+    val: V
+}
+
+fn main(): int {
+    let intBox = Box<int>
+    intBox.value = 100
+    
+    let pair = Pair<int, int>
+    pair.key = 1
+    pair.val = 42
+    
+    return 0
+}
+```
+
+### Мономорфизация
+
+Компилятор создаёт специализированные версии для каждого типа:
+
+```juno
+// Исходный код
+fn identity<T>(x: T): T { return x }
+let a = identity<int>(1)
+let b = identity<string>("hi")
+
+// После мономорфизации (внутренне)
+fn identity__int(x: int): int { return x }
+fn identity__string(x: string): string { return x }
+let a = identity__int(1)
+let b = identity__string("hi")
 ```
 
 ## Структуры

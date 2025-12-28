@@ -2,39 +2,66 @@
 
 ## Требования
 
-- Ruby 2.7+ (только для компиляции)
+- Ruby 2.7+
 - Linux x86-64 или Windows x64
 
 ## Установка
 
 ```bash
-git clone https://github.com/example/juno
+git clone https://github.com/user/juno
 cd juno
+./install.sh
+source ~/.bashrc
 ```
+
+Теперь команда `juno` доступна глобально!
 
 ## Hello World
 
-Создайте файл `hello.juno`:
+```bash
+juno new hello
+```
+
+Создаётся `hello.juno`:
 
 ```juno
 fn main(): int {
-    print("Hello, World!")
+    print("Hello, Juno!")
     return 0
 }
 ```
 
-## Компиляция
-
-### Linux
+Запуск:
 
 ```bash
-ruby main_linux.rb hello.juno
-./build/output_linux
+juno run hello.juno
 ```
 
-### Windows
+## CLI Команды
 
-```powershell
+| Команда | Описание |
+|---------|----------|
+| `juno build <file>` | Компиляция |
+| `juno run <file>` | Компиляция и запуск |
+| `juno test` | Запуск тестов |
+| `juno new <name>` | Новый файл |
+| `juno help` | Справка |
+
+### Опции
+
+```bash
+juno build app.juno -o myapp    # Имя выходного файла
+juno build app.juno --hell      # Обфускация
+```
+
+## Альтернативный способ (без CLI)
+
+```bash
+# Linux
+ruby main_linux.rb hello.juno
+./build/output_linux
+
+# Windows
 ruby main_native.rb hello.juno
 .\build\output.exe
 ```
@@ -43,17 +70,20 @@ ruby main_native.rb hello.juno
 
 ```
 juno/
-├── main_linux.rb       # Компилятор для Linux
-├── main_native.rb      # Компилятор для Windows
+├── juno                # CLI
+├── install.sh          # Установщик
+├── main_linux.rb       # Компилятор Linux
+├── main_native.rb      # Компилятор Windows
 ├── src/                # Исходники компилятора
-├── examples/           # Примеры программ
+│   ├── polymorph/      # Обфускация
+│   └── monomorphizer.rb # Generics
+├── examples/           # Примеры
 ├── tests/              # Тесты
-├── stdlib/             # Стандартная библиотека
-└── build/              # Скомпилированные программы
+└── build/              # Бинарники
 ```
 
 ## Следующие шаги
 
-- [Синтаксис языка](syntax.md)
-- [Встроенные функции](builtins.md)
-- [Примеры](examples.md)
+- [Синтаксис](syntax.md) - переменные, функции, generics
+- [Встроенные функции](builtins.md) - I/O, память
+- [Примеры](examples.md) - готовые программы
