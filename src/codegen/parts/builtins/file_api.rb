@@ -130,53 +130,52 @@ module BuiltinFileAPI
   end
 
   # file_read_all(path) - Read entire file into buffer
-  # Returns pointer to buffer (null-terminated)
   def gen_file_read_all(node)
     return unless @target_os == :linux
     setup_file_api
     
-    eval_expression(node[:args][0])
+    args = node[:args] || []
+    return @emitter.emit([0x48, 0x31, 0xc0]) if args.empty?
+    
+    eval_expression(args[0])
     @emitter.emit([0x49, 0x89, 0xc4])  # mov r12, rax (path)
     
-    # Open file
+    # Open file (O_RDONLY)
     @emitter.emit([0x4c, 0x89, 0xe7])  # mov rdi, r12
-    @emitter.emit([0xbe, 0x00, 0x00, 0x00, 0x00])  # mov esi, O_RDONLY
+    @emitter.emit([0xbe, 0x00, 0x00, 0x00, 0x00])  # mov esi, 0
     @emitter.emit([0xba, 0x00, 0x00, 0x00, 0x00])  # mov edx, 0
-    @emitter.emit([0xb8, 0x02, 0x00, 0x00, 0x00])  # mov eax, 2
+    @emitter.emit([0xb8, 0x02, 0x00, 0x00, 0x00])  # mov eax, 2 (open)
     @emitter.emit([0x0f, 0x05])  # syscall
-    
     @emitter.emit([0x49, 0x89, 0xc5])  # mov r13, rax (fd)
     
-    # Check for error
+    # Check error
     @emitter.emit([0x48, 0x85, 0xc0])  # test rax, rax
     @emitter.emit([0x79, 0x05])  # jns ok
-    @emitter.emit([0x48, 0x31, 0xc0])  # xor rax, rax (return 0)
-    @emitter.emit([0xeb, 0x30])  # jmp end
+    @emitter.emit([0x48, 0x31, 0xc0])  # xor rax, rax
+    @emitter.emit([0xeb, 0x2c])  # jmp end
     
-    # Read into buffer
+    # Read using LEA for buffer
     @emitter.emit([0x4c, 0x89, 0xef])  # mov rdi, r13 (fd)
-    @linker.add_data_patch(@emitter.current_pos + 2, "file_read_buf")
-    @emitter.emit([0x48, 0xbe] + [0] * 8)  # mov rsi, buffer
-    @emitter.emit([0x49, 0x89, 0xf6])  # mov r14, rsi (save buf)
+    @emitter.emit([0x48, 0x8d, 0x35])  # lea rsi, [rip+off]
+    @linker.add_data_patch(@emitter.current_pos, "file_read_buf")
+    @emitter.emit([0x00, 0x00, 0x00, 0x00])
+    @emitter.emit([0x49, 0x89, 0xf6])  # mov r14, rsi
     @emitter.emit([0xba, 0xff, 0xff, 0x00, 0x00])  # mov edx, 65535
     @emitter.emit([0xb8, 0x00, 0x00, 0x00, 0x00])  # mov eax, 0 (read)
     @emitter.emit([0x0f, 0x05])  # syscall
-    
-    @emitter.emit([0x49, 0x89, 0xc7])  # mov r15, rax (bytes read)
+    @emitter.emit([0x49, 0x89, 0xc7])  # mov r15, rax
     
     # Null terminate
-    @emitter.emit([0x4c, 0x89, 0xf7])  # mov rdi, r14 (buf)
+    @emitter.emit([0x4c, 0x89, 0xf7])  # mov rdi, r14
     @emitter.emit([0x4c, 0x01, 0xff])  # add rdi, r15
     @emitter.emit([0xc6, 0x07, 0x00])  # mov byte [rdi], 0
     
-    # Close file
+    # Close
     @emitter.emit([0x4c, 0x89, 0xef])  # mov rdi, r13
     @emitter.emit([0xb8, 0x03, 0x00, 0x00, 0x00])  # mov eax, 3
     @emitter.emit([0x0f, 0x05])  # syscall
     
-    # Return buffer pointer
     @emitter.emit([0x4c, 0x89, 0xf0])  # mov rax, r14
-    # end
   end
 
   # file_exists(path) - Check if file exists

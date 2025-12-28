@@ -116,58 +116,47 @@ module BuiltinStringsV2
     # done
   end
 
-  # str_find(haystack, needle) - Find substring, returns index or -1
+  # str_find(haystack, needle) - Find first char of needle in haystack
   def gen_str_find(node)
     return unless @target_os == :linux
-    setup_strings_v2
     
-    eval_expression(node[:args][0])
-    @emitter.emit([0x49, 0x89, 0xc4])  # mov r12, rax (haystack)
+    args = node[:args] || []
+    if args.length < 2
+      @emitter.emit([0x48, 0xc7, 0xc0, 0xff, 0xff, 0xff, 0xff])
+      return
+    end
     
-    eval_expression(node[:args][1])
-    @emitter.emit([0x49, 0x89, 0xc5])  # mov r13, rax (needle)
+    eval_expression(args[0])
+    @emitter.emit([0x50])  # push rax (haystack)
     
-    @emitter.emit([0x4d, 0x31, 0xf6])  # xor r14, r14 (index)
+    eval_expression(args[1])
+    @emitter.emit([0x0f, 0xb6, 0x08])  # movzx ecx, byte [rax]
     
-    # Outer loop - for each position in haystack
-    # Check if needle matches at this position
-    @emitter.emit([0x4c, 0x89, 0xe7])  # mov rdi, r12
-    @emitter.emit([0x4c, 0x01, 0xf7])  # add rdi, r14
-    @emitter.emit([0x80, 0x3f, 0x00])  # cmp byte [rdi], 0
-    @emitter.emit([0x74, 0x28])  # je not_found
-    
-    @emitter.emit([0x4c, 0x89, 0xee])  # mov rsi, r13 (needle)
-    @emitter.emit([0x48, 0x89, 0xfa])  # mov rdx, rdi (save haystack pos)
-    
-    # Inner loop - compare needle
-    @emitter.emit([0x8a, 0x06])  # mov al, [rsi]
-    @emitter.emit([0x84, 0xc0])  # test al, al
-    @emitter.emit([0x74, 0x14])  # je found (needle exhausted)
-    @emitter.emit([0x8a, 0x1f])  # mov bl, [rdi]
-    @emitter.emit([0x38, 0xc3])  # cmp bl, al
-    @emitter.emit([0x75, 0x0a])  # jne next_pos
-    @emitter.emit([0x48, 0xff, 0xc7])  # inc rdi
-    @emitter.emit([0x48, 0xff, 0xc6])  # inc rsi
-    @emitter.emit([0xeb, 0xec])  # jmp inner_loop
-    
-    # next_pos:
-    @emitter.emit([0x49, 0xff, 0xc6])  # inc r14
-    @emitter.emit([0xeb, 0xd4])  # jmp outer_loop
-    
-    # found:
-    @emitter.emit([0x4c, 0x89, 0xf0])  # mov rax, r14
-    @emitter.emit([0xeb, 0x05])  # jmp done
-    
-    # not_found:
+    @emitter.emit([0x5e])  # pop rsi (haystack)
     @emitter.emit([0x48, 0xc7, 0xc0, 0xff, 0xff, 0xff, 0xff])  # mov rax, -1
-    # done
+    @emitter.emit([0x48, 0x31, 0xff])  # xor rdi, rdi (index)
+    
+    # loop:
+    @emitter.emit([0x0f, 0xb6, 0x1c, 0x3e])  # movzx ebx, byte [rsi+rdi]
+    @emitter.emit([0x85, 0xdb])  # test ebx, ebx
+    @emitter.emit([0x74, 0x0b])  # je end
+    @emitter.emit([0x39, 0xcb])  # cmp ebx, ecx
+    @emitter.emit([0x74, 0x05])  # je found
+    @emitter.emit([0x48, 0xff, 0xc7])  # inc rdi
+    @emitter.emit([0xeb, 0xef])  # jmp loop
+    # found:
+    @emitter.emit([0x48, 0x89, 0xf8])  # mov rax, rdi
+    # end:
   end
 
   # str_to_int(s) - Parse string to integer
   def gen_str_to_int(node)
     return unless @target_os == :linux
     
-    eval_expression(node[:args][0])
+    args = node[:args] || []
+    return @emitter.emit([0x48, 0x31, 0xc0]) if args.empty?
+    
+    eval_expression(args[0])
     @emitter.emit([0x48, 0x89, 0xc6])  # mov rsi, rax (string)
     @emitter.emit([0x48, 0x31, 0xc0])  # xor rax, rax (result)
     @emitter.emit([0x48, 0x31, 0xc9])  # xor rcx, rcx (negative flag)
