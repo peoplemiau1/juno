@@ -45,13 +45,42 @@ class Lexer
         add_token(:insertC, nil, content)
         cursor = pos + 1
         @column = 1
-      when /\A"([^"]*)"/
-        raw_str = $1
-        # Process escape sequences
+      when /\A"/
+        # Parse string with escape sequences
+        cursor += 1  # skip opening quote
+        @column += 1
+        str_start = cursor
+        raw_str = ""
+        
+        while cursor < @code.length && @code[cursor] != '"'
+          if @code[cursor] == '\\'
+            # Escape sequence
+            raw_str += @code[cursor, 2]
+            cursor += 2
+            @column += 2
+          else
+            raw_str += @code[cursor]
+            cursor += 1
+            @column += 1
+          end
+        end
+        
+        if cursor >= @code.length
+          error = JunoLexerError.new(
+            "Unterminated string",
+            filename: @filename,
+            line_num: @line,
+            column: @column,
+            source: @source
+          )
+          JunoErrorReporter.report(error)
+        end
+        
+        cursor += 1  # skip closing quote
+        @column += 1
+        
         processed = process_escapes(raw_str)
         add_token(:string, processed)
-        cursor += $&.length
-        @column += $&.length
       when /\A0x[0-9a-fA-F]+/
         add_token(:number, $&.to_i(16))
         cursor += $&.length
