@@ -4,6 +4,7 @@ require_relative "src/parser"
 require_relative "src/importer"
 require_relative "src/monomorphizer"
 require_relative "src/optimizer/optimizer"
+require_relative "src/optimizer/turbo"
 require_relative "src/codegen/native_generator"
 require_relative "src/preprocessor"
 require_relative "src/errors"
@@ -42,8 +43,8 @@ def compile_linux(input_file)
     monomorphizer = Monomorphizer.new(ast)
     ast = monomorphizer.monomorphize
 
-    puts "Step 6: Optimizing..."
-    optimizer = Optimizer.new(ast)
+    puts "Step 6: Optimizing (Turbo)..."
+    optimizer = TurboOptimizer.new(ast)
     ast = optimizer.optimize
 
     puts "Step 7: Native Code Generation (Linux ELF)..."

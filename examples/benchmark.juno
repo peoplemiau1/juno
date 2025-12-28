@@ -1,0 +1,60 @@
+// Juno Benchmark - Speed Test
+
+fn sum_loop(n: int): int {
+    let total = 0
+    for (i = 0; i < n; i++) {
+        total = total + i
+    }
+    return total
+}
+
+fn nested_loop(n: int): int {
+    let count = 0
+    for (i = 0; i < n; i++) {
+        for (j = 0; j < n; j++) {
+            count = count + 1
+        }
+    }
+    return count
+}
+
+fn multiply_loop(n: int): int {
+    let result = 1
+    for (i = 1; i < n; i++) {
+        result = result * 2
+        if (result > 1000000) {
+            result = 1
+        }
+    }
+    return result
+}
+
+fn main(): int {
+    prints("=== Juno Benchmark ===")
+    
+    // Test 1: Simple sum
+    prints("Sum 1..1000000:")
+    let s = sum_loop(1000000)
+    print(s)
+    
+    // Test 2: Nested loops
+    prints("Nested 1000x1000:")
+    let n = nested_loop(1000)
+    print(n)
+    
+    // Test 3: Multiply
+    prints("Multiply loop 100000:")
+    let m = multiply_loop(100000)
+    print(m)
+    
+    // Test 4: Math operations
+    prints("Math ops 1000000:")
+    let x = 0
+    for (i = 0; i < 1000000; i++) {
+        x = x + i * 2 - i
+    }
+    print(x)
+    
+    prints("=== Done ===")
+    return 0
+}
