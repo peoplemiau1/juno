@@ -1,5 +1,48 @@
 # CHANGELOG
 
+## v1.7 - 28.12.2025
+
+### Стандартная библиотека v2
+
+#### Память (Heap)
+- `malloc(size)` - выделение памяти
+- `free(ptr)` - освобождение
+- `realloc(ptr, size)` - изменение размера
+
+#### String API
+- `str_len`, `str_copy`, `str_cat`, `str_cmp`
+- `str_find(s, sub)` - поиск подстроки
+- `str_to_int` / `atoi` - парсинг числа
+- `int_to_str` / `itoa` - форматирование числа
+- `str_upper`, `str_lower`, `str_trim`
+
+#### File API
+- `file_open(path, mode)` - режимы: 0=read, 1=write, 2=append
+- `file_close`, `file_read`, `file_write`
+- `file_writeln` - запись строки с переводом строки
+- `file_read_all` - чтение всего файла
+- `file_exists`, `file_size`
+
+#### Collections (Vector)
+- `vec_new(capacity)` - создание динамического массива
+- `vec_push`, `vec_pop` - добавление/удаление
+- `vec_get`, `vec_set` - доступ по индексу
+- `vec_len`, `vec_cap`, `vec_clear`
+
+### HTTPS
+- `curl_get(url)` - GET запрос
+- `curl_post(url, data)` - POST запрос с JSON
+
+### Лексер
+- Поддержка escape-последовательностей: `\"`, `\\`, `\n`, `\r`, `\t`
+
+### Примеры
+- `examples/shadownet.juno` - HTTP сервер
+- `examples/telegram_bot.juno` - Telegram бот
+- `examples/stdlib_demo.juno` - демо stdlib
+
+---
+
 ## v1.6 - 28.12.2025
 
 ### Новые возможности
