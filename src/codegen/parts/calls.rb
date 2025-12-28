@@ -8,6 +8,7 @@ require_relative "builtins/network"
 require_relative "builtins/syscalls"
 require_relative "builtins/threads"
 require_relative "builtins/types"
+require_relative "builtins/https"
 
 module GeneratorCalls
   include BuiltinStrings
@@ -19,6 +20,7 @@ module GeneratorCalls
   include BuiltinSyscalls
   include BuiltinThreads
   include BuiltinTypes
+  include BuiltinHTTPS
 
   BUILTINS = {
     # I/O
@@ -88,6 +90,9 @@ module GeneratorCalls
     "memcpy" => :gen_memcpy,
     "memset" => :gen_memset,
     "execve" => :gen_execve,
+    
+    # HTTPS
+    "curl_get" => :gen_curl_get,
     
     # mmap constants
     "PROT_READ" => :gen_PROT_READ,

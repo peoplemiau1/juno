@@ -1,0 +1,13 @@
+// HTTPS Client Example
+// Uses curl_get() to fetch HTTPS URLs
+
+fn main(): int {
+    print("Fetching https://httpbin.org/get ...")
+    
+    let response = curl_get("https://httpbin.org/get")
+    
+    print("Response:")
+    print(response)
+    
+    return 0
+}
