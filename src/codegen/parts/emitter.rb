@@ -65,6 +65,7 @@ class CodeEmitter
 
   # MOV [RBP - offset], REG (disp32, safe for large offsets)
   def mov_stack_reg_val(offset, src_reg_code)
+    return if offset.nil?
     rex = 0x48
     rex |= 0x04 if src_reg_code >= 8 # REX.R for reg field
     modrm = 0x85 | ((src_reg_code & 7) << 3) # mod=10 (disp32), rm=101 (rbp)
@@ -73,6 +74,7 @@ class CodeEmitter
 
   # MOV REG, [RBP - offset] (disp32)
   def mov_reg_stack_val(dst_reg_code, offset)
+    return if offset.nil?
     rex = 0x48
     rex |= 0x04 if dst_reg_code >= 8 # REX.R for reg field
     modrm = 0x85 | ((dst_reg_code & 7) << 3)
@@ -81,6 +83,7 @@ class CodeEmitter
   
   # LEA REG, [RBP - offset] (disp32)
   def lea_reg_stack(dst_reg_code, offset)
+    return if offset.nil?
     rex = 0x48
     rex |= 0x04 if dst_reg_code >= 8 # REX.R
     modrm = 0x85 | ((dst_reg_code & 7) << 3)
