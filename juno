@@ -1,18 +1,20 @@
 #!/usr/bin/env ruby
 # Juno Language CLI
-# Usage: juno <command> [options]
 
 require 'fileutils'
 
 JUNO_ROOT = File.dirname(File.realpath(__FILE__))
+USER_DIR = Dir.pwd
 
 def load_compiler
+  Dir.chdir(JUNO_ROOT)
   require_relative "src/lexer"
   require_relative "src/parser"
   require_relative "src/importer"
   require_relative "src/monomorphizer"
   require_relative "src/optimizer/optimizer"
   require_relative "src/codegen/native_generator"
+  require_relative "src/preprocessor"
   require_relative "src/errors"
 end
 
@@ -21,11 +23,16 @@ $hell_mode = nil
 def enable_hell_mode(level = :hell)
   require_relative "src/polymorph/hell_mode"
   $hell_mode = HellMode.new(level)
-  puts "\e[31m🔥 HELL MODE ACTIVATED - Level: #{level}\e[0m"
+  puts "[HELL MODE] Level: #{level}"
 end
 
 def compile(input_file, options = {})
   load_compiler
+  
+  unless File.exist?(input_file)
+    puts "Error: File not found: #{input_file}"
+    exit 1
+  end
   
   output_name = options[:output] || "output"
   target = options[:target] || :linux
@@ -34,40 +41,85 @@ def compile(input_file, options = {})
   
   puts "Compiling #{input_file}..." unless options[:quiet]
   
-  lexer = Lexer.new(code, input_file)
-  tokens = lexer.tokenize
+  begin
+    preprocessor = Preprocessor.new
+    preprocessor.define("LINUX")
+    code = preprocessor.process(code, input_file)
+    
+    lexer = Lexer.new(code, input_file)
+    tokens = lexer.tokenize
 
-  parser = Parser.new(tokens, input_file, code)
-  ast = parser.parse
+    parser = Parser.new(tokens, input_file, code)
+    ast = parser.parse
 
-  importer = Importer.new(File.dirname(File.expand_path(input_file)))
-  ast = importer.resolve(ast, input_file)
+    importer = Importer.new(File.dirname(File.expand_path(input_file)))
+    ast = importer.resolve(ast, input_file)
 
-  monomorphizer = Monomorphizer.new(ast)
-  ast = monomorphizer.monomorphize
+    monomorphizer = Monomorphizer.new(ast)
+    ast = monomorphizer.monomorphize
 
-  optimizer = Optimizer.new(ast)
-  ast = optimizer.optimize
+    optimizer = Optimizer.new(ast)
+    ast = optimizer.optimize
 
-  generator = NativeGenerator.new(ast, target)
-  generator.hell_mode = $hell_mode if $hell_mode
-  
-  FileUtils.mkdir_p("build")
-  output_path = File.join("build", output_name)
-  generator.generate(output_path)
-  
-  # Make binary executable
-  File.chmod(0755, output_path)
-  
-  unless options[:quiet]
-    puts "\e[32m✓ Success!\e[0m Binary: #{output_path}"
-    $hell_mode.report if $hell_mode
+    generator = NativeGenerator.new(ast, target)
+    generator.hell_mode = $hell_mode if $hell_mode
+    
+    FileUtils.mkdir_p("#{JUNO_ROOT}/build")
+    output_path = File.join("#{JUNO_ROOT}/build", output_name)
+    generator.generate(output_path)
+    
+    File.chmod(0755, output_path)
+    
+    unless options[:quiet]
+      puts "OK: #{output_path}"
+      $hell_mode.report if $hell_mode
+    end
+    
+    output_path
+  rescue JunoError => e
+    e.display
+    exit 1
+  rescue => e
+    puts "Error: #{e.message}"
+    exit 1
   end
-  
-  output_path
 end
 
 def cmd_build(args)
+  options = {}
+  files = []
+  
+  i = 0
+  while i < args.length
+    arg = args[i]
+    case arg
+    when "--hell"
+      enable_hell_mode(:hell)
+    when "--obfuscate"
+      enable_hell_mode(:hard)
+    when "-o"
+      i += 1
+      options[:output] = args[i]
+    when "-q", "--quiet"
+      options[:quiet] = true
+    when /^-/
+      # skip unknown
+    else
+      files << arg
+    end
+    i += 1
+  end
+  
+  if files.empty?
+    puts "Usage: juno build <file.juno> [-o name] [--hell]"
+    exit 1
+  end
+  
+  input_file = File.expand_path(files[0], USER_DIR)
+  compile(input_file, options)
+end
+
+def cmd_run(args)
   options = {}
   files = []
   
@@ -75,41 +127,6 @@ def cmd_build(args)
     case arg
     when "--hell"
       enable_hell_mode(:hell)
-    when "--obfuscate"
-      enable_hell_mode(:hard)
-    when "--nightmare"
-      enable_hell_mode(:nightmare)
-    when "-o"
-      options[:output] = args[args.index(arg) + 1]
-    when "-q", "--quiet"
-      options[:quiet] = true
-    when /^-/
-      # skip option values
-    else
-      files << arg unless args[args.index(arg) - 1] == "-o"
-    end
-  end
-  
-  if files.empty?
-    puts "Error: No input file specified"
-    puts "Usage: juno build <file.juno> [options]"
-    exit 1
-  end
-  
-  # Resolve path relative to user's directory
-  input_file = File.expand_path(files[0], USER_DIR)
-  compile(input_file, options)
-end
-
-def cmd_run(args)
-  options = { quiet: false }
-  hell = false
-  files = []
-  
-  args.each do |arg|
-    case arg
-    when "--hell"
-      hell = true
     when /^-/
       # ignore
     else
@@ -118,48 +135,39 @@ def cmd_run(args)
   end
   
   if files.empty?
-    puts "Error: No input file specified"
     puts "Usage: juno run <file.juno>"
     exit 1
   end
   
-  enable_hell_mode(:hell) if hell
-  
-  # Resolve path relative to user's directory
   input_file = File.expand_path(files[0], USER_DIR)
   binary = compile(input_file, options)
-  puts "\e[36m▶ Running...\e[0m"
-  puts "─" * 40
+  
+  puts "Running..."
+  puts "-" * 40
   system(binary)
-  exit_code = $?.exitstatus
-  puts "─" * 40
-  puts "Exit code: #{exit_code}"
+  code = $?.exitstatus
+  puts "-" * 40
+  puts "Exit: #{code}"
 end
 
 def cmd_test(args)
-  if args.include?("--all")
-    system("bash", "#{JUNO_ROOT}/run_juno_tests.sh")
+  Dir.chdir(JUNO_ROOT)
+  
+  if args.empty?
+    system("bash", "run_juno_tests.sh")
   else
-    # Run specific test
-    if args.empty?
-      system("bash", "#{JUNO_ROOT}/run_juno_tests.sh")
-    else
-      args.each do |test|
-        test_file = test.end_with?(".juno") ? test : "tests/#{test}.juno"
-        test_file = "tests/test_#{test}.juno" unless File.exist?(test_file)
-        
-        if File.exist?(test_file)
-          puts "Testing #{test_file}..."
-          binary = compile(test_file, { quiet: true, output: "test_output" })
-          system(binary)
-          if $?.exitstatus == 0
-            puts "\e[32m✓ PASS\e[0m"
-          else
-            puts "\e[31m✗ FAIL\e[0m (exit code: #{$?.exitstatus})"
-          end
-        else
-          puts "Test not found: #{test}"
-        end
+    args.each do |test|
+      test_file = "tests/test_#{test}.juno"
+      test_file = "tests/#{test}.juno" unless File.exist?(test_file)
+      test_file = test if test.end_with?(".juno")
+      
+      if File.exist?(test_file)
+        puts "Testing #{test_file}..."
+        binary = compile(test_file, { quiet: true, output: "test_out" })
+        system(binary)
+        puts $?.exitstatus == 0 ? "PASS" : "FAIL"
+      else
+        puts "Not found: #{test}"
       end
     end
   end
@@ -168,8 +176,6 @@ end
 def cmd_new(args)
   name = args[0] || "main"
   filename = name.end_with?(".juno") ? name : "#{name}.juno"
-  
-  # Create in user's directory
   filepath = File.expand_path(filename, USER_DIR)
   
   if File.exist?(filepath)
@@ -178,88 +184,75 @@ def cmd_new(args)
   end
   
   template = <<~JUNO
-    // #{filename} - Created with Juno
-    
-    fn main() {
+    fn main(): int {
         print("Hello, Juno!")
         return 0
     }
   JUNO
   
   File.write(filepath, template)
-  puts "\e[32m✓ Created #{filename}\e[0m"
+  puts "Created: #{filename}"
 end
 
 def cmd_version
-  puts "Juno Language Compiler v1.2.0"
-  puts "Target: Linux x64 ELF / Windows x64 PE"
-  puts "Features: Generics, OOP, Sockets, Hell Mode Obfuscation"
+  puts "Juno v1.6"
+  puts "Targets: Linux ELF, Windows PE (x86-64)"
 end
 
 def cmd_help
   puts <<~HELP
-  \e[1mJuno Language Compiler\e[0m
+  Juno Compiler
   
-  \e[33mUsage:\e[0m
-    juno <command> [options]
+  Usage: juno <command> [options]
   
-  \e[33mCommands:\e[0m
-    build <file.juno>    Compile to native binary
-    run <file.juno>      Compile and run
-    test [name]          Run tests
-    new <name>           Create new .juno file
-    version              Show version
-    help                 Show this help
+  Commands:
+    build <file>     Compile to binary
+    run <file>       Compile and run
+    test [name]      Run tests
+    new <name>       Create new file
+    version          Show version
+    help             Show this help
   
-  \e[33mBuild Options:\e[0m
-    -o <name>            Output binary name (default: output)
-    -q, --quiet          Quiet mode
-    --hell               Enable HELL MODE obfuscation (maximum)
-    --nightmare          Enable nightmare obfuscation
-    --obfuscate          Enable hard obfuscation
+  Build options:
+    -o <name>        Output name
+    -q               Quiet mode
+    --hell           Obfuscation (anti-RE)
   
-  \e[33mExamples:\e[0m
+  Examples:
     juno build hello.juno
     juno build app.juno -o myapp
-    juno build secret.juno --hell
-    juno run game.juno
-    juno test simple
+    juno run hello.juno
     juno new myproject
   
-  \e[33mInstall to PATH:\e[0m
-    echo 'export PATH="#{JUNO_ROOT}:$PATH"' >> ~/.bashrc
-    source ~/.bashrc
+  Update:
+    cd #{JUNO_ROOT} && git pull
   
   HELP
 end
 
 # Main
-USER_DIR = Dir.pwd
-Dir.chdir(JUNO_ROOT)
-
 command = ARGV[0]
-args = ARGV[1..]
+args = ARGV[1..] || []
 
 case command
 when "build", "b"
-  cmd_build(args || [])
+  cmd_build(args)
 when "run", "r"
-  cmd_run(args || [])
+  cmd_run(args)
 when "test", "t"
-  cmd_test(args || [])
+  cmd_test(args)
 when "new", "n"
-  cmd_new(args || [])
+  cmd_new(args)
 when "version", "-v", "--version"
   cmd_version
 when "help", "-h", "--help", nil
   cmd_help
 else
-  # If it's a .juno file, build and run it
   if command&.end_with?(".juno")
-    cmd_run([command] + (args || []))
+    cmd_run([command] + args)
   else
-    puts "Unknown command: #{command}"
-    puts "Run 'juno help' for usage"
+    puts "Unknown: #{command}"
+    puts "Run: juno help"
     exit 1
   end
 end
