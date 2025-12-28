@@ -97,11 +97,11 @@ class Lexer
         cursor += 1
         @column += 1
       when /\A</
-        add_token(:operator, '<')
+        add_token(:langle, '<')
         cursor += 1
         @column += 1
       when /\A>/
-        add_token(:operator, '>')
+        add_token(:rangle, '>')
         cursor += 1
         @column += 1
       when /\A&/

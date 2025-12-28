@@ -113,6 +113,17 @@ module ParserStatements
       name = "#{name}.#{method}"
     end
     
+    # Generic type parameters: fn identity<T>(x) { ... }
+    type_params = []
+    if match?(:langle)
+      consume(:langle)
+      until match?(:rangle)
+        type_params << consume_ident
+        consume_symbol(',') if match_symbol?(',')
+      end
+      consume(:rangle)
+    end
+    
     consume_symbol('(')
     params = []
     param_types = {}
@@ -146,6 +157,7 @@ module ParserStatements
     params.unshift("self") if name.include?('.') && !params.include?("self")
     
     node = { type: :function_definition, name: name, params: params, body: body }
+    node[:type_params] = type_params unless type_params.empty?
     node[:param_types] = param_types unless param_types.empty?
     node[:return_type] = return_type if return_type
     node
@@ -154,6 +166,18 @@ module ParserStatements
   def parse_struct_definition
     consume_keyword('struct')
     name = consume_ident
+    
+    # Generic type parameters: struct Box<T> { ... }
+    type_params = []
+    if match?(:langle)
+      consume(:langle)
+      until match?(:rangle)
+        type_params << consume_ident
+        consume_symbol(',') if match_symbol?(',')
+      end
+      consume(:rangle)
+    end
+    
     consume_symbol('{')
     fields = []
     field_types = {}
@@ -170,6 +194,7 @@ module ParserStatements
     end
     consume_symbol('}')
     node = { type: :struct_definition, name: name, fields: fields }
+    node[:type_params] = type_params unless type_params.empty?
     node[:field_types] = field_types unless field_types.empty?
     node
   end
