@@ -13,6 +13,8 @@ STACK_SIZE = 65536
 FLAT_STACK_PTR = 0x90000
   include GeneratorLogic
   include GeneratorCalls
+  
+  attr_accessor :hell_mode
 
   def initialize(ast, target_os)
     @ast = ast

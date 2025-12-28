@@ -2,10 +2,18 @@ require 'fileutils'
 require_relative "src/lexer"
 require_relative "src/parser"
 require_relative "src/importer"
+require_relative "src/monomorphizer"
 require_relative "src/optimizer/optimizer"
 require_relative "src/codegen/native_generator"
 require_relative "src/preprocessor"
 require_relative "src/errors"
+
+$hell_mode = nil
+def enable_hell_mode(level = :hell)
+  require_relative "src/polymorph/hell_mode"
+  $hell_mode = HellMode.new(level)
+  puts "HELL MODE ACTIVATED - Level: #{level}"
+end
 
 def compile_linux(input_file)
   code = File.read(input_file)
@@ -30,17 +38,23 @@ def compile_linux(input_file)
     importer = Importer.new(File.dirname(input_file))
     ast = importer.resolve(ast, input_file)
 
-    puts "Step 5: Optimizing..."
+    puts "Step 5: Monomorphizing generics..."
+    monomorphizer = Monomorphizer.new(ast)
+    ast = monomorphizer.monomorphize
+
+    puts "Step 6: Optimizing..."
     optimizer = Optimizer.new(ast)
     ast = optimizer.optimize
 
-    puts "Step 6: Native Code Generation (Linux ELF)..."
+    puts "Step 7: Native Code Generation (Linux ELF)..."
     generator = NativeGenerator.new(ast, :linux)
+    generator.hell_mode = $hell_mode if $hell_mode
     FileUtils.mkdir_p("build")
     output_path = File.join("build", "output_linux")
     generator.generate(output_path)
     
     puts "Success! Binary generated: #{output_path}"
+    $hell_mode.report if $hell_mode
   rescue JunoError => e
     e.display
     exit 1
@@ -53,7 +67,11 @@ def compile_linux(input_file)
 end
 
 if ARGV.empty?
-  puts "Usage: ruby main_linux.rb <file.juno>"
+  puts "Usage: ruby main_linux.rb <file.juno> [--hell]"
 else
+  if ARGV.include?("--hell")
+    enable_hell_mode(:hell)
+    ARGV.delete("--hell")
+  end
   compile_linux(ARGV[0])
 end

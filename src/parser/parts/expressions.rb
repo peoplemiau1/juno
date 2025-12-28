@@ -61,8 +61,17 @@ module ParserExpressions
 
   def parse_comparison
     node = parse_shift
-    while match?(:operator) && ['==', '!=', '<', '>', '<=', '>='].include?(peek[:value])
-      op = consume(:operator)[:value]
+    while (match?(:operator) && ['==', '!=', '<=', '>='].include?(peek[:value])) ||
+          match?(:langle) || match?(:rangle)
+      if match?(:langle)
+        consume(:langle)
+        op = '<'
+      elsif match?(:rangle)
+        consume(:rangle)
+        op = '>'
+      else
+        op = consume(:operator)[:value]
+      end
       right = parse_shift
       node = { type: :binary_op, op: op, left: node, right: right }
     end
@@ -164,8 +173,34 @@ module ParserExpressions
       { type: :string_literal, value: consume(:string)[:value] }
     elsif match?(:ident)
       name = consume_ident
+      
+      # Check for generic type arguments: name<T, U>
+      type_args = []
+      if match?(:langle) && peek_next && peek_next[:type] == :ident
+        saved_tokens = @tokens.dup
+        consume(:langle)
+        type_arg = consume_ident
+        if match?(:rangle)
+          consume(:rangle)
+          if match_symbol?('(') || !match?(:langle)
+            type_args << type_arg
+          else
+            @tokens = saved_tokens
+          end
+        elsif match_symbol?(',')
+          type_args << type_arg
+          while match_symbol?(',')
+            consume_symbol(',')
+            type_args << consume_ident
+          end
+          consume(:rangle)
+        else
+          @tokens = saved_tokens
+        end
+      end
+      
       if match_symbol?('(')
-        parse_fn_call_at_ident(name)
+        parse_fn_call_at_ident(name, type_args)
       elsif match?(:lbracket)
         # Array access: arr[i]
         consume(:lbracket)
@@ -173,7 +208,9 @@ module ParserExpressions
         consume(:rbracket)
         { type: :array_access, name: name, index: index }
       else
-        { type: :variable, name: name }
+        node = { type: :variable, name: name }
+        node[:type_args] = type_args unless type_args.empty?
+        node
       end
     elsif match_symbol?('(')
       consume_symbol('(')
@@ -193,7 +230,7 @@ module ParserExpressions
     end
   end
 
-  def parse_fn_call_at_ident(name)
+  def parse_fn_call_at_ident(name, type_args = [])
     consume_symbol('(')
     args = []
     until match_symbol?(')')
@@ -201,7 +238,9 @@ module ParserExpressions
       consume_symbol(',') if match_symbol?(',')
     end
     consume_symbol(')')
-    { type: :fn_call, name: name, args: args }
+    node = { type: :fn_call, name: name, args: args }
+    node[:type_args] = type_args unless type_args.empty?
+    node
   end
 
   def parse_method_call(receiver_node, method_name)
