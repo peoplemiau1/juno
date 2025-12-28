@@ -11,7 +11,7 @@ module GeneratorLogic
        eval_expression(node[:expression])
        # Restore callee-saved registers before return
        @emitter.pop_callee_saved(@ctx.used_callee_saved) unless @ctx.used_callee_saved.empty?
-       @emitter.emit_epilogue(256)
+       @emitter.emit_epilogue(@stack_size || 256)
     when :if_statement
        gen_if(node)
     when :while_statement
