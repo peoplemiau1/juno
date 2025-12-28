@@ -1,222 +1,257 @@
 #!/usr/bin/env ruby
-# Juno CLI - Compiler and Interpreter
+# Juno Language CLI
+# Usage: juno <command> [options]
 
-require_relative "src/lexer"
-require_relative "src/parser"
+require 'fileutils'
 
-class JunoInterpreter
-  def initialize(ast)
-    @ast = ast
-    @functions = {}
-    @structs = {}
-    @globals = {}
-  end
+JUNO_ROOT = File.dirname(File.realpath(__FILE__))
 
-  def run
-    # Register all functions and structs
-    @ast.each do |node|
-      case node[:type]
-      when :function_definition
-        @functions[node[:name]] = node
-      when :struct_definition
-        @structs[node[:name]] = node
-      end
-    end
-
-    # Call main
-    if @functions["main"]
-      call_function("main", [])
-    else
-      puts "Error: No main() function found"
-      exit 1
-    end
-  end
-
-  private
-
-  def call_function(name, args)
-    fn = @functions[name]
-    return builtin(name, args) if fn.nil?
-
-    # Create local scope
-    locals = {}
-    fn[:params].each_with_index { |p, i| locals[p] = args[i] }
-
-    # Execute body
-    execute_block(fn[:body], locals)
-  end
-
-  def builtin(name, args)
-    case name
-    when "print"
-      val = args[0]
-      puts val.is_a?(String) ? val : val.to_s
-      0
-    when "len"
-      args[0].is_a?(Array) ? args[0].length : args[0].to_s.length
-    else
-      puts "Error: Unknown function '#{name}'"
-      exit 1
-    end
-  end
-
-  def execute_block(body, locals)
-    result = 0
-    body.each do |node|
-      result = execute(node, locals)
-      return result if node[:type] == :return
-    end
-    result
-  end
-
-  def execute(node, locals)
-    case node[:type]
-    when :assignment
-      val = evaluate(node[:expression], locals)
-      if node[:name].include?('.')
-        # Struct member
-        parts = node[:name].split('.')
-        locals[parts[0]][parts[1]] = val
-      else
-        locals[node[:name]] = val
-      end
-      val
-    when :array_decl
-      locals[node[:name]] = Array.new(node[:size], 0)
-      0
-    when :array_assign
-      idx = evaluate(node[:index], locals)
-      val = evaluate(node[:value], locals)
-      locals[node[:name]][idx] = val
-      val
-    when :if_statement
-      cond = evaluate(node[:condition], locals)
-      if cond != 0
-        execute_block(node[:body], locals)
-      elsif node[:else_body]
-        execute_block(node[:else_body], locals)
-      end
-    when :while_statement
-      while evaluate(node[:condition], locals) != 0
-        execute_block(node[:body], locals)
-      end
-    when :for_statement
-      execute(node[:init], locals)
-      while evaluate(node[:condition], locals) != 0
-        execute_block(node[:body], locals)
-        execute(node[:update], locals)
-      end
-    when :increment
-      locals[node[:name]] += (node[:op] == "++" ? 1 : -1)
-    when :return
-      evaluate(node[:expression], locals)
-    when :fn_call
-      args = node[:args].map { |a| evaluate(a, locals) }
-      call_function(node[:name], args)
-    else
-      0
-    end
-  end
-
-  def evaluate(expr, locals)
-    case expr[:type]
-    when :literal
-      expr[:value]
-    when :string_literal
-      expr[:value]
-    when :variable
-      name = expr[:name]
-      if @structs.key?(name)
-        # Create struct instance
-        fields = {}
-        @structs[name][:fields].each { |f| fields[f] = 0 }
-        fields
-      else
-        locals[name] || 0
-      end
-    when :array_access
-      idx = evaluate(expr[:index], locals)
-      locals[expr[:name]][idx]
-    when :binary_op
-      left = evaluate(expr[:left], locals)
-      right = evaluate(expr[:right], locals)
-      case expr[:op]
-      when "+" then left + right
-      when "-" then left - right
-      when "*" then left * right
-      when "/" then left / right
-      when "==" then left == right ? 1 : 0
-      when "!=" then left != right ? 1 : 0
-      when "<" then left < right ? 1 : 0
-      when ">" then left > right ? 1 : 0
-      when "<=" then left <= right ? 1 : 0
-      when ">=" then left >= right ? 1 : 0
-      end
-    when :member_access
-      locals[expr[:receiver]][expr[:member]]
-    when :fn_call
-      args = expr[:args].map { |a| evaluate(a, locals) }
-      call_function(expr[:name], args)
-    else
-      0
-    end
-  end
-end
-
-def run_interpreter(file)
-  code = File.read(file)
-  lexer = Lexer.new(code, file)
-  tokens = lexer.tokenize
-  parser = Parser.new(tokens, file, code)
-  ast = parser.parse
-  
-  interpreter = JunoInterpreter.new(ast)
-  interpreter.run
-end
-
-def compile_native(file, target)
-  require_relative "src/codegen/native_generator"
+def load_compiler
+  require_relative "src/lexer"
+  require_relative "src/parser"
+  require_relative "src/importer"
+  require_relative "src/monomorphizer"
   require_relative "src/optimizer/optimizer"
+  require_relative "src/codegen/native_generator"
+  require_relative "src/errors"
+end
+
+$hell_mode = nil
+
+def enable_hell_mode(level = :hell)
+  require_relative "src/polymorph/hell_mode"
+  $hell_mode = HellMode.new(level)
+  puts "\e[31m🔥 HELL MODE ACTIVATED - Level: #{level}\e[0m"
+end
+
+def compile(input_file, options = {})
+  load_compiler
   
-  puts "Compiling..."
-  code = File.read(file)
-  lexer = Lexer.new(code, file)
+  output_name = options[:output] || "output"
+  target = options[:target] || :linux
+  
+  code = File.read(input_file)
+  
+  puts "Compiling #{input_file}..." unless options[:quiet]
+  
+  lexer = Lexer.new(code, input_file)
   tokens = lexer.tokenize
-  parser = Parser.new(tokens, file, code)
+
+  parser = Parser.new(tokens, input_file, code)
   ast = parser.parse
-  
-  # Optimize AST
-  puts "Optimizing..."
+
+  importer = Importer.new(File.dirname(File.expand_path(input_file)))
+  ast = importer.resolve(ast, input_file)
+
+  monomorphizer = Monomorphizer.new(ast)
+  ast = monomorphizer.monomorphize
+
   optimizer = Optimizer.new(ast)
   ast = optimizer.optimize
-  
-  output = target == :windows ? "output.exe" : "output_linux"
+
   generator = NativeGenerator.new(ast, target)
-  generator.generate(output)
+  generator.hell_mode = $hell_mode if $hell_mode
   
-  puts "Success! Binary: #{output}"
+  FileUtils.mkdir_p("build")
+  output_path = File.join("build", output_name)
+  generator.generate(output_path)
+  
+  # Make binary executable
+  File.chmod(0755, output_path)
+  
+  unless options[:quiet]
+    puts "\e[32m✓ Success!\e[0m Binary: #{output_path}"
+    $hell_mode.report if $hell_mode
+  end
+  
+  output_path
 end
 
-# CLI
-case ARGV[0]
-when "run"
-  if ARGV[1]
-    run_interpreter(ARGV[1])
-  else
+def cmd_build(args)
+  options = {}
+  files = []
+  
+  args.each do |arg|
+    case arg
+    when "--hell"
+      enable_hell_mode(:hell)
+    when "--obfuscate"
+      enable_hell_mode(:hard)
+    when "--nightmare"
+      enable_hell_mode(:nightmare)
+    when "-o"
+      options[:output] = args[args.index(arg) + 1]
+    when "-q", "--quiet"
+      options[:quiet] = true
+    when /^-/
+      # skip option values
+    else
+      files << arg unless args[args.index(arg) - 1] == "-o"
+    end
+  end
+  
+  if files.empty?
+    puts "Error: No input file specified"
+    puts "Usage: juno build <file.juno> [options]"
+    exit 1
+  end
+  
+  compile(files[0], options)
+end
+
+def cmd_run(args)
+  options = { quiet: false }
+  hell = false
+  files = []
+  
+  args.each do |arg|
+    case arg
+    when "--hell"
+      hell = true
+    when /^-/
+      # ignore
+    else
+      files << arg
+    end
+  end
+  
+  if files.empty?
+    puts "Error: No input file specified"
     puts "Usage: juno run <file.juno>"
+    exit 1
   end
-when "build"
-  if ARGV[1]
-    target = ARGV[2] == "--windows" ? :windows : :linux
-    compile_native(ARGV[1], target)
+  
+  enable_hell_mode(:hell) if hell
+  
+  binary = compile(files[0], options)
+  puts "\e[36m▶ Running...\e[0m"
+  puts "─" * 40
+  system(binary)
+  exit_code = $?.exitstatus
+  puts "─" * 40
+  puts "Exit code: #{exit_code}"
+end
+
+def cmd_test(args)
+  if args.include?("--all")
+    system("bash", "#{JUNO_ROOT}/run_juno_tests.sh")
   else
-    puts "Usage: juno build <file.juno> [--windows]"
+    # Run specific test
+    if args.empty?
+      system("bash", "#{JUNO_ROOT}/run_juno_tests.sh")
+    else
+      args.each do |test|
+        test_file = test.end_with?(".juno") ? test : "tests/#{test}.juno"
+        test_file = "tests/test_#{test}.juno" unless File.exist?(test_file)
+        
+        if File.exist?(test_file)
+          puts "Testing #{test_file}..."
+          binary = compile(test_file, { quiet: true, output: "test_output" })
+          system(binary)
+          if $?.exitstatus == 0
+            puts "\e[32m✓ PASS\e[0m"
+          else
+            puts "\e[31m✗ FAIL\e[0m (exit code: #{$?.exitstatus})"
+          end
+        else
+          puts "Test not found: #{test}"
+        end
+      end
+    end
   end
+end
+
+def cmd_new(args)
+  name = args[0] || "main"
+  filename = name.end_with?(".juno") ? name : "#{name}.juno"
+  
+  if File.exist?(filename)
+    puts "Error: #{filename} already exists"
+    exit 1
+  end
+  
+  template = <<~JUNO
+    // #{filename} - Created with Juno
+    
+    fn main() {
+        print("Hello, Juno!")
+        return 0
+    }
+  JUNO
+  
+  File.write(filename, template)
+  puts "\e[32m✓ Created #{filename}\e[0m"
+end
+
+def cmd_version
+  puts "Juno Language Compiler v1.2.0"
+  puts "Target: Linux x64 ELF / Windows x64 PE"
+  puts "Features: Generics, OOP, Sockets, Hell Mode Obfuscation"
+end
+
+def cmd_help
+  puts <<~HELP
+  \e[1mJuno Language Compiler\e[0m
+  
+  \e[33mUsage:\e[0m
+    juno <command> [options]
+  
+  \e[33mCommands:\e[0m
+    build <file.juno>    Compile to native binary
+    run <file.juno>      Compile and run
+    test [name]          Run tests
+    new <name>           Create new .juno file
+    version              Show version
+    help                 Show this help
+  
+  \e[33mBuild Options:\e[0m
+    -o <name>            Output binary name (default: output)
+    -q, --quiet          Quiet mode
+    --hell               Enable HELL MODE obfuscation (maximum)
+    --nightmare          Enable nightmare obfuscation
+    --obfuscate          Enable hard obfuscation
+  
+  \e[33mExamples:\e[0m
+    juno build hello.juno
+    juno build app.juno -o myapp
+    juno build secret.juno --hell
+    juno run game.juno
+    juno test simple
+    juno new myproject
+  
+  \e[33mInstall to PATH:\e[0m
+    echo 'export PATH="#{JUNO_ROOT}:$PATH"' >> ~/.bashrc
+    source ~/.bashrc
+  
+  HELP
+end
+
+# Main
+Dir.chdir(JUNO_ROOT)
+
+command = ARGV[0]
+args = ARGV[1..]
+
+case command
+when "build", "b"
+  cmd_build(args || [])
+when "run", "r"
+  cmd_run(args || [])
+when "test", "t"
+  cmd_test(args || [])
+when "new", "n"
+  cmd_new(args || [])
+when "version", "-v", "--version"
+  cmd_version
+when "help", "-h", "--help", nil
+  cmd_help
 else
-  puts "Juno v1.1 - Systems Programming Language"
-  puts ""
-  puts "Usage:"
-  puts "  juno run <file.juno>              Run directly (interpreter)"
-  puts "  juno build <file.juno>            Compile to native ELF"
-  puts "  juno build <file.juno> --windows  Compile to native PE"
+  # If it's a .juno file, build and run it
+  if command&.end_with?(".juno")
+    cmd_run([command] + (args || []))
+  else
+    puts "Unknown command: #{command}"
+    puts "Run 'juno help' for usage"
+    exit 1
+  end
 end
