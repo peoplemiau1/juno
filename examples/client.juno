@@ -1,0 +1,30 @@
+// Простой TCP клиент на Juno
+// Запуск: ruby main_linux.rb examples/client.juno && ./build/output_linux
+
+fn main() {
+    print("Connecting to localhost:8080...")
+    
+    // Создаём сокет
+    let sock = socket()
+    
+    // Подключаемся к серверу
+    connect(sock, ip(127, 0, 0, 1), 8080)
+    
+    print("Connected! Sending message...")
+    
+    // Отправляем строку (длина вычисляется автоматически!)
+    send(sock, "Hello from Juno!")
+    
+    // Буфер для ответа
+    let buf[128]
+    
+    // Получаем ответ
+    let n = recv(sock, buf, 128)
+    
+    print("Received response!")
+    
+    // Закрываем сокет
+    close(sock)
+    
+    return 0
+}

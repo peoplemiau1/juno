@@ -1,0 +1,26 @@
+// Минимальный HTTP сервер на Juno
+// Отвечает "Hello from Juno!" на любой запрос
+// Тест: curl http://localhost:8080
+
+fn main() {
+    let server = socket()
+    bind(server, 8080)
+    listen(server)
+    
+    print("HTTP Server on http://localhost:8080")
+    
+    // Принимаем одно подключение
+    let client = accept(server)
+    
+    // Читаем запрос (игнорируем)
+    let buf[512]
+    recv(client, buf, 512)
+    
+    // Отправляем HTTP ответ
+    send(client, "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nHello from Juno!")
+    
+    close(client)
+    close(server)
+    
+    return 0
+}
