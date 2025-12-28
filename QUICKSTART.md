@@ -2,99 +2,92 @@
 
 ## Установка
 
-Требования:
-- Ruby 2.7+
-- Windows или Linux
-
 ```bash
-git clone https://github.com/yourusername/juno-lang
-cd juno-lang
+git clone https://github.com/user/juno.git
+cd juno
+./install.sh
+source ~/.bashrc
 ```
+
+Теперь команда `juno` доступна из любой директории!
 
 ## Первая программа
 
-Создайте файл `hello.juno`:
+```bash
+juno new hello
+```
+
+Создаётся файл `hello.juno`:
 
 ```juno
-fn main() {
+fn main(): int {
     print("Hello, Juno!")
     return 0
 }
 ```
 
-Скомпилируйте и запустите:
+Запуск:
 
 ```bash
-# Windows
-ruby main_native.rb hello.juno
-build\output.exe
-
-# Linux
-ruby main_linux.rb hello.juno
-./build/output_linux
+juno run hello.juno
 ```
 
-Или используйте быстрый скрипт:
+## CLI Команды
 
 ```bash
-# Windows
-build.bat hello.juno
-
-# Linux
-./build.sh hello.juno
+juno build app.juno           # Компиляция
+juno build app.juno -o myapp  # С именем
+juno build app.juno --hell    # С обфускацией
+juno run app.juno             # Компиляция + запуск
+juno test                     # Все тесты
+juno test simple              # Один тест
+juno new myproject            # Новый файл
+juno help                     # Справка
 ```
 
-## Примеры
+## Примеры кода
 
-### Переменные и арифметика
+### Переменные
 
 ```juno
-fn main() {
+fn main(): int {
     let x = 10
     let y = 20
     let sum = x + y
-    
-    print("Sum: ")
-    print(sum)
-    
-    return sum
+    print_int(sum)
+    return 0
 }
 ```
 
 ### Функции
 
 ```juno
-fn add(a, b) {
+fn add(a: int, b: int): int {
     return a + b
 }
 
-fn multiply(x, y) {
-    return x * y
-}
-
-fn main() {
-    let result = add(5, multiply(3, 4))
-    print(result)  // 17
+fn main(): int {
+    let result = add(5, 3)
+    print_int(result)
     return 0
 }
 ```
 
-### Циклы
+### Generics
 
 ```juno
-fn main() {
-    // For loop
-    for (i = 0; i < 10; i++) {
-        print(i)
-    }
-    
-    // While loop
-    let x = 0
-    while (x < 5) {
-        print(x)
-        x++
-    }
-    
+fn identity<T>(x: T): T {
+    return x
+}
+
+struct Box<T> {
+    value: T
+}
+
+fn main(): int {
+    let num = identity<int>(42)
+    let b = Box<int>
+    b.value = 100
     return 0
 }
 ```
@@ -103,26 +96,19 @@ fn main() {
 
 ```juno
 struct Point {
-    x
-    y
+    x: int
+    y: int
 }
 
-fn Point.init(px, py) {
+fn Point.init(px: int, py: int) {
     self.x = px
     self.y = py
 }
 
-fn Point.distance() {
-    return self.x * self.x + self.y * self.y
-}
-
-fn main() {
+fn main(): int {
     let p = Point
     p.init(3, 4)
-    
-    let dist = p.distance()
-    print(dist)  // 25
-    
+    print_int(p.x)
     return 0
 }
 ```
@@ -130,16 +116,11 @@ fn main() {
 ### Массивы
 
 ```juno
-fn main() {
+fn main(): int {
     let arr[5]
-    
     arr[0] = 10
     arr[1] = 20
-    arr[2] = 30
-    
-    print(arr[0])  // 10
-    print(arr[1])  // 20
-    
+    print_int(arr[0])
     return 0
 }
 ```
@@ -153,128 +134,95 @@ fn swap(a, b) {
     *b = temp
 }
 
-fn main() {
+fn main(): int {
     let x = 10
     let y = 20
-    
     swap(&x, &y)
-    
-    print(x)  // 20
-    print(y)  // 10
-    
+    print_int(x)  // 20
     return 0
 }
 ```
 
-### Импорт модулей
+### Циклы
 
 ```juno
-import "stdlib/std.juno"
-
-fn main() {
-    let x = abs(-42)
-    print(x)  // 42
+fn main(): int {
+    for (i = 0; i < 10; i++) {
+        print_int(i)
+    }
     
-    let y = pow(2, 10)
-    print(y)  // 1024
-    
+    let x = 0
+    while (x < 5) {
+        print_int(x)
+        x++
+    }
     return 0
 }
 ```
+
+## Hell Mode (Обфускация)
+
+Защита от реверс-инжиниринга:
+
+```bash
+juno build secret.juno --hell
+```
+
+Включает:
+- Полиморфные инструкции
+- Anti-debug
+- Мёртвый код
+- Шифрование строк
 
 ## Встроенные функции
 
-### I/O
-- `print(x)` - вывод числа/строки
-- `prints(s)` - вывод строки из переменной
-- `input()` - ввод строки
-- `len(x)` - длина массива/строки
+| Функция | Описание |
+|---------|----------|
+| `print(x)` | Вывод строки |
+| `print_int(n)` | Вывод числа |
+| `input()` | Ввод строки |
+| `len(x)` | Длина |
+| `alloc(n)` | Выделить память |
+| `free(ptr, n)` | Освободить |
+| `exit(code)` | Завершить |
+| `sleep(ms)` | Пауза |
+| `time()` | Unix timestamp |
+| `rand()` | Случайное число |
 
-### Строки
-- `concat(s1, s2)` - склеить строки
-- `substr(s, start, len)` - подстрока
-- `chr(n)` - число → символ
-- `ord(s)` - символ → число
-
-### Математика
-- `abs(n)` - модуль
-- `min(a, b)`, `max(a, b)` - минимум/максимум
-- `pow(base, exp)` - степень
-
-### Память
-- `alloc(size)` - выделить память
-- `free(ptr, size)` - освободить память
-
-### Утилиты
-- `exit(code)` - завершить программу
-- `sleep(ms)` - пауза
-- `time()` - unix timestamp
-- `rand()`, `srand(seed)` - случайные числа
-
-## Тестирование
-
-Запустите все тесты:
-
-```bash
-# Windows
-test.bat
-
-# Linux
-./test.sh
-```
-
-Запустите конкретный тест:
-
-```bash
-ruby main_native.rb tests/test_math.juno
-build\output.exe
-```
-
-## Демо программы
-
-Посмотрите примеры в папке `examples/`:
-
-```bash
-# Демонстрация всех возможностей
-build.bat demo_v1.juno
-
-# Простая игра
-build.bat examples/game.juno
-
-# Hello World
-build.bat hello.juno
-```
-
-## Отладка
-
-Используйте `insertC` для прямых ассемблерных вставок:
+## Сеть
 
 ```juno
-fn main() {
-    // xor rax, rax (обнулить RAX)
-    insertC { 0x48 0x31 0xc0 }
-    
-    // ret
-    insertC { 0xc3 }
-    
+fn main(): int {
+    let sock = socket()
+    bind(sock, 8080)
+    listen(sock)
+    let client = accept(sock)
+    send(client, "Hello!")
+    close(client)
+    close(sock)
     return 0
 }
 ```
 
-## Дальнейшее чтение
+## Тесты
 
-- [README.md](README.md) - Обзор проекта
-- [docs.md](docs.md) - Полная документация
-- [TODO.md](TODO.md) - Планы развития
-- [STRUCTURE.md](STRUCTURE.md) - Структура проекта
-- [RECOMMENDATIONS.md](RECOMMENDATIONS.md) - Рекомендации
+```bash
+juno test           # Все тесты
+juno test simple    # Конкретный тест
+```
 
-## Помощь
+## Примеры
 
-Нашли баг? Создайте issue на GitHub!
+```bash
+juno run examples/echo_server.juno   # TCP сервер
+juno run examples/client.juno        # TCP клиент
+juno run examples/http_hello.juno    # HTTP сервер
+juno run examples/hell_demo.juno --hell  # Обфускация
+```
 
-Хотите помочь? Смотрите [CONTRIBUTING.md](CONTRIBUTING.md)
+## Дальше
 
----
-
-Удачи с Juno!
+- [README.md](README.md) - Обзор
+- [docs/syntax.md](docs/syntax.md) - Синтаксис
+- [docs/builtins.md](docs/builtins.md) - Функции
+- [docs/threading.md](docs/threading.md) - Потоки
