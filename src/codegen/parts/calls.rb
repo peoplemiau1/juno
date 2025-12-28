@@ -9,6 +9,10 @@ require_relative "builtins/syscalls"
 require_relative "builtins/threads"
 require_relative "builtins/types"
 require_relative "builtins/https"
+require_relative "builtins/heap"
+require_relative "builtins/strings_v2"
+require_relative "builtins/file_api"
+require_relative "builtins/collections"
 
 module GeneratorCalls
   include BuiltinStrings
@@ -21,6 +25,10 @@ module GeneratorCalls
   include BuiltinThreads
   include BuiltinTypes
   include BuiltinHTTPS
+  include BuiltinHeap
+  include BuiltinStringsV2
+  include BuiltinFileAPI
+  include BuiltinCollections
 
   BUILTINS = {
     # I/O
@@ -94,6 +102,45 @@ module GeneratorCalls
     # HTTPS
     "curl_get" => :gen_curl_get,
     "curl_post" => :gen_curl_post,
+    
+    # Heap (malloc/free)
+    "malloc" => :gen_malloc,
+    "realloc" => :gen_realloc,
+    "heap_init" => :gen_heap_init,
+    
+    # String API v2
+    "str_len" => :gen_str_len,
+    "str_copy" => :gen_str_copy,
+    "str_cat" => :gen_str_cat,
+    "str_cmp" => :gen_str_cmp,
+    "str_find" => :gen_str_find,
+    "str_to_int" => :gen_str_to_int,
+    "int_to_str" => :gen_int_to_str,
+    "itoa" => :gen_int_to_str,
+    "atoi" => :gen_str_to_int,
+    "str_upper" => :gen_str_upper,
+    "str_lower" => :gen_str_lower,
+    "str_trim" => :gen_str_trim,
+    
+    # File API
+    "file_open" => :gen_file_open,
+    "file_close" => :gen_file_close,
+    "file_read" => :gen_file_read,
+    "file_write" => :gen_file_write,
+    "file_writeln" => :gen_file_writeln,
+    "file_read_all" => :gen_file_read_all,
+    "file_exists" => :gen_file_exists,
+    "file_size" => :gen_file_size,
+    
+    # Collections (Vector)
+    "vec_new" => :gen_vec_new,
+    "vec_push" => :gen_vec_push,
+    "vec_pop" => :gen_vec_pop,
+    "vec_get" => :gen_vec_get,
+    "vec_set" => :gen_vec_set,
+    "vec_len" => :gen_vec_len,
+    "vec_cap" => :gen_vec_cap,
+    "vec_clear" => :gen_vec_clear,
     
     # mmap constants
     "PROT_READ" => :gen_PROT_READ,
