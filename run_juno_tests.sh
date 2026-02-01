@@ -47,6 +47,7 @@ POSITIVE_TESTS=(
   tests/test_all_features.juno
   tests/test_ptr_arith_and_str_plus.juno
   tests/test_file_io_wrappers.juno
+  tests/test_syscall_extended.juno
   tests/test_selfhost_lexer_smoke.juno
   tests/test_selfhost_parser_smoke.juno
   tests/test_selfhost_codegen_smoke.juno

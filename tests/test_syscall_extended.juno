@@ -1,0 +1,27 @@
+// tests/test_syscall_extended.juno - Verify enhanced syscall access
+
+fn main() {
+    // Syscall 9 is mmap(addr, len, prot, flags, fd, off)
+    // PROT_READ=1, PROT_WRITE=2 -> 3
+    // MAP_PRIVATE=2, MAP_ANONYMOUS=32 -> 34
+
+    let addr = syscall(9, 0, 4096, 3, 34, 0 - 1, 0)
+
+    if (addr > 0) {
+        prints("mmap success")
+
+        // Write to mapped memory
+        *addr = 42
+        if (*addr == 42) {
+            prints("memory write/read success")
+        }
+
+        // Munmap (syscall 11: addr, len)
+        syscall(11, addr, 4096)
+        prints("munmap success")
+    } else {
+        prints("mmap failed")
+    }
+
+    return 0
+}

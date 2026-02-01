@@ -143,6 +143,102 @@ module BuiltinHTTPS
     @emitter.bytes[parent_end + 1, 4] = [offset].pack("l<").bytes
   end
 
+  # https_request(method, url, headers, data)
+  def gen_https_request(node)
+    return unless @target_os == :linux
+    setup_https_data
+
+    # Save args to r12-r15
+    eval_expression(node[:args][0]) # method
+    @emitter.emit([0x49, 0x89, 0xc4]) # mov r12, rax
+    eval_expression(node[:args][1]) # url
+    @emitter.emit([0x49, 0x89, 0xc5]) # mov r13, rax
+    eval_expression(node[:args][2]) # headers
+    @emitter.emit([0x49, 0x89, 0xc6]) # mov r14, rax
+    eval_expression(node[:args][3]) # data
+    @emitter.emit([0x49, 0x89, 0xc7]) # mov r15, rax
+
+    # pipe
+    @emitter.emit([0x48, 0x83, 0xec, 0x10])
+    @emitter.emit([0x48, 0x89, 0xe7])
+    @emitter.emit([0xb8, 0x16, 0x00, 0x00, 0x00])
+    @emitter.emit([0x0f, 0x05])
+
+    # fork
+    @emitter.emit([0xb8, 0x39, 0x00, 0x00, 0x00])
+    @emitter.emit([0x0f, 0x05])
+
+    @emitter.emit([0x48, 0x85, 0xc0])
+    child_jmp = @emitter.current_pos
+    @emitter.emit([0x0f, 0x84, 0x00, 0x00, 0x00, 0x00])
+
+    # PARENT
+    @emitter.emit([0x8b, 0x7c, 0x24, 0x04])
+    @emitter.emit([0xb8, 0x03, 0x00, 0x00, 0x00])
+    @emitter.emit([0x0f, 0x05])
+
+    @emitter.emit([0x8b, 0x3c, 0x24])
+    @linker.add_data_patch(@emitter.current_pos + 2, "https_buf")
+    @emitter.emit([0x48, 0xbe, 0,0,0,0,0,0,0,0])
+    @emitter.emit([0xba, 0x00, 0x20, 0x00, 0x00])
+    @emitter.emit([0xb8, 0x00, 0x00, 0x00, 0x00])
+    @emitter.emit([0x0f, 0x05])
+
+    # Terminate buf
+    @emitter.emit([0x48, 0x8d, 0x1d])
+    @linker.add_data_patch(@emitter.current_pos, "https_buf")
+    @emitter.emit([0,0,0,0])
+    @emitter.emit([0x48, 0x01, 0xc3, 0xc6, 0x03, 0x00])
+
+    @emitter.emit([0x8b, 0x3c, 0x24])
+    @emitter.emit([0xb8, 0x03, 0x00, 0x00, 0x00])
+    @emitter.emit([0x0f, 0x05])
+
+    # wait
+    @emitter.emit([0x48, 0xc7, 0xc7, 0xff, 0xff, 0xff, 0xff])
+    @emitter.emit([0x48, 0x8d, 0x74, 0x24, 0x08])
+    @emitter.emit([0x31, 0xd2, 0x4d, 0x31, 0xd2, 0xb8, 0x3d, 0x00, 0x00, 0x00, 0x0f, 0x05])
+
+    @emitter.emit([0x48, 0x8d, 0x05])
+    @linker.add_data_patch(@emitter.current_pos, "https_buf")
+    @emitter.emit([0,0,0,0, 0x48, 0x83, 0xc4, 0x10])
+    parent_end = @emitter.current_pos
+    @emitter.emit([0xe9, 0,0,0,0])
+
+    # CHILD
+    child_addr = @emitter.current_pos
+    offset = child_addr - child_jmp - 6
+    @emitter.bytes[child_jmp+2, 4] = [offset].pack("l<").bytes
+
+    @emitter.emit([0x8b, 0x7c, 0x24, 0x04, 0xbe, 0x01, 0,0,0, 0xb8, 0x21, 0,0,0, 0x0f, 0x05])
+
+    # argv: curl -s -X METHOD -H HEADERS -d DATA URL
+    @emitter.emit([0x48, 0x83, 0xec, 0x70]) # 112 bytes
+    @linker.add_data_patch(@emitter.current_pos+2, "curl_path")
+    @emitter.emit([0x48, 0xb8, 0,0,0,0,0,0,0,0, 0x48, 0x89, 0x04, 0x24])
+    @linker.add_data_patch(@emitter.current_pos+2, "curl_s")
+    @emitter.emit([0x48, 0xb8, 0,0,0,0,0,0,0,0, 0x48, 0x89, 0x44, 0x24, 0x08])
+    @linker.add_data_patch(@emitter.current_pos+2, "curl_X")
+    @emitter.emit([0x48, 0xb8, 0,0,0,0,0,0,0,0, 0x48, 0x89, 0x44, 0x24, 0x10])
+    @emitter.emit([0x4c, 0x89, 0x64, 0x24, 0x18]) # argv[3] = method
+    @linker.add_data_patch(@emitter.current_pos+2, "curl_H")
+    @emitter.emit([0x48, 0xb8, 0,0,0,0,0,0,0,0, 0x48, 0x89, 0x44, 0x24, 0x20])
+    @emitter.emit([0x4c, 0x89, 0x74, 0x24, 0x28]) # argv[5] = headers
+    @linker.add_data_patch(@emitter.current_pos+2, "curl_d")
+    @emitter.emit([0x48, 0xb8, 0,0,0,0,0,0,0,0, 0x48, 0x89, 0x44, 0x24, 0x30])
+    @emitter.emit([0x4c, 0x89, 0x7c, 0x24, 0x38]) # argv[7] = data
+    @emitter.emit([0x4c, 0x89, 0x6c, 0x24, 0x40]) # argv[8] = url
+    @emitter.emit([0x48, 0xc7, 0x44, 0x24, 0x48, 0,0,0,0]) # NULL
+
+    @linker.add_data_patch(@emitter.current_pos+2, "curl_path")
+    @emitter.emit([0x48, 0xbf, 0,0,0,0,0,0,0,0, 0x48, 0x89, 0xe6, 0x48, 0x31, 0xd2, 0xb8, 0x3b, 0,0,0, 0x0f, 0x05])
+    @emitter.emit([0xb8, 0x3c, 0,0,0, 0xbf, 0x01, 0,0,0, 0x0f, 0x05])
+
+    end_addr = @emitter.current_pos
+    offset = end_addr - parent_end - 5
+    @emitter.bytes[parent_end + 1, 4] = [offset].pack("l<").bytes
+  end
+
   # curl_post(url, data) - HTTP POST
   # Returns response in buffer
   def gen_curl_post(node)
