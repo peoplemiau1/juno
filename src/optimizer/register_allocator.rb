@@ -5,7 +5,8 @@ require 'set'
 
 class RegisterAllocator
   # Available general-purpose registers for allocation (excluding RAX, RSP, RBP)
-  ALLOCATABLE_REGS = [:rbx, :r10, :r12, :r13, :r14, :r15]
+  # We use only callee-saved registers to ensure they are preserved across calls.
+  ALLOCATABLE_REGS = [:rbx, :r12, :r13, :r14, :r15]
 
   def initialize
     @var_to_reg = {}      # variable name -> register

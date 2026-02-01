@@ -1,0 +1,36 @@
+// tests/test_list_v2.juno - Test dynamic List structure
+
+import "../stdlib/std.juno"
+
+fn main() {
+    let list = List
+    list.init(2)
+
+    list.add(10)
+    list.add(20)
+    list.add(30) // Should trigger realloc
+
+    let size = list.size()
+    let v0 = list.get(0)
+    let v1 = list.get(1)
+    let v2 = list.get(2)
+
+    print(size)
+    print(v0)
+    print(v1)
+    print(v2)
+
+    if (size == 3) {
+        if (v0 == 10) {
+            if (v1 == 20) {
+                if (v2 == 30) {
+                    prints("List test SUCCESS")
+                    return 0
+                }
+            }
+        }
+    }
+
+    prints("List test FAILED")
+    return 1
+}

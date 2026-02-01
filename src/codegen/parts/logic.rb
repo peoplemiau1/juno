@@ -311,9 +311,14 @@ module GeneratorLogic
        exit 1
     end
     f_off = @ctx.structs[st][:fields][f]
-    off = @ctx.variables[v]
 
-    @emitter.mov_reg_stack_val(CodeEmitter::REG_RAX, off)
+    if @ctx.in_register?(v)
+      reg = CodeEmitter.reg_code(@ctx.get_register(v))
+      @emitter.mov_rax_from_reg(reg)
+    else
+      off = @ctx.variables[v]
+      @emitter.mov_reg_stack_val(CodeEmitter::REG_RAX, off)
+    end
     @emitter.mov_rax_mem(f_off)
   end
 
@@ -325,10 +330,16 @@ module GeneratorLogic
         exit 1
      end
      f_off = @ctx.structs[st][:fields][f]
-     off = @ctx.variables[v]
 
-     @emitter.mov_r11_rax
-     @emitter.mov_reg_stack_val(CodeEmitter::REG_RAX, off)
+     @emitter.mov_r11_rax # R11 = value
+
+     if @ctx.in_register?(v)
+       reg = CodeEmitter.reg_code(@ctx.get_register(v))
+       @emitter.mov_rax_from_reg(reg)
+     else
+       off = @ctx.variables[v]
+       @emitter.mov_reg_stack_val(CodeEmitter::REG_RAX, off)
+     end
      @emitter.mov_mem_r11(f_off)
   end
 
@@ -398,9 +409,14 @@ module GeneratorLogic
       @emitter.add_rax_rdx # rax = base + index*8
     else
       # It's a pointer parameter
-      off = @ctx.get_variable_offset(name)
       @emitter.emit([0x50]) # push rax
-      @emitter.mov_reg_stack_val(CodeEmitter::REG_RAX, off)
+      if @ctx.in_register?(name)
+        reg = CodeEmitter.reg_code(@ctx.get_register(name))
+        @emitter.mov_rax_from_reg(reg)
+      else
+        off = @ctx.get_variable_offset(name)
+        @emitter.mov_reg_stack_val(CodeEmitter::REG_RAX, off)
+      end
       @emitter.emit([0x5a]) # pop rdx
       @emitter.add_rax_rdx
     end
@@ -428,9 +444,14 @@ module GeneratorLogic
       @emitter.emit([0x5a]) # pop rdx
       @emitter.add_rax_rdx
     else
-      off = @ctx.get_variable_offset(name)
       @emitter.emit([0x50]) # push rax
-      @emitter.mov_reg_stack_val(CodeEmitter::REG_RAX, off)
+      if @ctx.in_register?(name)
+        reg = CodeEmitter.reg_code(@ctx.get_register(name))
+        @emitter.mov_rax_from_reg(reg)
+      else
+        off = @ctx.get_variable_offset(name)
+        @emitter.mov_reg_stack_val(CodeEmitter::REG_RAX, off)
+      end
       @emitter.emit([0x5a]) # pop rdx
       @emitter.add_rax_rdx
     end
@@ -488,9 +509,14 @@ module GeneratorLogic
         @emitter.emit([0x5a]) # pop rdx
         @emitter.add_rax_rdx
       else
-        off = @ctx.get_variable_offset(name)
         @emitter.emit([0x50]) # push rax
-        @emitter.mov_reg_stack_val(CodeEmitter::REG_RAX, off)
+        if @ctx.in_register?(name)
+          reg = CodeEmitter.reg_code(@ctx.get_register(name))
+          @emitter.mov_rax_from_reg(reg)
+        else
+          off = @ctx.get_variable_offset(name)
+          @emitter.mov_reg_stack_val(CodeEmitter::REG_RAX, off)
+        end
         @emitter.emit([0x5a]) # pop rdx
         @emitter.add_rax_rdx
       end
