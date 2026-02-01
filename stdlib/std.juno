@@ -240,6 +240,7 @@ struct List {
 }
 
 fn List.init(capacity: int) {
+    if capacity <= 0 { capacity = 1 }
     self.data = malloc(capacity * 8)
     self.len = 0
     self.cap = capacity
