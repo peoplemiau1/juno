@@ -40,17 +40,17 @@ module GeneratorLogic
       st_size = @ctx.structs[st_name][:size]
        @ctx.stack_ptr += st_size
        d_off = @ctx.stack_ptr
-       
+
        var_off = @ctx.declare_variable(node[:name])
        @ctx.var_types[node[:name]] = st_name
        # Mark as PTR!
        @ctx.var_is_ptr[node[:name]] = true
-       
+
        @emitter.lea_reg_stack(CodeEmitter::REG_RAX, d_off)
        @emitter.mov_stack_reg_val(var_off, CodeEmitter::REG_RAX)
        return
     end
-    
+
     # 2. Assign
     eval_expression(node[:expression])
     if node[:name].include?('.')
@@ -60,7 +60,7 @@ module GeneratorLogic
        if node[:var_type]
          @ctx.var_types[node[:name]] = node[:var_type]
        end
-       
+
        # Check if variable is in a register
        if @ctx.in_register?(node[:name])
          reg = CodeEmitter.reg_code(@ctx.get_register(node[:name]))
@@ -75,22 +75,22 @@ module GeneratorLogic
   def gen_if(node)
     eval_expression(node[:condition])
     @emitter.emit([0x48, 0x85, 0xc0])
-    
+
     patch_pos = @emitter.current_pos
     @emitter.je_rel32
-    
+
     node[:body].each { |c| process_node(c) }
-    
+
     end_patch_pos = nil
     if node[:else_body]
        end_patch_pos = @emitter.current_pos
        @emitter.jmp_rel32
     end
-    
+
     target = @emitter.current_pos
     offset = target - (patch_pos + 6)
     @emitter.bytes[patch_pos+2..patch_pos+5] = [offset].pack("l<").bytes
-    
+
     if node[:else_body]
        node[:else_body].each { |c| process_node(c) }
        target = @emitter.current_pos
@@ -102,24 +102,24 @@ module GeneratorLogic
   def gen_while(node)
     # Loop start
     loop_start = @emitter.current_pos
-    
+
     # Evaluate condition
     eval_expression(node[:condition])
     @emitter.emit([0x48, 0x85, 0xc0]) # test rax, rax
-    
+
     # Jump to end if zero
     patch_pos = @emitter.current_pos
     @emitter.je_rel32
-    
+
     # Body
     node[:body].each { |c| process_node(c) }
-    
+
     # Jump back to start
     jmp_back = @emitter.current_pos
     @emitter.jmp_rel32
     back_offset = loop_start - (jmp_back + 5)
     @emitter.bytes[jmp_back+1..jmp_back+4] = [back_offset].pack("l<").bytes
-    
+
     # Patch forward jump
     target = @emitter.current_pos
     offset = target - (patch_pos + 6)
@@ -150,17 +150,17 @@ module GeneratorLogic
         puts "Error: Undefined variable '#{node[:name]}'"
         exit 1
       end
-      
+
       # Load variable
       @emitter.mov_reg_stack_val(CodeEmitter::REG_RAX, off)
-      
+
       # Increment or decrement
       if node[:op] == "++"
         @emitter.emit([0x48, 0xff, 0xc0]) # inc rax
       else
         @emitter.emit([0x48, 0xff, 0xc8]) # dec rax
       end
-      
+
       # Store back
       @emitter.mov_stack_reg_val(off, CodeEmitter::REG_RAX)
     end
@@ -169,36 +169,36 @@ module GeneratorLogic
   def gen_for(node)
     # Init
     process_node(node[:init])
-    
+
     # Loop start
     loop_start = @emitter.current_pos
-    
+
     # Condition
     eval_expression(node[:condition])
     @emitter.emit([0x48, 0x85, 0xc0]) # test rax, rax
-    
+
     # Jump to end if zero
     patch_pos = @emitter.current_pos
     @emitter.je_rel32
-    
+
     # Body
     node[:body].each { |c| process_node(c) }
-    
+
     # Update
     process_node(node[:update])
-    
+
     # Jump back to start
     jmp_back = @emitter.current_pos
     @emitter.jmp_rel32
     back_offset = loop_start - (jmp_back + 5)
     @emitter.bytes[jmp_back+1..jmp_back+4] = [back_offset].pack("l<").bytes
-    
+
     # Patch forward jump
     target = @emitter.current_pos
     offset = target - (patch_pos + 6)
     @emitter.bytes[patch_pos+2..patch_pos+5] = [offset].pack("l<").bytes
   end
-  
+
   def eval_expression(expr)
     case expr[:type]
     when :literal
@@ -312,7 +312,7 @@ module GeneratorLogic
     end
     f_off = @ctx.structs[st][:fields][f]
     off = @ctx.variables[v]
-    
+
     @emitter.mov_reg_stack_val(CodeEmitter::REG_RAX, off)
     @emitter.mov_rax_mem(f_off)
   end
@@ -326,17 +326,17 @@ module GeneratorLogic
      end
      f_off = @ctx.structs[st][:fields][f]
      off = @ctx.variables[v]
-     
-     @emitter.mov_r11_rax 
+
+     @emitter.mov_r11_rax
      @emitter.mov_reg_stack_val(CodeEmitter::REG_RAX, off)
-     @emitter.mov_mem_r11(f_off) 
+     @emitter.mov_mem_r11(f_off)
   end
 
   # insertC { 0x48 0x31 0xc0 } - raw machine code injection
   def gen_insertC(node)
     content = node[:content].strip
     bytes = []
-    
+
     # Parse hex bytes: "0x48 0x31 0xc0" or "48 31 c0" or comma-separated
     content.split(/[\s,]+/).each do |token|
       next if token.empty?
@@ -344,7 +344,7 @@ module GeneratorLogic
       hex = token.sub(/^0x/i, '')
       bytes << hex.to_i(16)
     end
-    
+
     @emitter.emit(bytes) unless bytes.empty?
   end
 
@@ -353,20 +353,20 @@ module GeneratorLogic
   def gen_array_decl(node)
     name = node[:name]
     size = node[:size]
-    
+
     # Declare array in context (allocates stack space)
     arr_info = @ctx.declare_array(name, size)
-    
+
     # Initialize all elements to zero
     # xor rax, rax
     @emitter.emit([0x48, 0x31, 0xc0])
-    
+
     # Store 0 to each element
     size.times do |i|
       element_offset = arr_info[:base_offset] - (i * 8)
       @emitter.mov_stack_reg_val(element_offset, CodeEmitter::REG_RAX)
     end
-    
+
     # Store pointer to arr[0] in the variable
     @emitter.lea_reg_stack(CodeEmitter::REG_RAX, arr_info[:base_offset])
     @emitter.mov_stack_reg_val(arr_info[:ptr_offset], CodeEmitter::REG_RAX)
@@ -375,19 +375,19 @@ module GeneratorLogic
   # Array element assignment: arr[i] = value
   def gen_array_assign(node)
     name = node[:name]
-    
+
     # Evaluate value first, save to R11
     eval_expression(node[:value])
     @emitter.mov_r11_rax
-    
+
     # Evaluate index
     eval_expression(node[:index])
     # RAX = index
-    
+
     # Compute address: base_ptr + index * 8
     # First, multiply index by 8 (shift left 3)
     @emitter.emit([0x48, 0xc1, 0xe0, 0x03]) # shl rax, 3
-    
+
     # Load base pointer
     arr_info = @ctx.get_array(name)
     if arr_info
@@ -404,7 +404,7 @@ module GeneratorLogic
       @emitter.emit([0x5a]) # pop rdx
       @emitter.add_rax_rdx
     end
-    
+
     # Store R11 to [RAX]
     @emitter.emit([0x4c, 0x89, 0x18]) # mov [rax], r11
   end
@@ -412,14 +412,14 @@ module GeneratorLogic
   # Array element access: arr[i]
   def gen_array_access(node)
     name = node[:name]
-    
+
     # Evaluate index
     eval_expression(node[:index])
     # RAX = index
-    
+
     # Multiply by 8
     @emitter.emit([0x48, 0xc1, 0xe0, 0x03]) # shl rax, 3
-    
+
     # Load base pointer
     arr_info = @ctx.get_array(name)
     if arr_info
@@ -434,7 +434,7 @@ module GeneratorLogic
       @emitter.emit([0x5a]) # pop rdx
       @emitter.add_rax_rdx
     end
-    
+
     # Load value from [RAX]
     @emitter.emit([0x48, 0x8b, 0x00]) # mov rax, [rax]
   end
@@ -443,10 +443,10 @@ module GeneratorLogic
   # Adds string to data section and loads address into RAX
   def gen_string_literal(node)
     content = node[:value]
-    
+
     # Add string to linker data section
     label = @linker.add_string(content)
-    
+
     # LEA RAX, [RIP + offset] - load address of string
     # We need to patch this later, so emit placeholder
     @emitter.emit([0x48, 0x8d, 0x05]) # lea rax, [rip + disp32]
@@ -457,7 +457,7 @@ module GeneratorLogic
   # Address-of: &x -> load address of variable into RAX
   def gen_address_of(expr)
     operand = expr[:operand]
-    
+
     if operand[:type] == :variable
       # If variable is in register, we need to spill it to stack first
       if @ctx.in_register?(operand[:name])
@@ -480,7 +480,7 @@ module GeneratorLogic
       name = operand[:name]
       eval_expression(operand[:index])
       @emitter.emit([0x48, 0xc1, 0xe0, 0x03]) # shl rax, 3
-      
+
       arr_info = @ctx.get_array(name)
       if arr_info
         @emitter.emit([0x50]) # push rax
@@ -513,21 +513,11 @@ module GeneratorLogic
     # Evaluate value first, save to R11
     eval_expression(node[:value])
     @emitter.mov_r11_rax
-    
-    # Load pointer value (address) from variable
-    target = node[:target]
-    if target[:type] == :variable
-      off = @ctx.get_variable_offset(target[:name])
-      unless off
-        puts "Error: Undefined variable '#{target[:name]}'"
-        exit 1
-      end
-      @emitter.mov_reg_stack_val(CodeEmitter::REG_RAX, off)
-    else
-      eval_expression(target)
-    end
+
+    # Load pointer value (address)
+    eval_expression(node[:target])
     # RAX = address
-    
+
     # Store R11 to [RAX]
     @emitter.emit([0x4c, 0x89, 0x18]) # mov [rax], r11
   end

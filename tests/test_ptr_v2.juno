@@ -14,5 +14,7 @@ fn main() {
     let x2 = x          // x2 should be 42
     
     // Return just val first
+    print(val)
+    print(x)
     return val
 }
