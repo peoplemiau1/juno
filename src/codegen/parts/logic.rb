@@ -10,7 +10,11 @@ module GeneratorLogic
     when :return
        eval_expression(node[:expression])
        # Restore callee-saved registers before return
-       @emitter.pop_callee_saved(@ctx.used_callee_saved) unless @ctx.used_callee_saved.empty?
+       used_regs = @ctx.used_callee_saved
+       padding = (used_regs.length % 2 == 1) ? 8 : 0
+
+       @emitter.pop_callee_saved(used_regs) unless used_regs.empty?
+       @emitter.emit_add_rsp(padding) if padding > 0
        @emitter.emit_epilogue(@stack_size || 256)
     when :if_statement
        gen_if(node)

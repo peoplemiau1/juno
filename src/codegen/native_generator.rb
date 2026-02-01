@@ -13,13 +13,13 @@ STACK_SIZE = 65536
 FLAT_STACK_PTR = 0x90000
   include GeneratorLogic
   include GeneratorCalls
-  
+
   attr_accessor :hell_mode
 
   def initialize(ast, target_os)
     @ast = ast
     @target_os = target_os
-    
+
     @ctx = CodegenContext.new
     @emitter = CodeEmitter.new
     @allocator = RegisterAllocator.new
@@ -31,7 +31,7 @@ FLAT_STACK_PTR = 0x90000
       end
     @linker = Linker.new(base_rva)
     @stack_size = STACK_SIZE
-    
+
     if target_os == :windows
       # Register hardcoded imports from PEBuilder
       @linker.register_import("GetStdHandle", 0x2060)
@@ -69,12 +69,12 @@ FLAT_STACK_PTR = 0x90000
     end
 
     has_main = @ast.any? { |n| n[:type] == :function_definition && n[:name] == "main" }
-    
+
     # IMPORTANT: Entry point must be generated FIRST (ELF/PE entry is at start of code)
     gen_entry_point
     gen_synthetic_main(top_level) unless has_main || top_level.empty?
     @ast.each { |n| gen_function(n) if n[:type] == :function_definition }
-    
+
     final_bytes = @linker.finalize(@emitter.bytes)
     builder =
       case @target_os
@@ -91,7 +91,7 @@ FLAT_STACK_PTR = 0x90000
     fields = {}
     field_types = node[:field_types] || {}
     packed = node[:packed] || false
-    
+
     if packed
       # Packed: no padding, use actual sizes
       offset = 0
@@ -108,7 +108,7 @@ FLAT_STACK_PTR = 0x90000
         offset += 8
       end
     end
-    
+
     @ctx.register_struct(node[:name], offset, fields)
   end
 
@@ -117,13 +117,13 @@ FLAT_STACK_PTR = 0x90000
     fields = {}
     field_types = node[:field_types] || {}
     max_size = 0
-    
+
     node[:fields].each do |f|
       fields[f] = field_types[f] || "i64"
       type_size = @ctx.type_size(fields[f])
       max_size = type_size if type_size > max_size
     end
-    
+
     max_size = 8 if max_size == 0
     @ctx.register_union(node[:name], max_size, fields)
   end
@@ -154,18 +154,20 @@ FLAT_STACK_PTR = 0x90000
     @linker.register_function(node[:name], @emitter.current_pos)
     @ctx.reset_for_function(node[:name])
     @allocator.reset
-    
+
     allocation_result = @allocator.allocate(node[:body])
     allocation_result[:allocations].each do |var_name, reg|
       @ctx.assign_register(var_name, reg)
     end
-    
+
     used_regs = @ctx.used_callee_saved
-    
+    padding = (used_regs.length % 2 == 1) ? 8 : 0
+
     @emitter.emit_prologue(@stack_size)
+    @emitter.emit_sub_rsp(padding) if padding > 0
     @emitter.push_callee_saved(used_regs) unless used_regs.empty?
     @emitter.mov_rax(0)
-    
+
     if node[:name].include?('.')
        @ctx.var_types["self"] = node[:name].split('.')[0]
        @ctx.var_is_ptr["self"] = true
@@ -199,8 +201,9 @@ FLAT_STACK_PTR = 0x90000
     end
 
     node[:body].each { |child| process_node(child) }
-    
+
     @emitter.pop_callee_saved(used_regs) unless used_regs.empty?
+    @emitter.emit_add_rsp(padding) if padding > 0
     @emitter.emit_epilogue(@stack_size)
   end
 
@@ -209,19 +212,22 @@ FLAT_STACK_PTR = 0x90000
     @linker.register_function("main", @emitter.current_pos)
     @ctx.reset_for_function("main")
     @allocator.reset
-    
+
     allocation_result = @allocator.allocate(nodes)
     allocation_result[:allocations].each do |var_name, reg|
       @ctx.assign_register(var_name, reg)
     end
-    
+
     used_regs = @ctx.used_callee_saved
-    
+    padding = (used_regs.length % 2 == 1) ? 8 : 0
+
     @emitter.emit_prologue(@stack_size)
+    @emitter.emit_sub_rsp(padding) if padding > 0
     @emitter.push_callee_saved(used_regs) unless used_regs.empty?
     @emitter.mov_rax(0)
     nodes.each { |child| process_node(child) }
     @emitter.pop_callee_saved(used_regs) unless used_regs.empty?
+    @emitter.emit_add_rsp(padding) if padding > 0
     @emitter.emit_epilogue(@stack_size)
   end
 end

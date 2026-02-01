@@ -3,8 +3,8 @@
 
 class RegisterAllocator
   # Available general-purpose registers for allocation (excluding RAX, RSP, RBP)
-  ALLOCATABLE_REGS = [:rbx, :r12, :r13, :r14, :r15]
-  
+  ALLOCATABLE_REGS = [:rbx, :r10, :r12, :r13, :r14, :r15]
+
   def initialize
     @var_to_reg = {}      # variable name -> register
     @reg_to_var = {}      # register -> variable name
@@ -25,16 +25,16 @@ class RegisterAllocator
   # Allocate registers for a function
   def allocate(body)
     analyze(body)
-    
+
     # Sort variables by live range length (shorter ranges first - easier to allocate)
     sorted_vars = @live_ranges.keys.sort_by do |var|
       range = @live_ranges[var]
       range[:last] - range[:first]
     end
-    
+
     sorted_vars.each do |var|
       next if var.include?('.')  # Skip struct members
-      
+
       if @free_regs.any?
         reg = @free_regs.shift
         @var_to_reg[var] = reg
@@ -43,7 +43,7 @@ class RegisterAllocator
         @spilled[var] = true
       end
     end
-    
+
     {
       allocations: @var_to_reg.dup,
       spilled: @spilled.keys,
@@ -82,7 +82,7 @@ class RegisterAllocator
 
   def collect_vars(node, idx)
     return unless node.is_a?(Hash)
-    
+
     case node[:type]
     when :assignment
       update_range(node[:name], idx)
@@ -119,7 +119,7 @@ class RegisterAllocator
 
   def update_range(var, idx)
     return if var.nil? || var.include?('.')
-    
+
     if @live_ranges[var]
       @live_ranges[var][:last] = idx
     else

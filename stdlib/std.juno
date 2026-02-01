@@ -230,3 +230,49 @@ fn os_write_file(path, buf, len) {
     close(fd)
     return n
 }
+
+// === High-level abstractions ===
+
+struct List {
+    data: ptr
+    len: int
+    cap: int
+}
+
+fn List.init(capacity: int) {
+    self.data = malloc(capacity * 8)
+    self.len = 0
+    self.cap = capacity
+}
+
+fn List.add(val: int) {
+    if self.len == self.cap {
+        let new_cap = self.cap * 2
+        self.data = realloc(self.data, new_cap * 8)
+        self.cap = new_cap
+    }
+    let p = self.data + (self.len * 8)
+    *p = val
+    self.len = self.len + 1
+}
+
+fn List.get(index: int): int {
+    if index < 0 { return 0 }
+    if index >= self.len { return 0 }
+    let p = self.data + (index * 8)
+    return *p
+}
+
+fn List.size(): int {
+    return self.len
+}
+
+fn str_empty(s: ptr): int {
+    if s == 0 { return 1 }
+    if *s == 0 { return 1 }
+    return 0
+}
+
+fn str_equals(s1: ptr, s2: ptr): int {
+    return str_cmp(s1, s2) == 0
+}
