@@ -1,0 +1,29 @@
+// tests/test_sized_types_complex.juno - Test sized types and casts
+
+fn main() {
+    let val = 1000
+
+    // Test u8 cast (truncate to 232)
+    let b = u8(val)
+    print(b)
+
+    // Test i8 cast
+    let b2 = i8(127)
+    let b3 = i8(128) // Should overflow to -128
+    print(b2)
+    print(b3)
+
+    // Test i32
+    let i = i32(1000000)
+    print(i)
+
+    if (b == 232) {
+        if (b2 == 127) {
+            prints("Casts test SUCCESS")
+            return 0
+        }
+    }
+
+    prints("Casts test FAILED")
+    return 1
+}

@@ -1,0 +1,23 @@
+// tests/test_https_extended_v2.juno - Test extended HTTPS interface
+
+fn main() {
+    let method = "GET"
+    let url = "https://google.com"
+    let headers = "User-Agent: Juno"
+    let data = ""
+
+    prints("Testing https_request...")
+    let response = https_request(method, url, headers, data)
+
+    if (response != 0) {
+        let len = str_len(response)
+        if (len > 0) {
+            prints("Response received!")
+            // Don't print full response to avoid noise
+            return 0
+        }
+    }
+
+    prints("Request failed")
+    return 1
+}
