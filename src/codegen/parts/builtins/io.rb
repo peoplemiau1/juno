@@ -56,6 +56,7 @@ module BuiltinIO
 
     args = node[:args] || []
     num_args = args.length
+    return if num_args < 1 || num_args > 7
 
     # Linux x86-64 syscall registers:
     # num: RAX

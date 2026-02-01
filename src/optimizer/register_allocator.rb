@@ -86,6 +86,7 @@ class RegisterAllocator
     @free_regs = ALLOCATABLE_REGS.dup
     @spilled.clear
     @live_ranges.clear
+    @address_taken.clear
   end
 
   private
@@ -125,11 +126,18 @@ class RegisterAllocator
     when :member_access
       update_range(node[:receiver], idx)
     when :address_of
-      if node[:operand][:type] == :variable
-        @address_taken << node[:operand][:name]
-        update_range(node[:operand][:name], idx)
+      op = node[:operand]
+      if op[:type] == :variable
+        @address_taken << op[:name]
+        update_range(op[:name], idx)
+      elsif op[:type] == :member_access
+        @address_taken << op[:receiver]
+        update_range(op[:receiver], idx)
+      elsif op[:type] == :array_access
+        @address_taken << op[:name]
+        update_range(op[:name], idx)
       else
-        collect_vars(node[:operand], idx)
+        collect_vars(op, idx)
       end
     when :dereference
       collect_vars(node[:operand], idx)

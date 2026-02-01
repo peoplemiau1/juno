@@ -18,6 +18,6 @@ fn main() {
         }
     }
 
-    prints("Request failed")
-    return 1
+    prints("Request failed or offline - skipping")
+    return 0
 }

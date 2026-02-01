@@ -483,8 +483,9 @@ module GeneratorLogic
       # If variable is in register, we need to spill it to stack first
       if @ctx.in_register?(operand[:name])
         reg = CodeEmitter.reg_code(@ctx.get_register(operand[:name]))
-        # Allocate stack slot and store there
-        off = @ctx.declare_variable("__addr_tmp_#{operand[:name]}")
+        # Use existing spill slot or declare new one
+        tmp_name = "__addr_tmp_#{operand[:name]}"
+        off = @ctx.variables[tmp_name] || @ctx.declare_variable(tmp_name)
         @emitter.mov_stack_reg_val(off, reg)
         @emitter.lea_reg_stack(CodeEmitter::REG_RAX, off)
       else
@@ -588,16 +589,16 @@ module GeneratorLogic
     eval_expression(offset_expr)
     @emitter.emit([0x48, 0xc1, 0xe0, 0x03]) # shl rax, 3
 
-    # Preserve offset in RDX, restore base to RBX
+    # Preserve offset in RDX, restore base to R11
     @emitter.mov_reg_reg(CodeEmitter::REG_RDX, CodeEmitter::REG_RAX)
-    @emitter.emit([0x5b]) # pop rbx (base)
+    @emitter.emit([0x41, 0x5b]) # pop r11 (base)
 
     if op == "+"
-      # rax = offset, rbx = base
-      @emitter.emit([0x48, 0x01, 0xd8]) # add rax, rbx  => rax = offset + base
+      # rax = offset, r11 = base
+      @emitter.emit([0x4c, 0x01, 0xd8]) # add rax, r11  => rax = offset + base
     else
-      # rdx = offset, rbx = base
-      @emitter.mov_reg_reg(CodeEmitter::REG_RAX, CodeEmitter::REG_RBX) # rax = base
+      # rdx = offset, r11 = base
+      @emitter.mov_reg_reg(CodeEmitter::REG_RAX, CodeEmitter::REG_R11) # rax = base
       @emitter.emit([0x48, 0x29, 0xd0]) # sub rax, rdx => base - offset
     end
   end
