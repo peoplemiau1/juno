@@ -148,6 +148,18 @@ class CodeEmitter
     # Divide RDX:RAX by RCX, result in RAX
     emit([0x48, 0xf7, 0xf9]) # idiv rcx
   end
+
+  # Modulo: RAX = RAX % RCX
+  def mod_rax_by_rdx
+    # Move divisor from RDX to RCX
+    emit([0x48, 0x89, 0xd1]) # mov rcx, rdx
+    # Sign-extend RAX into RDX:RAX
+    emit([0x48, 0x99]) # cqo
+    # Divide RDX:RAX by RCX, result in RAX, remainder in RDX
+    emit([0x48, 0xf7, 0xf9]) # idiv rcx
+    # Move remainder to RAX
+    emit([0x48, 0x89, 0xd0]) # mov rax, rdx
+  end
   
   def save_rax_to_rdx; emit([0x48, 0x89, 0xc2]); end
   

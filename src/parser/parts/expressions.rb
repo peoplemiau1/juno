@@ -100,7 +100,7 @@ module ParserExpressions
 
   def parse_term
     node = parse_unary
-    while match?(:star) || match_symbol?('/')
+    while match?(:star) || match_symbol?('/') || match_symbol?('%')
       if match?(:star)
         if peek_next && peek_next[:type] == :ident
           next_next = @tokens[2]
@@ -110,8 +110,10 @@ module ParserExpressions
         end
         consume(:star)
         op = '*'
+      elsif match_symbol?('/')
+        op = consume_symbol('/')[:value]
       else
-        op = consume_symbol[:value]
+        op = consume_symbol('%')[:value]
       end
       right = parse_unary
       node = { type: :binary_op, op: op, left: node, right: right }

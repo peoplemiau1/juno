@@ -208,13 +208,14 @@ module GeneratorLogic
       if @ctx.in_register?(expr[:name])
         reg = CodeEmitter.reg_code(@ctx.get_register(expr[:name]))
         @emitter.mov_rax_from_reg(reg)
-      else
-        off = @ctx.get_variable_offset(expr[:name])
-        unless off
-          puts "Error: Undefined variable '#{expr[:name]}'. Known: #{@ctx.variables.keys}"
-          exit 1
-        end
+      elsif @ctx.variables.key?(expr[:name])
+        off = @ctx.variables[expr[:name]]
         @emitter.mov_reg_stack_val(CodeEmitter::REG_RAX, off)
+      else
+        # Try to load as function pointer
+        @emitter.emit([0x48, 0x8d, 0x05]) # lea rax, [rip + disp32]
+        @linker.add_fn_patch(@emitter.current_pos, expr[:name])
+        @emitter.emit([0x00, 0x00, 0x00, 0x00])
       end
     when :binary_op
       if string_concat?(expr)
@@ -244,6 +245,8 @@ module GeneratorLogic
           else
             @emitter.div_rax_by_rdx
           end
+        when "%"
+          @emitter.mod_rax_by_rdx
         when "==", "!=", "<", ">", "<=", ">="
           @emitter.cmp_rax_rdx(expr[:op])
         when "&"

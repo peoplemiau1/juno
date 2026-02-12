@@ -1,0 +1,72 @@
+// tests/test_stdlib_ext.juno - Test expanded standard library
+
+import "../stdlib/std.juno"
+
+fn main() {
+    print("Testing Math Extension...")
+    if (is_prime(17) == 1) {
+        if (is_prime(20) == 0) {
+            print("is_prime: OK")
+        }
+    }
+
+    if (ipow(2, 10) == 1024) {
+        print("ipow: OK")
+    }
+
+    print("Testing String Extension...")
+    let src = "Juno Lang"
+    let dst = malloc(20)
+    str_copy(dst, src)
+    if (str_equals(dst, src)) {
+        print("str_copy: OK")
+    }
+
+    print("Testing Stack...")
+    let s = Stack
+    s.init()
+    s.push(10)
+    s.push(20)
+    if (s.peek() == 20) {
+        if (s.pop() == 20) {
+            if (s.pop() == 10) {
+                print("Stack: OK")
+            }
+        }
+    }
+
+    print("Testing Queue...")
+    let q = Queue
+    q.init()
+    q.enqueue(1)
+    q.enqueue(2)
+    if (q.dequeue() == 1) {
+        if (q.dequeue() == 2) {
+            print("Queue: OK")
+        }
+    }
+
+    print("Testing Bubble Sort...")
+    let arr = malloc(40) // 5 * 8
+    let p0 = ptr_add(arr, 0)
+    *p0 = 5
+    let p1 = ptr_add(arr, 1)
+    *p1 = 3
+    let p2 = ptr_add(arr, 2)
+    *p2 = 1
+    let p3 = ptr_add(arr, 3)
+    *p3 = 4
+    let p4 = ptr_add(arr, 4)
+    *p4 = 2
+
+    bubble_sort(arr, 5)
+
+    if (*p0 == 1) {
+        if (*p4 == 5) {
+            print("bubble_sort: OK")
+        }
+    }
+
+    print("ALL EXTENSION TESTS PASSED")
+    return 0
+}
