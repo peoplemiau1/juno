@@ -72,7 +72,13 @@ FLAT_STACK_PTR = 0x90000
 
     # IMPORTANT: Entry point must be generated FIRST (ELF/PE entry is at start of code)
     gen_entry_point
-    gen_synthetic_main(top_level) unless has_main || top_level.empty?
+    if has_main
+      # main already exists, will be generated in the loop below
+    elsif !top_level.empty?
+      gen_synthetic_main(top_level)
+    else
+      gen_synthetic_main([]) # empty program: generate empty main
+    end
     @ast.each { |n| gen_function(n) if n[:type] == :function_definition }
 
     final_bytes = @linker.finalize(@emitter.bytes)
@@ -83,6 +89,7 @@ FLAT_STACK_PTR = 0x90000
       else FlatBuilder.new(final_bytes)
       end
     File.binwrite(output_path, builder.build)
+    File.chmod(0755, output_path) if @target_os == :linux
   end
 
   private

@@ -8,9 +8,8 @@ fn Point.set(val) {
 }
 
 fn main() {
-    p = Point
+    let p = Point
     p.set(123)
-    output_member_int(p.x)
+    print(p.x)
+    return 0
 }
-
-main()

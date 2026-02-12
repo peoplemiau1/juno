@@ -6,7 +6,8 @@ require 'set'
 class RegisterAllocator
   # Available general-purpose registers for allocation (excluding RAX, RSP, RBP)
   # We use only callee-saved registers to ensure they are preserved across calls.
-  ALLOCATABLE_REGS = [:rbx, :r12, :r13, :r14, :r15]
+  # Note: rbx is excluded because it's used by many built-in functions.
+  ALLOCATABLE_REGS = []
 
   def initialize
     @var_to_reg = {}      # variable name -> register
@@ -34,7 +35,7 @@ class RegisterAllocator
     # Sort variables by live range length (shorter ranges first - easier to allocate)
     sorted_vars = @live_ranges.keys.sort_by do |var|
       range = @live_ranges[var]
-      range[:last] - range[:first]
+      range[:last] - (range[:first] || 0)
     end
 
     sorted_vars.each do |var|
@@ -95,7 +96,11 @@ class RegisterAllocator
 
     case node[:type]
     when :assignment
-      update_range(node[:name], idx)
+      if node[:name].include?('.')
+        update_range(node[:name].split('.')[0], idx)
+      else
+        update_range(node[:name], idx)
+      end
       collect_vars(node[:expression], idx)
     when :variable
       update_range(node[:name], idx)
@@ -103,6 +108,9 @@ class RegisterAllocator
       collect_vars(node[:left], idx)
       collect_vars(node[:right], idx)
     when :fn_call
+      if node[:name].include?('.')
+        update_range(node[:name].split('.')[0], idx)
+      end
       node[:args]&.each { |a| collect_vars(a, idx) }
     when :if_statement
       collect_vars(node[:condition], idx)
