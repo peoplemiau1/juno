@@ -1,15 +1,16 @@
 class Linker
   attr_reader :strings
-  
-  def initialize(base_rva)
+
+  def initialize(base_rva, arch = :x86_64)
     @base_rva = base_rva
-    @fn_patches = []   # { pos: int, name: string }
-    @data_patches = [] # { pos: int, id: string }
-    @import_patches = [] # { pos: int, name: string }
-    @functions = {}    # name -> rva
-    @imports = {}      # name -> rva
-    @data_pool = []    # { id: string, rva: int, data: bytes }
-    @strings = {}      # label -> { content: string, id: string }
+    @arch = arch
+    @fn_patches = []
+    @data_patches = []
+    @import_patches = []
+    @functions = {}
+    @imports = {}
+    @data_pool = []
+    @strings = {}
     @string_counter = 0
   end
 
@@ -25,84 +26,67 @@ class Linker
     @data_pool << { id: id, data: data }
   end
 
-  # Add string literal to data section with null terminator
-  # Returns the label/id for the string
   def add_string(content)
-    # Check if string already exists
     existing = @strings.values.find { |s| s[:content] == content }
     return existing[:id] if existing
-    
     label = "str_#{@string_counter}"
     @string_counter += 1
-    
-    # Add null terminator
     data_with_null = content + "\0"
     @strings[label] = { content: content, id: label }
     add_data(label, data_with_null)
-    
     label
   end
 
-  def add_fn_patch(pos, name)
-    @fn_patches << { pos: pos, name: name }
+  def add_fn_patch(pos, name, type = :rel32)
+    @fn_patches << { pos: pos, name: name, type: type }
   end
 
-  def add_data_patch(pos, id)
-    @data_patches << { pos: pos, id: id }
+  def add_data_patch(pos, id, type = :rel32)
+    @data_patches << { pos: pos, id: id, type: type }
   end
 
-  def add_import_patch(pos, name)
-    @import_patches << { pos: pos, name: name }
+  def add_import_patch(pos, name, type = :rel32)
+    @import_patches << { pos: pos, name: name, type: type }
   end
 
   def finalize(code_bytes)
-    # 1. Append data to code
     @data_pool.each do |item|
       item[:rva] = @base_rva + code_bytes.length
       code_bytes += item[:data].bytes
     end
 
-    # 2. Patch functions
-    @fn_patches.each do |patch|
-      target_addr = @functions[patch[:name]]
-      unless target_addr
-        puts "Error: Function '#{patch[:name]}' not found!"
-        exit 1
-      end
-      # Offset = Target - (InstrAddr + 4)
-      # InstrAddr = Base + PatchPos
-      instr_end_rva = @base_rva + patch[:pos] + 4
-      offset = target_addr - instr_end_rva
-      code_bytes[patch[:pos]..patch[:pos]+3] = [offset].pack("l<").bytes
-    end
-
-    # 3. Patch data
-    @data_patches.each do |patch|
-      item = @data_pool.find { |d| d[:id] == patch[:id] }
-      unless item
-        puts "Error: Data '#{patch[:id]}' not found!"
-        exit 1
-      end
-      instr_end_rva = @base_rva + patch[:pos] + 4
-      offset = item[:rva] - instr_end_rva
-      code_bytes[patch[:pos]..patch[:pos]+3] = [offset].pack("l<").bytes
-    end
-
-    # 4. Patch imports
-    @import_patches.each do |patch|
-      target_rva = @imports[patch[:name]]
-      unless target_rva
-        puts "Error: Import '#{patch[:name]}' not found!"
-        exit 1
-      end
-      # Indirect call: FF 15 disp32
-      # Instr is 6 bytes. Opcode (FF 15) is at patch-2.
-      # pos points to the 4-byte displacement.
-      instr_end_rva = @base_rva + patch[:pos] + 4
-      offset = target_rva - instr_end_rva
-      code_bytes[patch[:pos]..patch[:pos]+3] = [offset].pack("l<").bytes
-    end
+    @fn_patches.each { |p| patch_value(code_bytes, p, @functions[p[:name]]) }
+    @data_patches.each { |p| patch_value(code_bytes, p, @data_pool.find { |d| d[:id] == p[:id] }&.[](:rva)) }
+    @import_patches.each { |p| patch_value(code_bytes, p, @imports[p[:name]]) }
 
     code_bytes
+  end
+
+  def patch_value(code, patch, target_rva)
+    unless target_rva
+      puts "Error: Target not found for patch at #{patch[:pos]} (type: #{patch[:type]})"
+      exit 1
+    end
+
+    pos = patch[:pos]
+    instr_rva = @base_rva + pos
+
+    case patch[:type]
+    when :rel32
+      offset = target_rva - (instr_rva + 4)
+      code[pos..pos+3] = [offset].pack("l<").bytes
+    when :aarch64_bl
+      offset = (target_rva - instr_rva) / 4
+      instr = [code[pos..pos+3].pack("C*").unpack1("L<")].first
+      instr = (instr & 0xFC000000) | (offset & 0x3FFFFFF)
+      code[pos..pos+3] = [instr].pack("L<").bytes
+    when :aarch64_adr
+      offset = target_rva - instr_rva
+      instr = [code[pos..pos+3].pack("C*").unpack1("L<")].first
+      immlo = offset & 3
+      immhi = (offset >> 2) & 0x7FFFF
+      instr = (instr & 0x9F00001F) | (immlo << 29) | (immhi << 5)
+      code[pos..pos+3] = [instr].pack("L<").bytes
+    end
   end
 end

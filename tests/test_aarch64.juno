@@ -1,0 +1,5 @@
+// Simple AArch64 test
+fn main() {
+    let x = 42;
+    return x;
+}

@@ -1,53 +1,32 @@
 # Memory built-in functions for Juno
 module BuiltinMemory
-  # alloc(size) - allocate via mmap
   def gen_alloc(node)
     return unless @target_os == :linux
-    
-    eval_expression(node[:args][0])
-    @emitter.emit([0x48, 0x89, 0xc6]) # mov rsi, rax (size)
-    
-    # mmap(NULL, size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0)
-    # rdi = addr (NULL)
-    # rsi = size (already set)
-    # rdx = prot (PROT_READ|PROT_WRITE = 3)
-    # r10 = flags (MAP_PRIVATE|MAP_ANONYMOUS = 0x22)
-    # r8 = fd (-1)
-    # r9 = offset (0)
-    
-    @emitter.emit([0x48, 0x31, 0xff])                         # xor rdi, rdi
-    @emitter.emit([0xba, 0x03, 0x00, 0x00, 0x00])             # mov edx, 3
-    @emitter.emit([0x41, 0xba, 0x22, 0x00, 0x00, 0x00])       # mov r10d, 0x22
-    @emitter.emit([0x49, 0x83, 0xc8, 0xff])                   # or r8, -1
-    @emitter.emit([0x4d, 0x31, 0xc9])                         # xor r9, r9
-    @emitter.emit([0xb8, 0x09, 0x00, 0x00, 0x00])             # mov eax, 9
-    @emitter.emit([0x0f, 0x05])                               # syscall
+    eval_expression(node[:args][0]); @emitter.mov_reg_reg(@emitter.class::REG_RSI, @emitter.class::REG_RAX)
+    if @arch == :aarch64
+      @emitter.mov_rax(0); @emitter.mov_reg_reg(0, 0); @emitter.mov_rax(3); @emitter.mov_reg_reg(2, 0)
+      @emitter.mov_rax(0x22); @emitter.mov_reg_reg(3, 0); @emitter.mov_rax(0xFFFFFFFFFFFFFFFF); @emitter.mov_reg_reg(4, 0)
+      @emitter.mov_rax(0); @emitter.mov_reg_reg(5, 0); @emitter.mov_rax(222); @emitter.mov_reg_reg(8, 0); @emitter.emit32(0xd4000001)
+    else
+      @emitter.emit([0x48, 0x31, 0xff, 0xba, 0x03, 0x00, 0x00, 0x00, 0x41, 0xba, 0x22, 0x00, 0x00, 0x00, 0x49, 0x83, 0xc8, 0xff, 0x4d, 0x31, 0xc9, 0xb8, 0x09, 0x00, 0x00, 0x00, 0x0f, 0x05])
+    end
   end
 
-  # free(ptr) or free(ptr, size) - deallocate
-  def gen_free(node)
-    return unless @target_os == :linux
-    
-    args = node[:args] || []
-    return if args.empty?
-    
-    eval_expression(args[0])
-    
-    if args.length >= 2
-      # munmap with explicit size
-      @emitter.emit([0x50]) # push ptr
-      eval_expression(args[1])
-      @emitter.emit([0x48, 0x89, 0xc6]) # mov rsi, rax (size)
-      @emitter.emit([0x5f])             # pop rdi (ptr)
-      @emitter.emit([0xb8, 0x0b, 0x00, 0x00, 0x00]) # mov eax, 11 (munmap)
-      @emitter.emit([0x0f, 0x05])
-    else
-      # Simple free - get size from header at ptr-8
-      @emitter.emit([0x48, 0x83, 0xe8, 0x08]) # sub rax, 8
-      @emitter.emit([0x48, 0x89, 0xc7])       # mov rdi, rax
-      @emitter.emit([0x48, 0x8b, 0x37])       # mov rsi, [rdi] (size)
-      @emitter.emit([0xb8, 0x0b, 0x00, 0x00, 0x00]) # mov eax, 11
-      @emitter.emit([0x0f, 0x05])
-    end
+  def gen_ptr_add(node)
+    eval_expression(node[:args][0]); @emitter.push_reg(@emitter.class::REG_RAX)
+    eval_expression(node[:args][1]); @emitter.mov_reg_reg(@emitter.class::REG_RDX, @emitter.class::REG_RAX)
+    @emitter.pop_reg(@emitter.class::REG_RAX); @emitter.add_rax_rdx
+  end
+
+  def gen_ptr_sub(node)
+    eval_expression(node[:args][0]); @emitter.push_reg(@emitter.class::REG_RAX)
+    eval_expression(node[:args][1]); @emitter.mov_reg_reg(@emitter.class::REG_RDX, @emitter.class::REG_RAX)
+    @emitter.pop_reg(@emitter.class::REG_RAX); @emitter.sub_rax_rdx
+  end
+
+  def gen_ptr_diff(node)
+    eval_expression(node[:args][0]); @emitter.push_reg(@emitter.class::REG_RAX)
+    eval_expression(node[:args][1]); @emitter.mov_reg_reg(@emitter.class::REG_RDX, @emitter.class::REG_RAX)
+    @emitter.pop_reg(@emitter.class::REG_RAX); @emitter.sub_rax_rdx; @emitter.shr_rax_imm(3)
   end
 end

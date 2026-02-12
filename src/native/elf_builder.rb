@@ -1,14 +1,18 @@
 class ELFBuilder
-  def initialize(code_bytes)
+  def initialize(code_bytes, arch = :x86_64)
     @code = code_bytes
+    @arch = arch
   end
 
   def build
+    # Machine types: x86-64 is 0x3e, AArch64 is 0xb7
+    machine = (@arch == :aarch64) ? 0xb7 : 0x3e
+
     # ELF64 Header (64 bytes)
     header = "\x7fELF".b
     header << [2, 1, 1, 0].pack("C4") # 64-bit, LE, Vers 1, System V
     header << "\x00".b * 8
-    header << [2, 0x3e].pack("SS")    # ET_EXEC, x86-64
+    header << [2, machine].pack("SS") # ET_EXEC, Machine
     header << [1].pack("L")           # Version
     header << [0x401000].pack("Q")    # ENTRY POINT (aligned to 0x1000)
     header << [64].pack("Q")          # Program Header Start
@@ -22,8 +26,8 @@ class ELFBuilder
     ph << [0].pack("Q")               # Offset
     ph << [0x400000].pack("Q")        # VAddr (Base)
     ph << [0x400000].pack("Q")        # PAddr
-    
-    # КРИТИЧЕСКИЙ ФИКС: Размер должен включать заголовок (0x1000) и ВЕСЬ код+данные
+
+    # Размер должен включать заголовок (0x1000) и ВЕСЬ код+данные
     total_size = 0x1000 + @code.length
     ph << [total_size].pack("Q")      # FileSz
     ph << [total_size].pack("Q")      # MemSz
