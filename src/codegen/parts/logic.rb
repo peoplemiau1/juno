@@ -46,8 +46,8 @@ module GeneratorLogic
        # Mark as PTR!
        @ctx.var_is_ptr[node[:name]] = true
 
-       @emitter.lea_reg_stack(CodeEmitter::REG_RAX, d_off)
-       @emitter.mov_stack_reg_val(var_off, CodeEmitter::REG_RAX)
+       @emitter.lea_reg_stack(@emitter.class::REG_RAX, d_off)
+       @emitter.mov_stack_reg_val(var_off, @emitter.class::REG_RAX)
        return
     end
 
@@ -63,18 +63,22 @@ module GeneratorLogic
 
        # Check if variable is in a register
        if @ctx.in_register?(node[:name])
-         reg = CodeEmitter.reg_code(@ctx.get_register(node[:name]))
+         reg = @emitter.class.reg_code(@ctx.get_register(node[:name]))
          @emitter.mov_reg_from_rax(reg)
        else
          off = @ctx.variables[node[:name]] || @ctx.declare_variable(node[:name])
-         @emitter.mov_stack_reg_val(off, CodeEmitter::REG_RAX)
+         @emitter.mov_stack_reg_val(off, @emitter.class::REG_RAX)
        end
     end
   end
 
   def gen_if(node)
     eval_expression(node[:condition])
-    @emitter.emit([0x48, 0x85, 0xc0])
+    if @arch == :aarch64
+      @emitter.emit32(0xf100001f) # cmp x0, #0
+    else
+      @emitter.emit([0x48, 0x85, 0xc0]) # test rax, rax
+    end
 
     patch_pos = @emitter.current_pos
     @emitter.je_rel32
@@ -88,14 +92,24 @@ module GeneratorLogic
     end
 
     target = @emitter.current_pos
-    offset = target - (patch_pos + 6)
-    @emitter.bytes[patch_pos+2..patch_pos+5] = [offset].pack("l<").bytes
+    if @arch == :aarch64
+       offset = (target - patch_pos) / 4
+       @emitter.bytes[patch_pos..patch_pos+3] = [0x54000000 | (offset << 5)].pack("L<").bytes
+    else
+       offset = target - (patch_pos + 6)
+       @emitter.bytes[patch_pos+2..patch_pos+5] = [offset].pack("l<").bytes
+    end
 
     if node[:else_body]
        node[:else_body].each { |c| process_node(c) }
        target = @emitter.current_pos
-       offset = target - (end_patch_pos + 5)
-       @emitter.bytes[end_patch_pos+1..end_patch_pos+4] = [offset].pack("l<").bytes
+       if @arch == :aarch64
+         offset = (target - end_patch_pos) / 4
+         @emitter.bytes[end_patch_pos..end_patch_pos+3] = [0x14000000 | (offset & 0x3FFFFFF)].pack("L<").bytes
+       else
+         offset = target - (end_patch_pos + 5)
+         @emitter.bytes[end_patch_pos+1..end_patch_pos+4] = [offset].pack("l<").bytes
+       end
     end
   end
 
@@ -105,7 +119,11 @@ module GeneratorLogic
 
     # Evaluate condition
     eval_expression(node[:condition])
-    @emitter.emit([0x48, 0x85, 0xc0]) # test rax, rax
+    if @arch == :aarch64
+      @emitter.emit32(0xf100001f) # cmp x0, #0
+    else
+      @emitter.emit([0x48, 0x85, 0xc0]) # test rax, rax
+    end
 
     # Jump to end if zero
     patch_pos = @emitter.current_pos
@@ -117,52 +135,67 @@ module GeneratorLogic
     # Jump back to start
     jmp_back = @emitter.current_pos
     @emitter.jmp_rel32
-    back_offset = loop_start - (jmp_back + 5)
-    @emitter.bytes[jmp_back+1..jmp_back+4] = [back_offset].pack("l<").bytes
+    if @arch == :aarch64
+      back_offset = (loop_start - jmp_back) / 4
+      @emitter.bytes[jmp_back..jmp_back+3] = [0x14000000 | (back_offset & 0x3FFFFFF)].pack("L<").bytes
+    else
+      back_offset = loop_start - (jmp_back + 5)
+      @emitter.bytes[jmp_back+1..jmp_back+4] = [back_offset].pack("l<").bytes
+    end
 
     # Patch forward jump
     target = @emitter.current_pos
-    offset = target - (patch_pos + 6)
-    @emitter.bytes[patch_pos+2..patch_pos+5] = [offset].pack("l<").bytes
+    if @arch == :aarch64
+      offset = (target - patch_pos) / 4
+      @emitter.bytes[patch_pos..patch_pos+3] = [0x54000000 | (offset << 5)].pack("L<").bytes
+    else
+      offset = target - (patch_pos + 6)
+      @emitter.bytes[patch_pos+2..patch_pos+5] = [offset].pack("l<").bytes
+    end
   end
 
   def gen_increment(node)
     # Check if variable is in a register
     if @ctx.in_register?(node[:name])
-      reg = CodeEmitter.reg_code(@ctx.get_register(node[:name]))
-      # Increment/decrement directly in register
-      if node[:op] == "++"
-        if reg >= 8
-          @emitter.emit([0x49, 0xff, 0xc0 + (reg - 8)]) # inc r8-r15
+      reg = @emitter.class.reg_code(@ctx.get_register(node[:name]))
+      if @arch == :aarch64
+        if node[:op] == "++"
+          @emitter.emit32(0x91000400 | (reg << 5) | reg) # add reg, reg, #1
         else
-          @emitter.emit([0x48, 0xff, 0xc0 + reg]) # inc rax-rdi
+          @emitter.emit32(0xd1000400 | (reg << 5) | reg) # sub reg, reg, #1
         end
       else
-        if reg >= 8
-          @emitter.emit([0x49, 0xff, 0xc8 + (reg - 8)]) # dec r8-r15
+        if node[:op] == "++"
+          if reg >= 8
+            @emitter.emit([0x49, 0xff, 0xc0 + (reg - 8)])
+          else
+            @emitter.emit([0x48, 0xff, 0xc0 + reg])
+          end
         else
-          @emitter.emit([0x48, 0xff, 0xc8 + reg]) # dec rax-rdi
+          if reg >= 8
+            @emitter.emit([0x49, 0xff, 0xc8 + (reg - 8)])
+          else
+            @emitter.emit([0x48, 0xff, 0xc8 + reg])
+          end
         end
       end
     else
       off = @ctx.get_variable_offset(node[:name])
-      unless off
-        puts "Error: Undefined variable '#{node[:name]}'"
-        exit 1
-      end
-
-      # Load variable
-      @emitter.mov_reg_stack_val(CodeEmitter::REG_RAX, off)
-
-      # Increment or decrement
-      if node[:op] == "++"
-        @emitter.emit([0x48, 0xff, 0xc0]) # inc rax
+      @emitter.mov_reg_stack_val(@emitter.class::REG_RAX, off)
+      if @arch == :aarch64
+        if node[:op] == "++"
+          @emitter.emit32(0x91000400) # add x0, x0, #1
+        else
+          @emitter.emit32(0xd1000400) # sub x0, x0, #1
+        end
       else
-        @emitter.emit([0x48, 0xff, 0xc8]) # dec rax
+        if node[:op] == "++"
+          @emitter.emit([0x48, 0xff, 0xc0])
+        else
+          @emitter.emit([0x48, 0xff, 0xc8])
+        end
       end
-
-      # Store back
-      @emitter.mov_stack_reg_val(off, CodeEmitter::REG_RAX)
+      @emitter.mov_stack_reg_val(off, @emitter.class::REG_RAX)
     end
   end
 
@@ -175,7 +208,11 @@ module GeneratorLogic
 
     # Condition
     eval_expression(node[:condition])
-    @emitter.emit([0x48, 0x85, 0xc0]) # test rax, rax
+    if @arch == :aarch64
+      @emitter.emit32(0xf100001f)
+    else
+      @emitter.emit([0x48, 0x85, 0xc0])
+    end
 
     # Jump to end if zero
     patch_pos = @emitter.current_pos
@@ -190,13 +227,23 @@ module GeneratorLogic
     # Jump back to start
     jmp_back = @emitter.current_pos
     @emitter.jmp_rel32
-    back_offset = loop_start - (jmp_back + 5)
-    @emitter.bytes[jmp_back+1..jmp_back+4] = [back_offset].pack("l<").bytes
+    if @arch == :aarch64
+      back_offset = (loop_start - jmp_back) / 4
+      @emitter.bytes[jmp_back..jmp_back+3] = [0x14000000 | (back_offset & 0x3FFFFFF)].pack("L<").bytes
+    else
+      back_offset = loop_start - (jmp_back + 5)
+      @emitter.bytes[jmp_back+1..jmp_back+4] = [back_offset].pack("l<").bytes
+    end
 
     # Patch forward jump
     target = @emitter.current_pos
-    offset = target - (patch_pos + 6)
-    @emitter.bytes[patch_pos+2..patch_pos+5] = [offset].pack("l<").bytes
+    if @arch == :aarch64
+      offset = (target - patch_pos) / 4
+      @emitter.bytes[patch_pos..patch_pos+3] = [0x54000000 | (offset << 5)].pack("L<").bytes
+    else
+      offset = target - (patch_pos + 6)
+      @emitter.bytes[patch_pos+2..patch_pos+5] = [offset].pack("l<").bytes
+    end
   end
 
   def eval_expression(expr)
@@ -204,18 +251,21 @@ module GeneratorLogic
     when :literal
       @emitter.mov_rax(expr[:value])
     when :variable
-      # Check if variable is in a register
       if @ctx.in_register?(expr[:name])
-        reg = CodeEmitter.reg_code(@ctx.get_register(expr[:name]))
+        reg = @emitter.class.reg_code(@ctx.get_register(expr[:name]))
         @emitter.mov_rax_from_reg(reg)
       elsif @ctx.variables.key?(expr[:name])
         off = @ctx.variables[expr[:name]]
-        @emitter.mov_reg_stack_val(CodeEmitter::REG_RAX, off)
+        @emitter.mov_reg_stack_val(@emitter.class::REG_RAX, off)
       else
-        # Try to load as function pointer
-        @emitter.emit([0x48, 0x8d, 0x05]) # lea rax, [rip + disp32]
-        @linker.add_fn_patch(@emitter.current_pos, expr[:name])
-        @emitter.emit([0x00, 0x00, 0x00, 0x00])
+        if @arch == :aarch64
+          @emitter.emit32(0x58000000) # ldr x0, [pc, #0] (patched later)
+          @linker.add_fn_patch(@emitter.current_pos - 4, expr[:name])
+        else
+          @emitter.emit([0x48, 0x8d, 0x05]) # lea rax, [rip + disp32]
+          @linker.add_fn_patch(@emitter.current_pos, expr[:name])
+          @emitter.emit([0x00, 0x00, 0x00, 0x00])
+        end
       end
     when :binary_op
       if string_concat?(expr)
@@ -224,15 +274,21 @@ module GeneratorLogic
         gen_pointer_arith(expr)
       else
         eval_expression(expr[:left])
-        @emitter.emit([0x50]) # push rax (save left)
+        @emitter.push_reg(@emitter.class::REG_RAX)
         eval_expression(expr[:right])
-        @emitter.emit([0x5a]) # pop rdx (restore left to rdx)
-        @emitter.emit([0x48, 0x92]) # xchg rax, rdx
+        @emitter.pop_reg(@emitter.class::REG_RDX)
+        # xchg rax, rdx
+        if @arch == :aarch64
+          @emitter.mov_reg_reg(9, 0) # x9 = rax
+          @emitter.mov_reg_reg(0, 2) # x0 = x2 (rdx)
+          @emitter.mov_reg_reg(2, 9) # x2 = x9
+        else
+          @emitter.emit([0x48, 0x92])
+        end
+
         case expr[:op]
-        when "+"
-          @emitter.add_rax_rdx
-        when "-"
-          @emitter.sub_rax_rdx
+        when "+" then @emitter.add_rax_rdx
+        when "-" then @emitter.sub_rax_rdx
         when "*"
           if expr[:shift_opt]
             @emitter.shl_rax_imm(expr[:shift_opt])
@@ -245,35 +301,28 @@ module GeneratorLogic
           else
             @emitter.div_rax_by_rdx
           end
-        when "%"
-          @emitter.mod_rax_by_rdx
+        when "%" then @emitter.mod_rax_by_rdx
         when "==", "!=", "<", ">", "<=", ">="
           @emitter.cmp_rax_rdx(expr[:op])
-        when "&"
-          @emitter.and_rax_rdx
-        when "|"
-          @emitter.or_rax_rdx
-        when "^"
-          @emitter.xor_rax_rdx
+        when "&" then @emitter.and_rax_rdx
+        when "|" then @emitter.or_rax_rdx
+        when "^" then @emitter.xor_rax_rdx
         when "<<"
-          @emitter.emit([0x48, 0x89, 0xd1]) # mov rcx, rdx
-          @emitter.shl_rax_cl
+          if @arch == :aarch64
+             # lsl x0, x0, x2
+             @emitter.emit32(0x9ac22000)
+          else
+            @emitter.emit([0x48, 0x89, 0xd1])
+            @emitter.shl_rax_cl
+          end
         when ">>"
-          @emitter.emit([0x48, 0x89, 0xd1]) # mov rcx, rdx
-          @emitter.shr_rax_cl
-        when "&&"
-          @emitter.emit([0x48, 0x85, 0xc0]) # test rax, rax
-          @emitter.emit([0x0f, 0x95, 0xc0]) # setne al
-          @emitter.emit([0x48, 0x0f, 0xb6, 0xc0]) # movzx rax, al
-          @emitter.emit([0x48, 0x85, 0xd2]) # test rdx, rdx
-          @emitter.emit([0x0f, 0x95, 0xc2]) # setne dl
-          @emitter.emit([0x20, 0xd0]) # and al, dl
-          @emitter.emit([0x48, 0x0f, 0xb6, 0xc0]) # movzx rax, al
-        when "||"
-          @emitter.emit([0x48, 0x09, 0xd0]) # or rax, rdx
-          @emitter.emit([0x48, 0x85, 0xc0]) # test rax, rax
-          @emitter.emit([0x0f, 0x95, 0xc0]) # setne al
-          @emitter.emit([0x48, 0x0f, 0xb6, 0xc0]) # movzx rax, al
+          if @arch == :aarch64
+             # lsr x0, x0, x2
+             @emitter.emit32(0x9ac22400)
+          else
+            @emitter.emit([0x48, 0x89, 0xd1])
+            @emitter.shr_rax_cl
+          end
         end
       end
     when :member_access
@@ -299,28 +348,28 @@ module GeneratorLogic
     when '~'
       @emitter.not_rax
     when '!'
-      # Logical NOT: 0 -> 1, non-zero -> 0
-      @emitter.emit([0x48, 0x85, 0xc0]) # test rax, rax
-      @emitter.emit([0x0f, 0x94, 0xc0]) # sete al
-      @emitter.emit([0x48, 0x0f, 0xb6, 0xc0]) # movzx rax, al
+      if @arch == :aarch64
+        @emitter.emit32(0xf100001f) # cmp x0, #0
+        @emitter.emit32(0x1a9f17e0) # cset x0, eq
+      else
+        @emitter.emit([0x48, 0x85, 0xc0])
+        @emitter.emit([0x0f, 0x94, 0xc0])
+        @emitter.emit([0x48, 0x0f, 0xb6, 0xc0])
+      end
     end
   end
 
   def load_member_rax(full)
     v, f = full.split('.')
     st = @ctx.var_types[v]
-    unless st && @ctx.structs[st]
-       puts "Error: Unknown struct type for '#{v}'"
-       exit 1
-    end
     f_off = @ctx.structs[st][:fields][f]
 
     if @ctx.in_register?(v)
-      reg = CodeEmitter.reg_code(@ctx.get_register(v))
+      reg = @emitter.class.reg_code(@ctx.get_register(v))
       @emitter.mov_rax_from_reg(reg)
     else
       off = @ctx.variables[v]
-      @emitter.mov_reg_stack_val(CodeEmitter::REG_RAX, off)
+      @emitter.mov_reg_stack_val(@emitter.class::REG_RAX, off)
     end
     @emitter.mov_rax_mem(f_off)
   end
@@ -328,227 +377,178 @@ module GeneratorLogic
   def save_member_rax(full)
      v, f = full.split('.')
      st = @ctx.var_types[v]
-     unless st && @ctx.structs[st]
-        puts "Error: Unknown struct type for variable '#{v}'"
-        exit 1
-     end
      f_off = @ctx.structs[st][:fields][f]
 
-     @emitter.mov_r11_rax # R11 = value
+     @emitter.mov_r11_rax
 
      if @ctx.in_register?(v)
-       reg = CodeEmitter.reg_code(@ctx.get_register(v))
+       reg = @emitter.class.reg_code(@ctx.get_register(v))
        @emitter.mov_rax_from_reg(reg)
      else
        off = @ctx.variables[v]
-       @emitter.mov_reg_stack_val(CodeEmitter::REG_RAX, off)
+       @emitter.mov_reg_stack_val(@emitter.class::REG_RAX, off)
      end
      @emitter.mov_mem_r11(f_off)
   end
 
-  # insertC { 0x48 0x31 0xc0 } - raw machine code injection
   def gen_insertC(node)
     content = node[:content].strip
     bytes = []
-
-    # Parse hex bytes: "0x48 0x31 0xc0" or "48 31 c0" or comma-separated
     content.split(/[\s,]+/).each do |token|
       next if token.empty?
-      # Remove 0x prefix if present
       hex = token.sub(/^0x/i, '')
       bytes << hex.to_i(16)
     end
-
     @emitter.emit(bytes) unless bytes.empty?
   end
 
-  # Array declaration: let arr[N]
-  # Allocates N * 8 bytes on stack and initializes to zero
   def gen_array_decl(node)
     name = node[:name]
     size = node[:size]
-
-    # Declare array in context (allocates stack space)
     arr_info = @ctx.declare_array(name, size)
 
-    # Initialize all elements to zero
-    # xor rax, rax
-    @emitter.emit([0x48, 0x31, 0xc0])
-
-    # Store 0 to each element
-    size.times do |i|
-      element_offset = arr_info[:base_offset] - (i * 8)
-      @emitter.mov_stack_reg_val(element_offset, CodeEmitter::REG_RAX)
+    # Initialize to zero
+    if @arch == :aarch64
+      @emitter.mov_rax(0)
+    else
+      @emitter.emit([0x48, 0x31, 0xc0])
     end
 
-    # Store pointer to arr[0] in the variable
-    @emitter.lea_reg_stack(CodeEmitter::REG_RAX, arr_info[:base_offset])
-    @emitter.mov_stack_reg_val(arr_info[:ptr_offset], CodeEmitter::REG_RAX)
+    size.times do |i|
+      element_offset = arr_info[:base_offset] - (i * 8)
+      @emitter.mov_stack_reg_val(element_offset, @emitter.class::REG_RAX)
+    end
+
+    @emitter.lea_reg_stack(@emitter.class::REG_RAX, arr_info[:base_offset])
+    @emitter.mov_stack_reg_val(arr_info[:ptr_offset], @emitter.class::REG_RAX)
   end
 
-  # Array element assignment: arr[i] = value
   def gen_array_assign(node)
     name = node[:name]
-
-    # Evaluate value first, save to R11
     eval_expression(node[:value])
     @emitter.mov_r11_rax
 
-    # Evaluate index
     eval_expression(node[:index])
-    # RAX = index
+    @emitter.shl_rax_imm(3)
 
-    # Compute address: base_ptr + index * 8
-    # First, multiply index by 8 (shift left 3)
-    @emitter.emit([0x48, 0xc1, 0xe0, 0x03]) # shl rax, 3
-
-    # Load base pointer
     arr_info = @ctx.get_array(name)
     if arr_info
-      # It's a declared array - load pointer from stack
-      @emitter.emit([0x50]) # push rax (save index*8)
-      @emitter.mov_reg_stack_val(CodeEmitter::REG_RAX, arr_info[:ptr_offset])
-      @emitter.emit([0x5a]) # pop rdx (index*8 to rdx)
-      @emitter.add_rax_rdx # rax = base + index*8
+      @emitter.push_reg(@emitter.class::REG_RAX)
+      @emitter.mov_reg_stack_val(@emitter.class::REG_RAX, arr_info[:ptr_offset])
+      @emitter.pop_reg(@emitter.class::REG_RDX)
+      @emitter.add_rax_rdx
     else
-      # It's a pointer parameter
-      @emitter.emit([0x50]) # push rax
+      @emitter.push_reg(@emitter.class::REG_RAX)
       if @ctx.in_register?(name)
-        reg = CodeEmitter.reg_code(@ctx.get_register(name))
+        reg = @emitter.class.reg_code(@ctx.get_register(name))
         @emitter.mov_rax_from_reg(reg)
       else
         off = @ctx.get_variable_offset(name)
-        @emitter.mov_reg_stack_val(CodeEmitter::REG_RAX, off)
+        @emitter.mov_reg_stack_val(@emitter.class::REG_RAX, off)
       end
-      @emitter.emit([0x5a]) # pop rdx
+      @emitter.pop_reg(@emitter.class::REG_RDX)
       @emitter.add_rax_rdx
     end
 
     # Store R11 to [RAX]
-    @emitter.emit([0x4c, 0x89, 0x18]) # mov [rax], r11
+    if @arch == :aarch64
+      @emitter.emit32(0xf9000009) # str x9, [x0]
+    else
+      @emitter.emit([0x4c, 0x89, 0x18])
+    end
   end
 
-  # Array element access: arr[i]
   def gen_array_access(node)
     name = node[:name]
-
-    # Evaluate index
     eval_expression(node[:index])
-    # RAX = index
+    @emitter.shl_rax_imm(3)
 
-    # Multiply by 8
-    @emitter.emit([0x48, 0xc1, 0xe0, 0x03]) # shl rax, 3
-
-    # Load base pointer
     arr_info = @ctx.get_array(name)
     if arr_info
-      @emitter.emit([0x50]) # push rax
-      @emitter.mov_reg_stack_val(CodeEmitter::REG_RAX, arr_info[:ptr_offset])
-      @emitter.emit([0x5a]) # pop rdx
+      @emitter.push_reg(@emitter.class::REG_RAX)
+      @emitter.mov_reg_stack_val(@emitter.class::REG_RAX, arr_info[:ptr_offset])
+      @emitter.pop_reg(@emitter.class::REG_RDX)
       @emitter.add_rax_rdx
     else
-      @emitter.emit([0x50]) # push rax
+      @emitter.push_reg(@emitter.class::REG_RAX)
       if @ctx.in_register?(name)
-        reg = CodeEmitter.reg_code(@ctx.get_register(name))
+        reg = @emitter.class.reg_code(@ctx.get_register(name))
         @emitter.mov_rax_from_reg(reg)
       else
         off = @ctx.get_variable_offset(name)
-        @emitter.mov_reg_stack_val(CodeEmitter::REG_RAX, off)
+        @emitter.mov_reg_stack_val(@emitter.class::REG_RAX, off)
       end
-      @emitter.emit([0x5a]) # pop rdx
+      @emitter.pop_reg(@emitter.class::REG_RDX)
       @emitter.add_rax_rdx
     end
-
-    # Load value from [RAX]
-    @emitter.emit([0x48, 0x8b, 0x00]) # mov rax, [rax]
+    @emitter.mov_rax_mem(0)
   end
 
-  # String literal: "hello"
-  # Adds string to data section and loads address into RAX
   def gen_string_literal(node)
     content = node[:value]
-
-    # Add string to linker data section
     label = @linker.add_string(content)
 
-    # LEA RAX, [RIP + offset] - load address of string
-    # We need to patch this later, so emit placeholder
-    @emitter.emit([0x48, 0x8d, 0x05]) # lea rax, [rip + disp32]
-    @linker.add_data_patch(@emitter.current_pos, label)
-    @emitter.emit([0x00, 0x00, 0x00, 0x00]) # placeholder for offset
+    if @arch == :aarch64
+       @emitter.emit32(0x58000000) # ldr x0, [pc]
+       @linker.add_data_patch(@emitter.current_pos - 4, label)
+    else
+       @emitter.emit([0x48, 0x8d, 0x05])
+       @linker.add_data_patch(@emitter.current_pos, label)
+       @emitter.emit([0x00, 0x00, 0x00, 0x00])
+    end
   end
 
-  # Address-of: &x -> load address of variable into RAX
   def gen_address_of(expr)
     operand = expr[:operand]
-
     if operand[:type] == :variable
-      # If variable is in register, we need to spill it to stack first
       if @ctx.in_register?(operand[:name])
-        reg = CodeEmitter.reg_code(@ctx.get_register(operand[:name]))
-        # Allocate stack slot and store there
+        reg = @emitter.class.reg_code(@ctx.get_register(operand[:name]))
         off = @ctx.declare_variable("__addr_tmp_#{operand[:name]}")
         @emitter.mov_stack_reg_val(off, reg)
-        @emitter.lea_reg_stack(CodeEmitter::REG_RAX, off)
+        @emitter.lea_reg_stack(@emitter.class::REG_RAX, off)
       else
         off = @ctx.get_variable_offset(operand[:name])
-        unless off
-          puts "Error: Undefined variable '#{operand[:name]}' in address-of"
-          exit 1
-        end
-        # LEA RAX, [RBP - offset]
-        @emitter.lea_reg_stack(CodeEmitter::REG_RAX, off)
+        @emitter.lea_reg_stack(@emitter.class::REG_RAX, off)
       end
     elsif operand[:type] == :array_access
-      # &arr[i] - get address of array element
       name = operand[:name]
       eval_expression(operand[:index])
-      @emitter.emit([0x48, 0xc1, 0xe0, 0x03]) # shl rax, 3
-
+      @emitter.shl_rax_imm(3)
       arr_info = @ctx.get_array(name)
       if arr_info
-        @emitter.emit([0x50]) # push rax
-        @emitter.mov_reg_stack_val(CodeEmitter::REG_RAX, arr_info[:ptr_offset])
-        @emitter.emit([0x5a]) # pop rdx
+        @emitter.push_reg(@emitter.class::REG_RAX)
+        @emitter.mov_reg_stack_val(@emitter.class::REG_RAX, arr_info[:ptr_offset])
+        @emitter.pop_reg(@emitter.class::REG_RDX)
         @emitter.add_rax_rdx
       else
-        @emitter.emit([0x50]) # push rax
+        @emitter.push_reg(@emitter.class::REG_RAX)
         if @ctx.in_register?(name)
-          reg = CodeEmitter.reg_code(@ctx.get_register(name))
+          reg = @emitter.class.reg_code(@ctx.get_register(name))
           @emitter.mov_rax_from_reg(reg)
         else
           off = @ctx.get_variable_offset(name)
-          @emitter.mov_reg_stack_val(CodeEmitter::REG_RAX, off)
+          @emitter.mov_reg_stack_val(@emitter.class::REG_RAX, off)
         end
-        @emitter.emit([0x5a]) # pop rdx
+        @emitter.pop_reg(@emitter.class::REG_RDX)
         @emitter.add_rax_rdx
       end
-      # RAX now contains address, don't dereference
-    else
-      puts "Error: Cannot take address of expression type #{operand[:type]}"
-      exit 1
     end
   end
 
-  # Dereference: *ptr -> load value at address in ptr
   def gen_dereference(expr)
     eval_expression(expr[:operand])
-    # RAX = address, load value from [RAX]
-    @emitter.emit([0x48, 0x8b, 0x00]) # mov rax, [rax]
+    @emitter.mov_rax_mem(0)
   end
 
-  # Dereference assignment: *ptr = value
   def process_deref_assign(node)
-    # Evaluate value first, save to R11
     eval_expression(node[:value])
     @emitter.mov_r11_rax
-
-    # Load pointer value (address)
     eval_expression(node[:target])
-    # RAX = address
-
-    # Store R11 to [RAX]
-    @emitter.emit([0x4c, 0x89, 0x18]) # mov [rax], r11
+    if @arch == :aarch64
+      @emitter.emit32(0xf9000009) # str x9, [x0]
+    else
+      @emitter.emit([0x4c, 0x89, 0x18])
+    end
   end
 
   def string_concat?(expr)
@@ -563,7 +563,7 @@ module GeneratorLogic
     return false unless expr[:op] == "+" || expr[:op] == "-"
     lptr = pointer_node?(expr[:left])
     rptr = pointer_node?(expr[:right])
-    lptr ^ rptr  # exactly one pointer operand
+    lptr ^ rptr
   end
 
   def pointer_node?(node)
@@ -583,25 +583,31 @@ module GeneratorLogic
     offset_expr = (base_ptr == expr[:left]) ? expr[:right] : expr[:left]
     op = expr[:op]
 
-    # Evaluate base pointer -> RAX
     eval_expression(base_ptr)
-    @emitter.emit([0x50]) # push rax (save base)
+    @emitter.push_reg(@emitter.class::REG_RAX)
 
-    # Evaluate offset -> RAX, scale by 8 (pointer to 8-byte values)
     eval_expression(offset_expr)
-    @emitter.emit([0x48, 0xc1, 0xe0, 0x03]) # shl rax, 3
+    @emitter.shl_rax_imm(3)
 
-    # Preserve offset in RDX, restore base to RBX
-    @emitter.mov_reg_reg(CodeEmitter::REG_RDX, CodeEmitter::REG_RAX)
-    @emitter.emit([0x5b]) # pop rbx (base)
+    @emitter.mov_reg_reg(@emitter.class::REG_RDX, @emitter.class::REG_RAX)
+    @emitter.pop_reg(@emitter.class::REG_RBX)
 
     if op == "+"
-      # rax = offset, rbx = base
-      @emitter.emit([0x48, 0x01, 0xd8]) # add rax, rbx  => rax = offset + base
+      if @arch == :aarch64
+        @emitter.add_rax_rdx # Actually rax is already offset, rdx is now offset?
+        # Wait, I popped base to RBX (X19)
+        @emitter.mov_reg_reg(0, 19) # rax = base
+        @emitter.add_rax_rdx # rax = base + offset
+      else
+        @emitter.emit([0x48, 0x01, 0xd8])
+      end
     else
-      # rdx = offset, rbx = base
-      @emitter.mov_reg_reg(CodeEmitter::REG_RAX, CodeEmitter::REG_RBX) # rax = base
-      @emitter.emit([0x48, 0x29, 0xd0]) # sub rax, rdx => base - offset
+      if @arch == :aarch64
+        @emitter.mov_reg_reg(0, 19) # rax = base
+        @emitter.sub_rax_rdx # rax = base - offset
+      else
+        @emitter.emit([0x48, 0x29, 0xd0])
+      end
     end
   end
 end

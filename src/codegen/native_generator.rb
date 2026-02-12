@@ -4,6 +4,7 @@ require_relative "../native/flat_builder"
 require_relative "parts/context"
 require_relative "parts/linker"
 require_relative "parts/emitter"
+require_relative "parts/emitter_aarch64"
 require_relative "parts/logic"
 require_relative "parts/calls"
 require_relative "../optimizer/register_allocator"
@@ -16,12 +17,13 @@ FLAT_STACK_PTR = 0x90000
 
   attr_accessor :hell_mode
 
-  def initialize(ast, target_os)
+  def initialize(ast, target_os, arch = :x86_64)
     @ast = ast
     @target_os = target_os
+    @arch = arch
 
     @ctx = CodegenContext.new
-    @emitter = CodeEmitter.new
+    @emitter = (arch == :aarch64) ? AArch64Emitter.new : CodeEmitter.new
     @allocator = RegisterAllocator.new
     base_rva =
       case target_os
@@ -43,13 +45,13 @@ FLAT_STACK_PTR = 0x90000
     end
 
     @linker.add_data("int_buffer", "\0" * 64)
-    @linker.add_data("file_buffer", "\0" * 4096)  # 4KB buffer for file reading
-    @linker.add_data("concat_buffer", "\0" * 2048) # Buffer for concat()
-    @linker.add_data("substr_buffer", "\0" * 1024) # Buffer for substr()
-    @linker.add_data("chr_buffer", "\0" * 4)       # Buffer for chr()
-    @linker.add_data("input_buffer", "\0" * 1024)  # Buffer for input()
-    @linker.add_data("rand_seed", [12345].pack("Q<")) # Random seed
-    @linker.add_data("newline_char", "\n")         # Newline for prints()
+    @linker.add_data("file_buffer", "\0" * 4096)
+    @linker.add_data("concat_buffer", "\0" * 2048)
+    @linker.add_data("substr_buffer", "\0" * 1024)
+    @linker.add_data("chr_buffer", "\0" * 4)
+    @linker.add_data("input_buffer", "\0" * 1024)
+    @linker.add_data("rand_seed", [12345].pack("Q<"))
+    @linker.add_data("newline_char", "\n")
   end
 
   def generate(output_path)
@@ -70,14 +72,13 @@ FLAT_STACK_PTR = 0x90000
 
     has_main = @ast.any? { |n| n[:type] == :function_definition && n[:name] == "main" }
 
-    # IMPORTANT: Entry point must be generated FIRST (ELF/PE entry is at start of code)
     gen_entry_point
     if has_main
-      # main already exists, will be generated in the loop below
+      # main already exists
     elsif !top_level.empty?
       gen_synthetic_main(top_level)
     else
-      gen_synthetic_main([]) # empty program: generate empty main
+      gen_synthetic_main([])
     end
     @ast.each { |n| gen_function(n) if n[:type] == :function_definition }
 
@@ -85,7 +86,7 @@ FLAT_STACK_PTR = 0x90000
     builder =
       case @target_os
       when :windows then PEBuilder.new(final_bytes)
-      when :linux then ELFBuilder.new(final_bytes)
+      when :linux then ELFBuilder.new(final_bytes, @arch)
       else FlatBuilder.new(final_bytes)
       end
     File.binwrite(output_path, builder.build)
@@ -100,7 +101,6 @@ FLAT_STACK_PTR = 0x90000
     packed = node[:packed] || false
 
     if packed
-      # Packed: no padding, use actual sizes
       offset = 0
       node[:fields].each do |f|
         fields[f] = offset
@@ -108,7 +108,6 @@ FLAT_STACK_PTR = 0x90000
         offset += @ctx.type_size(type_name)
       end
     else
-      # Regular: all fields 8 bytes aligned
       offset = 0
       node[:fields].each do |f|
         fields[f] = offset
@@ -120,7 +119,6 @@ FLAT_STACK_PTR = 0x90000
   end
 
   def gen_union_def(node)
-    # Union: all fields at offset 0, size = max field size
     fields = {}
     field_types = node[:field_types] || {}
     max_size = 0
@@ -138,22 +136,26 @@ FLAT_STACK_PTR = 0x90000
   def gen_entry_point
     if @target_os == :flat
       @emitter.mov_rax(FLAT_STACK_PTR)
-      @emitter.mov_reg_reg(CodeEmitter::REG_RSP, CodeEmitter::REG_RAX)
+      @emitter.mov_reg_reg(@emitter.class::REG_RSP, @emitter.class::REG_RAX)
     end
 
     @emitter.emit_prologue(@stack_size)
-    @linker.add_fn_patch(@emitter.current_pos + 1, "main")
+    @linker.add_fn_patch(@emitter.current_pos + (@arch == :aarch64 ? 0 : 1), "main")
     @emitter.call_rel32
-    # Ignore main return value for process exit; exit code = 0
     @emitter.mov_rax(0)
     if @target_os == :windows
       @emitter.emit_epilogue(@stack_size)
-      @emitter.emit([0x48, 0x31, 0xc0, 0xc3]) # xor rax, rax; ret
+      @emitter.emit([0x48, 0x31, 0xc0, 0xc3])
     elsif @target_os == :linux
       @emitter.emit_sys_exit_rax
     else
       @emitter.emit_epilogue(@stack_size)
-      @emitter.emit([0xf4, 0xeb, 0xfd]) # hlt; jmp -1 to keep CPU halted
+      if @arch == :x86_64
+        @emitter.emit([0xf4, 0xeb, 0xfd])
+      else
+        @emitter.emit32(0xd503205f) # wfe
+        @emitter.emit32(0x17ffffff) # b .
+      end
     end
   end
 
@@ -181,20 +183,19 @@ FLAT_STACK_PTR = 0x90000
     end
 
     regs, stack_base =
-      if @target_os == :windows
-        [[CodeEmitter::REG_RCX, CodeEmitter::REG_RDX, CodeEmitter::REG_R8, CodeEmitter::REG_R9], 16 + 8 * 4] # shadow space
+      if @arch == :aarch64
+        [[0, 1, 2, 3, 4, 5, 6, 7], 16] # X0-X7
+      elsif @target_os == :windows
+        [[CodeEmitter::REG_RCX, CodeEmitter::REG_RDX, CodeEmitter::REG_R8, CodeEmitter::REG_R9], 16 + 8 * 4]
       else
         [[CodeEmitter::REG_RDI, CodeEmitter::REG_RSI, CodeEmitter::REG_RDX, CodeEmitter::REG_RCX, CodeEmitter::REG_R8, CodeEmitter::REG_R9], 16]
       end
 
     node[:params].each_with_index do |param, i|
-      # Check if param got a register allocation
       if @ctx.in_register?(param) && i < regs.length
-        # Move from calling convention reg to allocated reg
-        allocated_reg = CodeEmitter.reg_code(@ctx.get_register(param))
+        allocated_reg = @emitter.class.reg_code(@ctx.get_register(param))
         @emitter.mov_reg_reg(allocated_reg, regs[i])
       else
-        # Fallback to stack
         off = @ctx.declare_variable(param)
         if i < regs.length
           reg = regs[i]
@@ -202,7 +203,7 @@ FLAT_STACK_PTR = 0x90000
         else
           disp = stack_base + 8 * (i - regs.length)
           @emitter.mov_rax_rbp_disp32(disp)
-          @emitter.mov_stack_reg_val(off, CodeEmitter::REG_RAX)
+          @emitter.mov_stack_reg_val(off, @emitter.class::REG_RAX)
         end
       end
     end
@@ -214,7 +215,6 @@ FLAT_STACK_PTR = 0x90000
     @emitter.emit_epilogue(@stack_size)
   end
 
-  # Auto-generate main() when absent, executing top-level statements
   def gen_synthetic_main(nodes)
     @linker.register_function("main", @emitter.current_pos)
     @ctx.reset_for_function("main")

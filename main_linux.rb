@@ -16,17 +16,21 @@ def enable_hell_mode(level = :hell)
   puts "HELL MODE ACTIVATED - Level: #{level}"
 end
 
-def compile_linux(input_file)
+def compile_linux(input_file, arch = :x86_64)
   code = File.read(input_file)
-  
+
   begin
     puts "Step 1: Preprocessing..."
     preprocessor = Preprocessor.new
     preprocessor.define("LINUX")
     preprocessor.define("__JUNO__")
-    preprocessor.define("__x86_64__")
+    if arch == :aarch64
+      preprocessor.define("__aarch64__")
+    else
+      preprocessor.define("__x86_64__")
+    end
     code = preprocessor.process(code, input_file)
-    
+
     puts "Step 2: Lexing..."
     lexer = Lexer.new(code, input_file)
     tokens = lexer.tokenize
@@ -47,13 +51,13 @@ def compile_linux(input_file)
     optimizer = TurboOptimizer.new(ast)
     ast = optimizer.optimize
 
-    puts "Step 7: Native Code Generation (Linux ELF)..."
-    generator = NativeGenerator.new(ast, :linux)
+    puts "Step 7: Native Code Generation (Linux ELF - #{arch})..."
+    generator = NativeGenerator.new(ast, :linux, arch)
     generator.hell_mode = $hell_mode if $hell_mode
     FileUtils.mkdir_p("build")
     output_path = File.join("build", "output_linux")
     generator.generate(output_path)
-    
+
     puts "Success! Binary generated: #{output_path}"
     $hell_mode.report if $hell_mode
   rescue JunoError => e
@@ -68,11 +72,20 @@ def compile_linux(input_file)
 end
 
 if ARGV.empty?
-  puts "Usage: ruby main_linux.rb <file.juno> [--hell]"
+  puts "Usage: ruby main_linux.rb <file.juno> [--arch aarch64|x86_64] [--hell]"
 else
+  arch = :x86_64
+  if ARGV.include?("--arch")
+    idx = ARGV.index("--arch")
+    arch_str = ARGV[idx + 1]
+    arch = :aarch64 if arch_str == "aarch64"
+    ARGV.delete_at(idx + 1)
+    ARGV.delete_at(idx)
+  end
+
   if ARGV.include?("--hell")
     enable_hell_mode(:hell)
     ARGV.delete("--hell")
   end
-  compile_linux(ARGV[0])
+  compile_linux(ARGV[0], arch)
 end
