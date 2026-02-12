@@ -1,0 +1,30 @@
+// examples/geometry.juno - Geometry library for Juno
+
+struct Rectangle {
+    let width
+    let height
+}
+
+fn Rectangle.init(w, h) {
+    self.width = w
+    self.height = h
+}
+
+fn Rectangle.area() {
+    return self.width * self.height
+}
+
+struct Point {
+    let x
+    let y
+}
+
+fn Point.init(x, y) {
+    self.x = x
+    self.y = y
+}
+
+fn Point.move(dx, dy) {
+    self.x = self.x + dx
+    self.y = self.y + dy
+}

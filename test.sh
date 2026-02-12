@@ -8,6 +8,11 @@ FAILED=0
 PASSED=0
 
 for test_file in tests/test_*.juno; do
+    # Skip tests that are not for Linux
+    if [[ "$test_file" == *"test_flat_binary.juno"* ]]; then
+        continue
+    fi
+
     echo "Testing $test_file..."
     
     if ruby main_linux.rb "$test_file" > /dev/null 2>&1; then

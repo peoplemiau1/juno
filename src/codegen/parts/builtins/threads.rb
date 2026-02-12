@@ -7,50 +7,58 @@ module BuiltinThreads
   def gen_thread_create(node)
     return unless @target_os == :linux
     
-    # Allocate stack for thread (use provided stack pointer)
-    eval_expression(node[:args][1]) # stack top
-    @emitter.emit([0x49, 0x89, 0xc4]) # mov r12, rax (save stack)
+    # 1. Evaluate arguments and push to stack
+    eval_expression(node[:args][0]) # fn_ptr
+    @emitter.emit([0x50]) # push rax
+
+    eval_expression(node[:args][1]) # stack_ptr
+    @emitter.emit([0x50]) # push rax
     
     eval_expression(node[:args][2]) # arg
-    @emitter.emit([0x49, 0x89, 0xc5]) # mov r13, rax (save arg)
+    @emitter.emit([0x50]) # push rax
     
-    eval_expression(node[:args][0]) # fn_ptr
-    @emitter.emit([0x49, 0x89, 0xc6]) # mov r14, rax (save fn)
+    # 2. Save callee-saved registers
+    @emitter.push_reg(CodeEmitter::REG_R12)
+    @emitter.push_reg(CodeEmitter::REG_R13)
+    @emitter.push_reg(CodeEmitter::REG_R14)
+
+    # 3. Load arguments into registers from stack
+    # [rsp+0]: saved r14, [rsp+8]: saved r13, [rsp+16]: saved r12
+    # [rsp+24]: arg, [rsp+32]: stack, [rsp+40]: fn
+    @emitter.emit([0x4c, 0x8b, 0x6c, 0x24, 0x18]) # mov r13, [rsp + 24] (arg)
+    @emitter.emit([0x4c, 0x8b, 0x64, 0x24, 0x20]) # mov r12, [rsp + 32] (stack)
+    @emitter.emit([0x4c, 0x8b, 0x74, 0x24, 0x28]) # mov r14, [rsp + 40] (fn)
     
-    # Setup clone flags: CLONE_VM | CLONE_FS | CLONE_FILES | CLONE_SIGHAND | CLONE_THREAD | CLONE_SYSVSEM
-    # = 0x100 | 0x200 | 0x400 | 0x800 | 0x10000 | 0x40000 = 0x50F00
+    # 4. clone syscall
     @emitter.emit([0x48, 0xc7, 0xc7, 0x00, 0x0f, 0x05, 0x00]) # mov rdi, 0x50F00
-    
-    # Stack pointer
     @emitter.emit([0x4c, 0x89, 0xe6]) # mov rsi, r12
-    
-    # parent_tid, child_tid, tls = 0
     @emitter.emit([0x48, 0x31, 0xd2]) # xor rdx, rdx
     @emitter.emit([0x4d, 0x31, 0xd2]) # xor r10, r10
     @emitter.emit([0x4d, 0x31, 0xc0]) # xor r8, r8
-    
     @emitter.emit([0xb8, 0x38, 0x00, 0x00, 0x00]) # mov eax, 56 (clone)
     @emitter.emit([0x0f, 0x05])
     
-    # Check if child (rax == 0)
-    @emitter.emit([0x48, 0x85, 0xc0]) # test rax, rax
+    # 5. Check if child (rax == 0)
+    @emitter.emit([0x48, 0x85, 0xc0])
     patch_pos = @emitter.current_pos
-    @emitter.emit([0x75, 0x00]) # jnz parent (patch later)
+    @emitter.emit([0x75, 0x00]) # jnz parent
     
-    # Child: call function with arg
+    # CHILD
     @emitter.emit([0x4c, 0x89, 0xef]) # mov rdi, r13 (arg)
     @emitter.emit([0x41, 0xff, 0xd6]) # call r14 (fn)
-    
-    # Child: exit thread
-    @emitter.emit([0x48, 0x89, 0xc7]) # mov rdi, rax (exit code)
+    @emitter.emit([0x48, 0x89, 0xc7]) # mov rdi, rax
     @emitter.emit([0xb8, 0x3c, 0x00, 0x00, 0x00]) # mov eax, 60 (exit)
     @emitter.emit([0x0f, 0x05])
     
-    # Patch jump
-    offset = @emitter.current_pos - (patch_pos + 2)
-    @emitter.bytes[patch_pos + 1] = offset & 0xFF
+    # 6. Patch jump
+    target = @emitter.current_pos
+    @emitter.bytes[patch_pos + 1] = (target - (patch_pos + 2)) & 0xFF
     
-    # Parent: rax = child tid (already in rax)
+    # PARENT
+    @emitter.pop_reg(CodeEmitter::REG_R14)
+    @emitter.pop_reg(CodeEmitter::REG_R13)
+    @emitter.pop_reg(CodeEmitter::REG_R12)
+    @emitter.emit([0x48, 0x83, 0xc4, 0x18]) # cleanup 3 args from stack
   end
 
   # thread_exit(code) - exit current thread
@@ -181,18 +189,20 @@ module BuiltinThreads
   # atomic_store(ptr, val) - atomic store
   def gen_atomic_store(node)
     eval_expression(node[:args][1]) # val first
-    @emitter.emit([0x49, 0x89, 0xc4]) # mov r12, rax
+    @emitter.emit([0x50]) # push rax
     eval_expression(node[:args][0]) # ptr
-    @emitter.emit([0x4c, 0x89, 0x20]) # mov [rax], r12
+    @emitter.emit([0x5a]) # pop rdx (val)
+    @emitter.emit([0x48, 0x89, 0x10]) # mov [rax], rdx
   end
 
   # atomic_add(ptr, val) - atomic add, returns old value
   def gen_atomic_add(node)
     eval_expression(node[:args][1]) # val
-    @emitter.emit([0x49, 0x89, 0xc4]) # mov r12, rax
+    @emitter.emit([0x50]) # push rax
     eval_expression(node[:args][0]) # ptr
+    @emitter.emit([0x5a]) # pop rdx (val)
     @emitter.emit([0x48, 0x89, 0xc7]) # mov rdi, rax
-    @emitter.emit([0x4c, 0x89, 0xe0]) # mov rax, r12
+    @emitter.emit([0x48, 0x89, 0xd0]) # mov rax, rdx
     # lock xadd [rdi], rax
     @emitter.emit([0xf0, 0x48, 0x0f, 0xc1, 0x07])
   end
@@ -201,10 +211,11 @@ module BuiltinThreads
   def gen_atomic_sub(node)
     eval_expression(node[:args][1]) # val
     @emitter.emit([0x48, 0xf7, 0xd8]) # neg rax
-    @emitter.emit([0x49, 0x89, 0xc4]) # mov r12, rax
+    @emitter.emit([0x50]) # push rax
     eval_expression(node[:args][0]) # ptr
+    @emitter.emit([0x5a]) # pop rdx (val)
     @emitter.emit([0x48, 0x89, 0xc7]) # mov rdi, rax
-    @emitter.emit([0x4c, 0x89, 0xe0]) # mov rax, r12
+    @emitter.emit([0x48, 0x89, 0xd0]) # mov rax, rdx
     @emitter.emit([0xf0, 0x48, 0x0f, 0xc1, 0x07]) # lock xadd
   end
 
@@ -212,11 +223,15 @@ module BuiltinThreads
   # Returns old value
   def gen_atomic_cas(node)
     eval_expression(node[:args][2]) # desired
-    @emitter.emit([0x49, 0x89, 0xc4]) # mov r12, rax
-    eval_expression(node[:args][1]) # expected -> rax
+    @emitter.emit([0x50]) # push rax
+    eval_expression(node[:args][1]) # expected
+    @emitter.emit([0x50]) # push rax
     eval_expression(node[:args][0]) # ptr
+
     @emitter.emit([0x48, 0x89, 0xc7]) # mov rdi, rax
-    @emitter.emit([0x4c, 0x89, 0xe1]) # mov rcx, r12
+    @emitter.emit([0x58])             # pop rax (expected)
+    @emitter.emit([0x59])             # pop rcx (desired)
+
     # lock cmpxchg [rdi], rcx
     @emitter.emit([0xf0, 0x48, 0x0f, 0xb1, 0x0f])
   end

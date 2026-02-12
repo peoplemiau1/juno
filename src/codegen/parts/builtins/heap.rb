@@ -43,7 +43,10 @@ module BuiltinHeap
     return @emitter.emit([0x48, 0x31, 0xc0]) if args.length < 2
     
     # Save all potentially clobbered registers
-    @emitter.emit([0x53, 0x56, 0x57, 0x41, 0x56, 0x41, 0x57]) # push rbx, rsi, rdi, r14, r15
+    @emitter.push_reg(CodeEmitter::REG_R12)
+    @emitter.push_reg(CodeEmitter::REG_R13)
+    @emitter.push_reg(CodeEmitter::REG_R14)
+    @emitter.push_reg(CodeEmitter::REG_R15)
     
     eval_expression(args[0])
     @emitter.emit([0x49, 0x89, 0xc7]) # mov r15, rax (old_ptr)
@@ -77,7 +80,10 @@ module BuiltinHeap
     target = @emitter.current_pos
     @emitter.bytes[jz_pos + 1] = (target - (jz_pos + 2)) & 0xFF
 
-    @emitter.emit([0x41, 0x5f, 0x41, 0x5e, 0x5f, 0x5e, 0x5b]) # pop r15, r14, rdi, rsi, rbx
+    @emitter.pop_reg(CodeEmitter::REG_R15)
+    @emitter.pop_reg(CodeEmitter::REG_R14)
+    @emitter.pop_reg(CodeEmitter::REG_R13)
+    @emitter.pop_reg(CodeEmitter::REG_R12)
   end
 
   # heap_init - no-op
@@ -86,12 +92,25 @@ module BuiltinHeap
     @emitter.emit([0x48, 0x31, 0xc0])
   end
 
-  # free(ptr)
+  # free(ptr) or free(ptr, size)
   def gen_free(node)
     return unless @target_os == :linux
-    eval_expression(node[:args][0])
-    @emitter.emit([0x48, 0x85, 0xc0, 0x74, 0x16])
-    @emitter.emit([0x48, 0x89, 0xc7, 0x48, 0x83, 0xef, 0x08])
-    @emitter.emit([0x48, 0x8b, 0x37, 0xb8, 0x0b, 0,0,0, 0x0f, 0x05])
+    args = node[:args] || []
+    return if args.empty?
+
+    eval_expression(args[0])
+    @emitter.emit([0x48, 0x85, 0xc0, 0x74, 0x20]) # skip if ptr == 0
+
+    if args.length >= 2
+      @emitter.emit([0x50]) # push ptr
+      eval_expression(args[1])
+      @emitter.emit([0x48, 0x89, 0xc6]) # rsi = size
+      @emitter.emit([0x5f])             # rdi = ptr
+      @emitter.emit([0xb8, 0x0b, 0x00, 0x00, 0x00, 0x0f, 0x05]) # munmap
+    else
+      @emitter.emit([0x48, 0x89, 0xc7, 0x48, 0x83, 0xef, 0x08]) # rdi = ptr - 8
+      @emitter.emit([0x48, 0x8b, 0x37]) # rsi = [rdi] (size)
+      @emitter.emit([0xb8, 0x0b, 0x00, 0x00, 0x00, 0x0f, 0x05]) # munmap
+    end
   end
 end
