@@ -12,9 +12,12 @@ class ELFBuilder
     header = "\x7fELF".b
     header << [2, 1, 1, 0].pack("C4") # 64-bit, LE, Vers 1, System V
     header << "\x00".b * 8
-    header << [2, machine].pack("SS") # ET_EXEC, Machine
+    # ET_DYN (3) is used for PIE on modern Linux/Android
+    type = (@arch == :aarch64) ? 3 : 2
+    header << [type, machine].pack("SS") # Type, Machine
     header << [1].pack("L")           # Version
-    header << [0x401000].pack("Q")    # ENTRY POINT (aligned to 0x1000)
+    entry = (@arch == :aarch64) ? 0x1000 : 0x401000
+    header << [entry].pack("Q")       # ENTRY POINT
     header << [64].pack("Q")          # Program Header Start
     header << [0].pack("Q")           # Section Header Start
     header << [0].pack("L")           # Flags
@@ -24,8 +27,9 @@ class ELFBuilder
     # Program Header (56 bytes)
     ph = [1, 7].pack("LL")            # PT_LOAD, PF_R | PF_W | PF_X
     ph << [0].pack("Q")               # Offset
-    ph << [0x400000].pack("Q")        # VAddr (Base)
-    ph << [0x400000].pack("Q")        # PAddr
+    base = (@arch == :aarch64) ? 0 : 0x400000
+    ph << [base].pack("Q")            # VAddr (Base)
+    ph << [base].pack("Q")            # PAddr
 
     # Size must include header (0x1000) and ALL code+data
     total_size = 0x1000 + @code.length

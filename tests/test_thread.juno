@@ -9,5 +9,3 @@ fn main() {
     prints("Main exiting")
     return 0
 }
-
-main()

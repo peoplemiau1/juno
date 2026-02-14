@@ -16,11 +16,20 @@ class NativeGenerator
   include GeneratorCalls
 
   def initialize(ast, target_os, arch = :x86_64)
-    @ast = ast; @target_os = target_os; @arch = arch
+    @ast = ast
+    @target_os = target_os
+    @arch = arch
     @ctx = CodegenContext.new
     @emitter = (arch == :aarch64) ? AArch64Emitter.new : CodeEmitter.new
-    @allocator = RegisterAllocator.new; @stack_size = STACK_SIZE
-    base_rva = (target_os == :linux) ? 0x401000 : 0x1000
+    @allocator = RegisterAllocator.new
+    @stack_size = STACK_SIZE
+
+    base_rva = if target_os == :linux
+                 (arch == :aarch64) ? 0x1000 : 0x401000
+               else
+                 0x1000
+               end
+
     @linker = Linker.new(base_rva, arch)
     setup_data
   end
@@ -28,7 +37,8 @@ class NativeGenerator
   def setup_data
     @linker.add_data("int_buffer", "\0" * 64)
     @linker.add_data("file_buffer", "\0" * 4096)
-    @linker.add_data("concat_buffer", "\0" * 2048)
+    @linker.add_data("concat_buffer_idx", [0].pack("Q<"))
+    @linker.add_data("concat_buffer_pool", "\0" * 32768) # 16 * 2048
     @linker.add_data("substr_buffer", "\0" * 1024)
     @linker.add_data("chr_buffer", "\0" * 4)
     @linker.add_data("input_buffer", "\0" * 1024)
@@ -40,19 +50,30 @@ class NativeGenerator
     top_level = []
     @ast.each do |n|
       case n[:type]
-      when :struct_definition then gen_struct_def(n)
-      when :union_definition then gen_union_def(n)
-      when :function_definition then nil
-      else top_level << n
+      when :struct_definition
+        gen_struct_def(n)
+      when :union_definition
+        gen_union_def(n)
+      when :function_definition
+        nil
+      else
+        top_level << n
       end
     end
+
     has_main = @ast.any? { |n| n[:type] == :function_definition && n[:name] == "main" }
     gen_entry_point
     gen_synthetic_main(top_level) if !has_main || !top_level.empty?
-    @ast.each { |n| gen_function(n) if n[:type] == :function_definition }
+
+    @ast.each do |n|
+      gen_function(n) if n[:type] == :function_definition
+    end
+
     final_bytes = @linker.finalize(@emitter.bytes)
     builder = (@target_os == :linux) ? ELFBuilder.new(final_bytes, @arch) : PEBuilder.new(final_bytes)
-    File.binwrite(output_path, builder.build); File.chmod(0755, output_path) if @target_os == :linux
+
+    File.binwrite(output_path, builder.build)
+    File.chmod(0755, output_path) if @target_os == :linux
   end
 
   private
@@ -115,7 +136,8 @@ class NativeGenerator
        @emitter.emit32(0x39000083) # strb w3, [x4]
        @emitter.mov_reg_reg(0, 2) # x0 = quot
        @emitter.emit32(0xeb1f001f) # cmp x0, #0
-       @emitter.emit32(0x54ffff41) # b.ne loop
+       @emitter.patch_jne(@emitter.current_pos, l)
+       @emitter.emit32(0x54000001) # b.ne placeholder
        @emitter.mov_reg_reg(1, 4) # X1 = buffer start
        @emitter.emit_load_address("int_buffer", @linker)
        @emitter.emit32(0x9100fc02) # X2 = buf + 63

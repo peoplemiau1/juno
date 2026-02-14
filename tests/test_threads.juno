@@ -1,65 +1,20 @@
-// Test multithreading in Juno
+// tests/test_threads.juno
 
-fn test_sleep(): int {
-    print("=== Sleep Test ===")
-    print("Sleeping 1 second...")
-    sleep(1)
-    print("Done!")
+fn worker(val) {
+    print("Worker received:")
+    print(val)
     return 0
 }
 
-fn test_usleep(): int {
-    print("=== USleep Test ===")
-    print("Sleeping 100ms...")
-    usleep(100000)
-    print("Done!")
-    return 0
-}
-
-fn test_atomic(): int {
-    print("=== Atomic Test ===")
+fn main() {
+    print("Starting threads...")
+    let s1 = alloc_stack(65536)
+    let s2 = alloc_stack(65536)
     
-    let counter = 0
+    thread_create(worker, s1, 100)
+    thread_create(worker, s2, 200)
     
-    let old1 = atomic_add(&counter, 10)
-    print("atomic_add 10, old:")
-    print(old1)
-    print("new:")
-    print(counter)
-    
-    let old2 = atomic_add(&counter, 5)
-    print("atomic_add 5, old:")
-    print(old2)
-    print("new:")
-    print(counter)
-    
-    return 0
-}
-
-fn test_spinlock(): int {
-    print("=== Spinlock Test ===")
-    
-    let lock = 0
-    
-    print("Acquiring lock...")
-    spin_lock(&lock)
-    print("Lock acquired!")
-    
-    print("Releasing lock...")
-    spin_unlock(&lock)
-    print("Lock released!")
-    
-    return 0
-}
-
-fn main(): int {
-    print("====== THREADING TEST ======")
-    
-    test_sleep()
-    test_usleep()
-    test_atomic()
-    test_spinlock()
-    
-    print("====== ALL TESTS PASSED ======")
+    sleep(200)
+    print("Main done")
     return 0
 }

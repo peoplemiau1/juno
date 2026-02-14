@@ -3,6 +3,7 @@
 
 require 'fileutils'
 require 'tempfile'
+require 'tmpdir'
 
 JUNO_ROOT = File.dirname(File.realpath(__FILE__))
 USER_DIR = Dir.pwd
@@ -97,15 +98,21 @@ def cmd_run(args)
   file = args.find { |a| a.end_with?(".juno") }
   enable_hell_mode if args.include?("--hell")
   
+  arch = :x86_64
+  if args.include?("--arch")
+    idx = args.index("--arch")
+    arch = args[idx + 1].to_sym if idx + 1 < args.length
+  end
+
   unless file
-    puts "Usage: juno run <file.juno>"
+    puts "Usage: juno run <file.juno> [--arch aarch64]"
     exit 1
   end
   
   input = File.expand_path(file, USER_DIR)
-  tmp = "/tmp/juno_#{$$}"
+  tmp = File.join(Dir.tmpdir, "juno_#{$$}")
   
-  compile(input, tmp)
+  compile(input, tmp, arch)
   system(tmp)
   code = $?.exitstatus || 0
   

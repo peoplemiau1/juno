@@ -33,18 +33,42 @@ module BuiltinTypes
 
   def gen_cast_i8(node)
     eval_expression(node[:args][0])
-    @emitter.mov_rax_mem_sized(1, true) rescue @emitter.mov_rax(0) # simplified
+    if @arch == :aarch64
+      @emitter.emit32(0x93401c00) # sxtb x0, w0
+    else
+      @emitter.emit([0x48, 0x0f, 0xbe, 0xc0]) # movsx rax, al
+    end
   end
 
   def gen_cast_u8(node)
     eval_expression(node[:args][0])
-    @emitter.mov_rax_mem_sized(1, false) rescue @emitter.mov_rax(0)
+    if @arch == :aarch64
+      @emitter.emit32(0x53001c00) # uxtb w0, w0 (and x0, x0, #0xff)
+    else
+      @emitter.emit([0x48, 0x0f, 0xb6, 0xc0]) # movzx rax, al
+    end
   end
 
   def gen_cast_i16(node); eval_expression(node[:args][0]); end
   def gen_cast_u16(node); eval_expression(node[:args][0]); end
-  def gen_cast_i32(node); eval_expression(node[:args][0]); end
-  def gen_cast_u32(node); eval_expression(node[:args][0]); end
+  def gen_cast_i32(node)
+    eval_expression(node[:args][0])
+    if @arch == :aarch64
+      @emitter.emit32(0x93407c00) # sxtw x0, w0
+    else
+      @emitter.emit([0x48, 0x63, 0xc0]) # movsxd rax, eax
+    end
+  end
+
+  def gen_cast_u32(node)
+    eval_expression(node[:args][0])
+    if @arch == :aarch64
+      # Already in w0, but to clear upper 32 bits of x0:
+      @emitter.emit32(0x2a0003e0) # mov w0, w0
+    else
+      @emitter.emit([0x89, 0xc0]) # mov eax, eax (clears upper 32 bits)
+    end
+  end
   def gen_cast_i64(node); eval_expression(node[:args][0]); end
   def gen_cast_u64(node); eval_expression(node[:args][0]); end
 end

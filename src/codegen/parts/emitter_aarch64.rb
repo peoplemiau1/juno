@@ -105,8 +105,8 @@ class AArch64Emitter
 
   def shl_rax_cl; emit32(0x9ac12000); end
   def shr_rax_cl; emit32(0x9ac12400); end
-  def shl_rax_imm(c); emit32(0xd3400000 | ((64 - c) << 16) | (63 - c)); end
-  def shr_rax_imm(c); emit32(0xd3400000 | (c << 16) | 63); end
+  def shl_rax_imm(c); c &= 63; emit32(0xd3400000 | (((64 - c) & 63) << 16) | ((63 - c) << 10)); end
+  def shr_rax_imm(c); c &= 63; emit32(0xd3400000 | (c << 16) | (63 << 10)); end
 
   def div_rax_by_rdx; emit32(0x9ac20c00); end
 
@@ -139,7 +139,14 @@ class AArch64Emitter
 
   def patch_je(pos, target)
     offset = (target - pos) / 4
+    # Default to B.EQ (cond 0)
     @bytes[pos...pos+4] = [0x54000000 | ((offset << 5) & 0xFFFFE0)].pack("L<").bytes
+  end
+
+  def patch_jne(pos, target)
+    offset = (target - pos) / 4
+    # B.NE (cond 1)
+    @bytes[pos...pos+4] = [0x54000001 | ((offset << 5) & 0xFFFFE0)].pack("L<").bytes
   end
 
   def emit_sys_exit_rax

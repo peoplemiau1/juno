@@ -18,21 +18,20 @@ module BuiltinUtils
     eval_expression(node[:args][0])
     if @arch == :aarch64
       # nanosleep(timespec: {sec, nsec}, rem)
-      @emitter.push_reg(0) # ms
+      @emitter.mov_reg_reg(19, 0) # X19 = ms
       @emitter.emit32(0xd10043ff) # sub sp, sp, #16
-      @emitter.pop_reg(0) # ms
-      # sec = ms / 1000, nsec = (ms % 1000) * 1000000
-      @emitter.mov_rax(1000); @emitter.mov_reg_reg(1, 0)
+
+      # sec = ms / 1000
+      @emitter.mov_rax(1000); @emitter.mov_reg_reg(1, 0) # X1 = 1000
+      @emitter.mov_reg_reg(0, 19) # X0 = ms
       @emitter.emit32(0x9ac10802) # sdiv x2, x0, x1 (sec)
       @emitter.emit32(0x9b018043) # msub x3, x2, x1, x0 (ms % 1000)
-      @emitter.mov_rax(1000000); @emitter.mul_rax_rdx_into_rax(3, 0) # Need a helper?
-      # Too complex for raw emitter. Let's just do a simple wait loop or ignore for now.
-      # Actually, let's just use the syscall with 0 sec and X ms * 1M nsec.
-      @emitter.mov_rax(1000000); @emitter.mov_reg_reg(1, 0)
-      @emitter.pop_reg(0) # ms
-      @emitter.emit32(0x9b017c01) # mul x1, x0, x1 (nsec)
-      @emitter.mov_rax(0); @emitter.mov_reg_reg(0, 0) # sec = 0
-      @emitter.emit32(0xa90007e0) # stp x0, x1, [sp]
+
+      # nsec = (ms % 1000) * 1000000
+      @emitter.mov_rax(1000000); @emitter.mov_reg_reg(1, 0) # X1 = 1M
+      @emitter.emit32(0x9b017c61) # mul x1, x3, x1 (nsec)
+
+      @emitter.emit32(0xa90007e2) # stp x2, x1, [sp] (sec, nsec)
       @emitter.mov_reg_reg(0, 31) # x0 = sp
       @emitter.mov_rax(0); @emitter.mov_reg_reg(1, 0) # x1 = NULL
       @emitter.mov_rax(101); @emitter.mov_reg_reg(8, 0); @emitter.syscall
@@ -78,7 +77,12 @@ module BuiltinUtils
 
   def gen_input(node)
     if @arch == :aarch64
-      @emitter.mov_rax(0)
+      @emitter.mov_rax(0); @emitter.mov_reg_reg(0, 0) # X0 = 0 (stdin)
+      @emitter.emit_load_address("input_buffer", @linker)
+      @emitter.mov_reg_reg(1, 0) # X1 = buf
+      @emitter.mov_rax(1024); @emitter.mov_reg_reg(2, 0) # X2 = 1024
+      @emitter.mov_rax(63); @emitter.mov_reg_reg(8, 0); @emitter.syscall
+      @emitter.emit_load_address("input_buffer", @linker)
     else
       @emitter.mov_rax(0); @emitter.mov_reg_reg(7, 0)
       @emitter.emit_load_address("input_buffer", @linker)

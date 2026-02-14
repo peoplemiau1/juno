@@ -55,21 +55,24 @@ class CodeEmitter
     return if offset.nil?
     rex = 0x48
     rex |= 0x04 if src >= 8
-    emit([rex, 0x89, 0x85] + [(-offset)].pack("l<").bytes)
+    modrm = 0x80 | ((src & 7) << 3) | 5
+    emit([rex, 0x89, modrm] + [(-offset)].pack("l<").bytes)
   end
 
   def mov_reg_stack_val(dst, offset)
     return if offset.nil?
     rex = 0x48
     rex |= 0x04 if dst >= 8
-    emit([rex, 0x8b, 0x85] + [(-offset)].pack("l<").bytes)
+    modrm = 0x80 | ((dst & 7) << 3) | 5
+    emit([rex, 0x8b, modrm] + [(-offset)].pack("l<").bytes)
   end
 
   def lea_reg_stack(dst, offset)
     return if offset.nil?
     rex = 0x48
     rex |= 0x04 if dst >= 8
-    emit([rex, 0x8d, 0x85] + [(-offset)].pack("l<").bytes)
+    modrm = 0x80 | ((dst & 7) << 3) | 5
+    emit([rex, 0x8d, modrm] + [(-offset)].pack("l<").bytes)
   end
 
   def mov_mem_r11(disp)

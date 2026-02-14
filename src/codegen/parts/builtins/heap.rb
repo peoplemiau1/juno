@@ -54,19 +54,21 @@ module BuiltinHeap
        jz_pos = @emitter.current_pos; @emitter.emit32(0x54000000)
 
        @emitter.push_reg(0) # save new_ptr
-       @emitter.emit32(0xf94ff9e1) # ldr x1, [x15, #-8] (old total size)
+       @emitter.emit32(0xd10021ef) # sub x15, x15, #8
+       @emitter.emit32(0xf94001e1) # ldr x1, [x15] (old total size)
+       @emitter.emit32(0x910021ef) # add x15, x15, #8
        @emitter.emit32(0xd1002021) # sub x1, x1, #8 (old user size)
        @emitter.emit32(0xeb0e003f) # cmp x1, x14
        @emitter.emit32(0x9a8e2021) # csel x1, x1, x14, ls (x1 = min)
 
-       @emitter.mov_reg_reg(19, 0) # x19 = new_ptr_cursor
-       @emitter.mov_reg_reg(20, 15) # x20 = old_ptr_cursor
+       @emitter.mov_reg_reg(9, 0) # x9 = new_ptr_cursor
+       @emitter.mov_reg_reg(10, 15) # x10 = old_ptr_cursor
 
        # Copy loop
        l = @emitter.current_pos
        @emitter.emit32(0xb40000a1) # cbz x1, end
-       @emitter.emit32(0x38400682) # ldrb w2, [x20], #1
-       @emitter.emit32(0x38000662) # strb w2, [x19], #1
+       @emitter.emit32(0x38400542) # ldrb w2, [x10], #1
+       @emitter.emit32(0x38000522) # strb w2, [x9], #1
        @emitter.emit32(0xd1000421) # sub x1, x1, #1
        @emitter.emit32(0x17fffffc) # b loop
 
@@ -89,19 +91,37 @@ module BuiltinHeap
   end
 
   def gen_free(node)
-    eval_expression(node[:args][0])
+    args = node[:args] || []
+    return if args.empty?
+
+    eval_expression(args[0])
     if @arch == :aarch64
-       @emitter.emit32(0xeb00001f) # cmp x0, 0
-       jz_pos = @emitter.current_pos; @emitter.emit32(0x54000000)
-       @emitter.emit32(0xd1002000) # x0 -= 8 (ptr to header)
-       @emitter.mov_reg_reg(0, 0) # rdi = x0
-       @emitter.emit32(0xf9400001) # x1 = [x0] (size)
-       @emitter.mov_rax(215); @emitter.mov_reg_reg(8, 0); @emitter.syscall # munmap
-       @emitter.patch_je(jz_pos, @emitter.current_pos)
+       if args.length >= 2
+         @emitter.push_reg(0)
+         eval_expression(args[1])
+         @emitter.mov_reg_reg(1, 0) # X1 = size
+         @emitter.pop_reg(0) # X0 = ptr
+         @emitter.mov_rax(215); @emitter.mov_reg_reg(8, 0); @emitter.syscall
+       else
+         @emitter.emit32(0xeb00001f) # cmp x0, 0
+         jz_pos = @emitter.current_pos; @emitter.emit32(0x54000000)
+         @emitter.emit32(0xd1002000) # x0 -= 8
+         @emitter.emit32(0xf9400001) # x1 = [x0]
+         @emitter.mov_rax(215); @emitter.mov_reg_reg(8, 0); @emitter.syscall
+         @emitter.patch_je(jz_pos, @emitter.current_pos)
+       end
     else
-       @emitter.emit([0x48, 0x85, 0xc0, 0x74, 0x11])
-       @emitter.emit([0x48, 0x83, 0xe8, 0x08, 0x48, 0x89, 0xc7, 0x48, 0x8b, 0x37])
-       @emitter.mov_rax(11); @emitter.syscall
+       if args.length >= 2
+         @emitter.push_reg(0)
+         eval_expression(args[1])
+         @emitter.mov_reg_reg(6, 0) # RSI = size
+         @emitter.pop_reg(7) # RDI = ptr
+         @emitter.mov_rax(11); @emitter.syscall
+       else
+         @emitter.emit([0x48, 0x85, 0xc0, 0x74, 0x11])
+         @emitter.emit([0x48, 0x83, 0xe8, 0x08, 0x48, 0x89, 0xc7, 0x48, 0x8b, 0x37])
+         @emitter.mov_rax(11); @emitter.syscall
+       end
     end
   end
 

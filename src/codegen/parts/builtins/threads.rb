@@ -55,8 +55,12 @@ module BuiltinThreads
     if @arch == :x86_64 then @emitter.mov_mem_r11(0) end
   end
   def gen_atomic_add(node)
-    eval_expression(node[:args][1]); @emitter.push_reg(0); eval_expression(node[:args][0]); @emitter.pop_reg(2)
-    if @arch == :x86_64 then @emitter.emit([0xf0, 0x48, 0x0f, 0xc1, 0x10]) end
+    eval_expression(node[:args][1]); @emitter.push_reg(0) # val
+    eval_expression(node[:args][0]); @emitter.pop_reg(2)  # ptr -> rdx
+    if @arch == :x86_64
+      @emitter.emit([0xf0, 0x48, 0x0f, 0xc1, 0x10]) # lock xadd [rax], rdx
+      @emitter.mov_rax_from_reg(2) # return old value (from rdx)
+    end
   end
   def gen_atomic_sub(node)
     eval_expression(node[:args][1]); @emitter.emit([0x48, 0xf7, 0xd8, 0x50]); eval_expression(node[:args][0]); @emitter.pop_reg(2)
@@ -70,7 +74,14 @@ module BuiltinThreads
       @emitter.emit([0x75, (l - (@emitter.current_pos + 2)) & 0xFF])
     end
   end
-  def gen_spin_unlock(node); eval_expression(node[:args][0]); @emitter.mov_rax(0); if @arch == :x86_64 then @emitter.emit([0x48, 0x89, 0x07]) end; end
+  def gen_spin_unlock(node)
+    eval_expression(node[:args][0]) # rax = ptr
+    if @arch == :x86_64
+      @emitter.mov_reg_reg(7, 0) # rdi = rax
+      @emitter.mov_rax(0)
+      @emitter.emit([0x48, 0x89, 0x07]) # mov [rdi], rax
+    end
+  end
   def gen_CLONE_VM(node); @emitter.mov_rax(0x100); end
   def gen_CLONE_FS(node); @emitter.mov_rax(0x200); end
   def gen_CLONE_FILES(node); @emitter.mov_rax(0x400); end

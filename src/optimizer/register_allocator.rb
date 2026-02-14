@@ -1,5 +1,5 @@
 class RegisterAllocator
-  ALLOCATABLE_REGS = [] # Disabled for stability
+  ALLOCATABLE_REGS = [:rbx, :r12, :r13, :r14, :r15]
 
   def initialize
     @allocations = {}
