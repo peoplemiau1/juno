@@ -180,4 +180,6 @@ class CodeEmitter
     else        emit([0x48, 0x89, 0x07])
     end
   end
+
+  def syscall; emit([0x0f, 0x05]); end
 end

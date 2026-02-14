@@ -182,4 +182,6 @@ class AArch64Emitter
     else        emit32(0xf90000e0)
     end
   end
+
+  def syscall; emit32(0xd4000001); end
 end

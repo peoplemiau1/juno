@@ -1,0 +1,10 @@
+fn main() {
+    let buf[128]
+    let fd = open("/proc/sys/kernel/osrelease")
+    print(fd)
+    if (fd >= 0) {
+        let n = read(fd, buf, 128)
+        print(n)
+    }
+    return 0
+}
