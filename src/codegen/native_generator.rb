@@ -100,15 +100,39 @@ class NativeGenerator
   end
 
   def gen_print_int_compatibility(node)
-    return if @arch == :aarch64
-    @emitter.push_reg(0); @emitter.push_reg(7); @emitter.push_reg(6); @emitter.push_reg(2); @emitter.push_reg(1)
-    @emitter.emit_load_address("int_buffer", @linker)
-    @emitter.emit([0x48, 0x83, 0xc0, 62, 0xc6, 0x00, 10, 0x48, 0x89, 0xc6, 0x48, 0xc7, 0xc1, 10, 0, 0, 0, 0x48, 0x8b, 0x44, 0x24, 32])
-    l = @emitter.current_pos
-    @emitter.emit([0x48, 0x31, 0xd2, 0x48, 0xf7, 0xf1, 0x80, 0xc2, 0x30, 0x48, 0xff, 0xce, 0x88, 0x16, 0x48, 0x85, 0xc0, 0x75])
-    @emitter.emit([(l - (@emitter.current_pos + 1)) & 0xFF])
-    @emitter.mov_reg_reg(11, 6); @emitter.emit_load_address("int_buffer", @linker)
-    @emitter.emit([0x48, 0x83, 0xc0, 63, 0x4c, 0x29, 0xd8, 0x48, 0x89, 0xc2, 0x4c, 0x89, 0xde, 0xb8, 1, 0, 0, 0, 0xbf, 1, 0, 0, 0, 0x0f, 0x05])
-    @emitter.pop_reg(1); @emitter.pop_reg(2); @emitter.pop_reg(6); @emitter.pop_reg(7); @emitter.pop_reg(0)
+    if @arch == :aarch64
+       @emitter.push_reg(0); @emitter.push_reg(1); @emitter.push_reg(2); @emitter.push_reg(3); @emitter.push_reg(4)
+       @emitter.emit_load_address("int_buffer", @linker)
+       @emitter.mov_reg_reg(4, 0); @emitter.emit32(0x9100f884) # X4 = buf + 62
+       @emitter.mov_rax(10); @emitter.emit32(0x39000080) # [x4] = '\n'
+       @emitter.mov_rax(10); @emitter.mov_reg_reg(1, 0) # X1 = 10
+       @emitter.emit32(0xf94013e0) # ldr x0, [sp, #32] (original value)
+       l = @emitter.current_pos
+       @emitter.emit32(0x9ac10802) # sdiv x2, x0, x1
+       @emitter.emit32(0x9b018043) # msub x3, x2, x1, x0 (rem)
+       @emitter.emit32(0x9100c063) # add x3, x3, #48 ('0')
+       @emitter.emit32(0xd1000484) # sub x4, x4, #1
+       @emitter.emit32(0x39000083) # strb w3, [x4]
+       @emitter.mov_reg_reg(0, 2) # x0 = quot
+       @emitter.emit32(0xeb1f001f) # cmp x0, #0
+       @emitter.emit32(0x54ffff41) # b.ne loop
+       @emitter.mov_reg_reg(1, 4) # X1 = buffer start
+       @emitter.emit_load_address("int_buffer", @linker)
+       @emitter.emit32(0x9100fc02) # X2 = buf + 63
+       @emitter.emit32(0xcb010042) # X2 = 63 - (X1 - buf) = len
+       @emitter.mov_rax(1); @emitter.mov_reg_reg(0, 0) # X0 = 1 (stdout)
+       @emitter.mov_rax(64); @emitter.mov_reg_reg(8, 0); @emitter.syscall # write
+       @emitter.pop_reg(4); @emitter.pop_reg(3); @emitter.pop_reg(2); @emitter.pop_reg(1); @emitter.pop_reg(0)
+    else
+      @emitter.push_reg(0); @emitter.push_reg(7); @emitter.push_reg(6); @emitter.push_reg(2); @emitter.push_reg(1)
+      @emitter.emit_load_address("int_buffer", @linker)
+      @emitter.emit([0x48, 0x83, 0xc0, 62, 0xc6, 0x00, 10, 0x48, 0x89, 0xc6, 0x48, 0xc7, 0xc1, 10, 0, 0, 0, 0x48, 0x8b, 0x44, 0x24, 32])
+      l = @emitter.current_pos
+      @emitter.emit([0x48, 0x31, 0xd2, 0x48, 0xf7, 0xf1, 0x80, 0xc2, 0x30, 0x48, 0xff, 0xce, 0x88, 0x16, 0x48, 0x85, 0xc0, 0x75])
+      @emitter.emit([(l - (@emitter.current_pos + 1)) & 0xFF])
+      @emitter.mov_reg_reg(11, 6); @emitter.emit_load_address("int_buffer", @linker)
+      @emitter.emit([0x48, 0x83, 0xc0, 63, 0x4c, 0x29, 0xd8, 0x48, 0x89, 0xc2, 0x4c, 0x89, 0xde, 0xb8, 1, 0, 0, 0, 0xbf, 1, 0, 0, 0, 0x0f, 0x05])
+      @emitter.pop_reg(1); @emitter.pop_reg(2); @emitter.pop_reg(6); @emitter.pop_reg(7); @emitter.pop_reg(0)
+    end
   end
 end

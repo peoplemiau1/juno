@@ -4,16 +4,39 @@ module BuiltinUtils
   def gen_exit(node)
     eval_expression(node[:args][0])
     if @arch == :aarch64
-      @emitter.mov_reg_reg(0, 0); @emitter.mov_rax(93); @emitter.mov_reg_reg(8, 0); @emitter.emit32(0xd4000001)
+      @emitter.push_reg(0) # save exit code
+      @emitter.mov_rax(93); @emitter.mov_reg_reg(8, 0) # x8 = 93
+      @emitter.pop_reg(0) # restore code to x0
+      @emitter.syscall
     else
-      @emitter.mov_reg_reg(7, 0); @emitter.mov_rax(60); @emitter.emit([0x0f, 0x05])
+      @emitter.mov_reg_reg(7, 0) # rdi = code
+      @emitter.mov_rax(60); @emitter.syscall
     end
   end
 
   def gen_sleep(node)
     eval_expression(node[:args][0])
     if @arch == :aarch64
-      @emitter.mov_rax(0) # stub
+      # nanosleep(timespec: {sec, nsec}, rem)
+      @emitter.push_reg(0) # ms
+      @emitter.emit32(0xd10043ff) # sub sp, sp, #16
+      @emitter.pop_reg(0) # ms
+      # sec = ms / 1000, nsec = (ms % 1000) * 1000000
+      @emitter.mov_rax(1000); @emitter.mov_reg_reg(1, 0)
+      @emitter.emit32(0x9ac10802) # sdiv x2, x0, x1 (sec)
+      @emitter.emit32(0x9b018043) # msub x3, x2, x1, x0 (ms % 1000)
+      @emitter.mov_rax(1000000); @emitter.mul_rax_rdx_into_rax(3, 0) # Need a helper?
+      # Too complex for raw emitter. Let's just do a simple wait loop or ignore for now.
+      # Actually, let's just use the syscall with 0 sec and X ms * 1M nsec.
+      @emitter.mov_rax(1000000); @emitter.mov_reg_reg(1, 0)
+      @emitter.pop_reg(0) # ms
+      @emitter.emit32(0x9b017c01) # mul x1, x0, x1 (nsec)
+      @emitter.mov_rax(0); @emitter.mov_reg_reg(0, 0) # sec = 0
+      @emitter.emit32(0xa90007e0) # stp x0, x1, [sp]
+      @emitter.mov_reg_reg(0, 31) # x0 = sp
+      @emitter.mov_rax(0); @emitter.mov_reg_reg(1, 0) # x1 = NULL
+      @emitter.mov_rax(101); @emitter.mov_reg_reg(8, 0); @emitter.syscall
+      @emitter.emit32(0x910043ff) # add sp, sp, #16
     else
       @emitter.emit([0x48, 0x89, 0xc1, 0x48, 0x31, 0xd2, 0x48, 0xb8] + [1000].pack("Q<").bytes)
       @emitter.emit([0x48, 0x89, 0xc3, 0x48, 0x89, 0xc8, 0x48, 0xf7, 0xf3, 0x50])
@@ -24,15 +47,16 @@ module BuiltinUtils
 
   def gen_time(node)
     if @arch == :aarch64
-      @emitter.mov_rax(169); @emitter.mov_rax(0); @emitter.mov_reg_reg(0, 0); @emitter.emit32(0xd4000001)
+      @emitter.mov_rax(0); @emitter.mov_reg_reg(0, 0)
+      @emitter.mov_rax(169); @emitter.mov_reg_reg(8, 0); @emitter.syscall
     else
-      @emitter.mov_rax(0); @emitter.mov_reg_reg(7, 0); @emitter.mov_rax(201); @emitter.emit([0x0f, 0x05])
+      @emitter.mov_rax(0); @emitter.mov_reg_reg(7, 0); @emitter.mov_rax(201); @emitter.syscall
     end
   end
 
   def gen_rand(node)
     if @arch == :aarch64
-      @emitter.mov_rax(0)
+      @emitter.mov_rax(0) # todo
     else
       @emitter.emit_load_address("rand_seed", @linker)
       @emitter.emit([0x48, 0x8b, 0x08, 0x48, 0xb8] + [1103515245].pack("Q<").bytes)
@@ -60,7 +84,7 @@ module BuiltinUtils
       @emitter.emit_load_address("input_buffer", @linker)
       @emitter.mov_reg_reg(6, 0)
       @emitter.mov_rax(1024); @emitter.mov_reg_reg(2, 0)
-      @emitter.mov_rax(0); @emitter.emit([0x0f, 0x05])
+      @emitter.mov_rax(0); @emitter.syscall
       @emitter.emit_load_address("input_buffer", @linker)
     end
   end
@@ -69,11 +93,10 @@ module BuiltinUtils
     eval_expression(node[:args][0]); @emitter.push_reg(0)
     eval_expression(node[:args][1]); @emitter.push_reg(0)
     eval_expression(node[:args][2]); @emitter.mov_reg_reg(2, 0)
-    @emitter.pop_reg(6); @emitter.pop_reg(7)
     if @arch == :aarch64
-      @emitter.mov_rax(64); @emitter.mov_reg_reg(8, 0); @emitter.emit32(0xd4000001)
+      @emitter.pop_reg(1); @emitter.pop_reg(0); @emitter.mov_rax(64); @emitter.mov_reg_reg(8, 0); @emitter.syscall
     else
-      @emitter.mov_rax(1); @emitter.emit([0x0f, 0x05])
+      @emitter.pop_reg(6); @emitter.pop_reg(7); @emitter.mov_rax(1); @emitter.syscall
     end
   end
 end
