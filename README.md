@@ -2,11 +2,11 @@
   <img src="juno-logo.png" alt="Juno" width="200"/>
 </p>
 
-<h1 align="center">Juno v1.8</h1>
+<h1 align="center">Juno v2.0</h1>
 
 <p align="center">
-  <b>Быстрый компилируемый язык для Linux x86-64</b><br>
-  Простой синтаксис • Нативный код • Turbo-оптимизатор
+  <b>Быстрый компилируемый язык для Linux x86-64 и AArch64</b><br>
+  Простой синтаксис • Нативный код • Turbo-оптимизатор • Поддержка ARM64
 </p>
 
 ---
@@ -20,7 +20,8 @@ cd juno && ./install.sh && source ~/.bashrc
 
 ```bash
 juno run hello.juno           # запустить
-juno build hello.juno -o app  # скомпилировать
+juno build hello.juno -o app  # скомпилировать (x86_64 по умолчанию)
+juno build hello.juno --arch aarch64 -o app_arm  # скомпилировать для ARM64
 juno build app.juno --hell    # с обфускацией
 ```
 
@@ -41,6 +42,9 @@ def main(): int {
         x = x + 1
     }
     
+    // Оператор остатка от деления
+    let rem = 10 % 3 // rem = 1
+
     return 0
 }
 ```
@@ -49,16 +53,33 @@ def main(): int {
 
 | Категория | Функции |
 |-----------|---------|
+| **Архитектуры** | Linux x86-64, **Linux AArch64 (ARM64)**, Windows (PE) |
 | **Оптимизатор** | Инлайнинг, развёртка циклов, CSE, strength reduction |
-| **Память** | `malloc`, `free`, `memfd_create`, `mmap` |
-| **Строки** | `str_len`, `str_find`, `int_to_str`, `str_to_int` |
+| **Память** | `malloc`, `realloc`, `free`, `memfd_create`, `mmap` |
+| **Строки** | `concat`, `substr`, `str_len`, `str_find`, `itoa`, `atoi` |
+| **Стандартная библиотека** | `List`, `Stack`, `Queue`, `bubble_sort`, `is_prime` |
 | **Файлы** | `file_open`, `file_read_all`, `lseek`, `close` |
 | **Коллекции** | `vec_new`, `vec_push`, `vec_pop`, `vec_get` |
 | **Сеть** | TCP сокеты, HTTP, `curl_get`, `curl_post` |
-| **Система** | `fork`, `execve`, `pipe`, `kill`, `getpid` |
+| **Система** | `fork`, `execve`, `pipe`, `kill`, `thread_create`, `getpid` |
 | **Безопасность** | Hell Mode обфускация |
 
 ## Примеры
+
+### Работа со структурами данных (stdlib)
+```juno
+import "stdlib/std.juno"
+
+fn main(): int {
+    let list = List
+    list.init(10)
+    list.add(42)
+    list.add(13)
+
+    print(list.get(0))
+    return 0
+}
+```
 
 ### Системная информация (JunoFetch)
 ```juno
@@ -83,34 +104,6 @@ fn main(): int {
     prints(buf)
     
     close(fd)
-    return 0
-}
-```
-
-### HTTP Сервер
-```juno
-fn main(): int {
-    sock = socket(2, 1, 0)
-    bind(sock, ip(0,0,0,0), 8080)
-    listen(sock, 100)
-    
-    while 1 {
-        client = accept(sock)
-        send(client, "HTTP/1.1 200 OK\r\n\r\nHello!", 25)
-        close(client)
-    }
-}
-```
-
-### Бенчмарк (быстрее Rust?)
-```juno
-fn main(): int {
-    prints("Sum 1..1000000:")
-    total = 0
-    for (i = 0; i < 1000000; i++) {
-        total = total + i
-    }
-    print(total)  // 11ms!
     return 0
 }
 ```
