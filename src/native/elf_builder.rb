@@ -27,7 +27,7 @@ class ELFBuilder
     ph << [0x400000].pack("Q")        # VAddr (Base)
     ph << [0x400000].pack("Q")        # PAddr
 
-    # Размер должен включать заголовок (0x1000) и ВЕСЬ код+данные
+    # Size must include header (0x1000) and ALL code+data
     total_size = 0x1000 + @code.length
     ph << [total_size].pack("Q")      # FileSz
     ph << [total_size].pack("Q")      # MemSz
@@ -36,16 +36,6 @@ class ELFBuilder
     # Padding to 0x1000
     padding = "\x00".b * (0x1000 - (header.length + ph.length))
 
-    begin
-      @code.pack("C*")
-    rescue TypeError => e
-      @code.each_with_index do |b, i|
-        unless b.is_a?(Integer)
-          puts "Error: Non-integer at index #{i}: #{b.inspect} (Type: #{b.class})"
-        end
-      end
-      raise e
-    end
     header + ph + padding + @code.pack("C*")
   end
 end

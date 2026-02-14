@@ -66,7 +66,7 @@ fn fib(n) {
 fn gcd(a, b) {
     while (b != 0) {
         let tmp = b
-        b = a - (a / b) * b
+        b = a % b
         a = tmp
     }
     return a
@@ -222,14 +222,6 @@ fn Pair.swap() {
     self.second = tmp
 }
 
-// === OS constants ===
-fn OS_O_RDONLY() { return 0 }
-fn OS_O_WRONLY() { return 1 }
-fn OS_O_RDWR()   { return 2 }
-fn OS_O_CREAT()  { return 64 }
-fn OS_O_TRUNC()  { return 512 }
-fn OS_O_APPEND() { return 1024 }
-
 // === File I/O wrappers ===
 // Note: uses low-level syscalls via builtin syscall
 
@@ -242,11 +234,13 @@ fn os_read_file(path, buf, size) {
     if (fd < 0) { return fd }
     let n = read(fd, buf, size)
     close(fd)
+    let p = ptr_add(buf, n)
+    *p = 0
     return n
 }
 
 fn os_write_file(path, buf, len) {
-    let flags = OS_O_CREAT() + OS_O_TRUNC() + OS_O_WRONLY()
+    let flags = OS_O_CREAT() | OS_O_TRUNC() | OS_O_WRONLY()
     let fd = os_open_sys(path, flags, 420)  // 0644
     if (fd < 0) { return fd }
     let n = write(fd, buf, len)
@@ -264,16 +258,6 @@ fn str_empty(s) {
 
 fn str_equals(s1, s2) {
     return str_cmp(s1, s2) == 0
-}
-
-fn str_copy(dst, src) {
-    while (*src != 0) {
-        let b = *src
-        *dst = b
-        dst = dst + 1
-        src = src + 1
-    }
-    *dst = 0
 }
 
 // === High-level abstractions ===

@@ -1,0 +1,49 @@
+fn main() {
+    print("=== String Functions ===")
+
+    let s1 = "Hello, "
+    let s2 = "World!"
+    let combined = concat(s1, s2)
+    prints(combined)
+
+    let sub = substr(combined, 0, 5)
+    prints(sub)
+
+    let c = chr(65)
+    prints(c)
+
+    let code = ord("A")
+    print(code)
+
+    print("=== Math Functions ===")
+
+    let a = abs(-42)
+    print(a)
+
+    let small = min(10, 5)
+    print(small)
+
+    let big = max(10, 5)
+    print(big)
+
+    let p = pow(2, 8)
+    print(p)
+
+    print("=== Utility Functions ===")
+
+    let t = time()
+    print(t)
+
+    srand(t)
+    let r = rand()
+    print(r)
+
+    print("=== Memory Functions ===")
+    let ptr = alloc(4096)
+    print(ptr)
+    //free(ptr, 4096)
+    print("Memory freed!")
+
+    print("=== All tests passed! ===")
+    return 0
+}

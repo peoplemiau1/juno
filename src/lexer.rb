@@ -153,7 +153,7 @@ class Lexer
         add_token(:rbracket, ']')
         cursor += 1
         @column += 1
-      when /\A(\(|\)|\{|\}|\.|\,|\+|\-|\/|=|;|%)/
+      when /\A(\(|\)|\{|\}|\.|\,|\+|\-|\/|%|=|;)/
         add_token(:symbol, $&)
         cursor += $&.length
         @column += $&.length

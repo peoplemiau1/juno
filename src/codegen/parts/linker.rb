@@ -54,23 +54,22 @@ class Linker
       item[:rva] = @base_rva + code_bytes.length
       code_bytes += item[:data].bytes
     end
-
     @fn_patches.each { |p| patch_value(code_bytes, p, @functions[p[:name]]) }
-    @data_patches.each { |p| patch_value(code_bytes, p, @data_pool.find { |d| d[:id] == p[:id] }&.[](:rva)) }
+    @data_patches.each do |p|
+       target = @data_pool.find { |d| d[:id] == p[:id] }&.[](:rva) || @functions[p[:id]]
+       patch_value(code_bytes, p, target)
+    end
     @import_patches.each { |p| patch_value(code_bytes, p, @imports[p[:name]]) }
-
     code_bytes
   end
 
   def patch_value(code, patch, target_rva)
     unless target_rva
-      puts "Error: Target not found for patch at #{patch[:pos]} (type: #{patch[:type]})"
+      $stderr.puts "Error: Target not found for patch at #{patch[:pos]} (type: #{patch[:type]}, id: #{patch[:id] || patch[:name]})"
       exit 1
     end
-
     pos = patch[:pos]
     instr_rva = @base_rva + pos
-
     case patch[:type]
     when :rel32
       offset = target_rva - (instr_rva + 4)
@@ -78,14 +77,19 @@ class Linker
     when :aarch64_bl
       offset = (target_rva - instr_rva) / 4
       instr = [code[pos..pos+3].pack("C*").unpack1("L<")].first
-      instr = (instr & 0xFC000000) | (offset & 0x3FFFFFF)
+      instr = (instr & 0xFC000000) | (offset & 0x03FFFFFF)
       code[pos..pos+3] = [instr].pack("L<").bytes
     when :aarch64_adr
       offset = target_rva - instr_rva
       instr = [code[pos..pos+3].pack("C*").unpack1("L<")].first
-      immlo = offset & 3
+      immlo = offset & 0x3
       immhi = (offset >> 2) & 0x7FFFF
       instr = (instr & 0x9F00001F) | (immlo << 29) | (immhi << 5)
+      code[pos..pos+3] = [instr].pack("L<").bytes
+    when :aarch64_movz
+      imm = target_rva & 0xFFFF
+      instr = [code[pos..pos+3].pack("C*").unpack1("L<")].first
+      instr = (instr & 0xFFE0001F) | (imm << 5)
       code[pos..pos+3] = [instr].pack("L<").bytes
     end
   end

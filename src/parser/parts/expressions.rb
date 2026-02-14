@@ -110,10 +110,8 @@ module ParserExpressions
         end
         consume(:star)
         op = '*'
-      elsif match_symbol?('/')
-        op = consume_symbol('/')[:value]
       else
-        op = consume_symbol('%')[:value]
+        op = consume_symbol[:value]
       end
       right = parse_unary
       node = { type: :binary_op, op: op, left: node, right: right }

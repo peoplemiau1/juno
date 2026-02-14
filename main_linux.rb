@@ -16,7 +16,7 @@ def enable_hell_mode(level = :hell)
   puts "HELL MODE ACTIVATED - Level: #{level}"
 end
 
-def compile_linux(input_file, arch = :x86_64)
+def compile_linux(input_file, arch = :x86_64, output_path = "build/output_linux")
   code = File.read(input_file)
 
   begin
@@ -24,11 +24,7 @@ def compile_linux(input_file, arch = :x86_64)
     preprocessor = Preprocessor.new
     preprocessor.define("LINUX")
     preprocessor.define("__JUNO__")
-    if arch == :aarch64
-      preprocessor.define("__aarch64__")
-    else
-      preprocessor.define("__x86_64__")
-    end
+    preprocessor.define("__#{arch}__")
     code = preprocessor.process(code, input_file)
 
     puts "Step 2: Lexing..."
@@ -51,11 +47,10 @@ def compile_linux(input_file, arch = :x86_64)
     optimizer = TurboOptimizer.new(ast)
     ast = optimizer.optimize
 
-    puts "Step 7: Native Code Generation (Linux ELF - #{arch})..."
+    puts "Step 7: Native Code Generation (Linux ELF, Arch: #{arch})..."
     generator = NativeGenerator.new(ast, :linux, arch)
     generator.hell_mode = $hell_mode if $hell_mode
     FileUtils.mkdir_p("build")
-    output_path = File.join("build", "output_linux")
     generator.generate(output_path)
 
     puts "Success! Binary generated: #{output_path}"
@@ -77,8 +72,7 @@ else
   arch = :x86_64
   if ARGV.include?("--arch")
     idx = ARGV.index("--arch")
-    arch_str = ARGV[idx + 1]
-    arch = :aarch64 if arch_str == "aarch64"
+    arch = ARGV[idx + 1].to_sym
     ARGV.delete_at(idx + 1)
     ARGV.delete_at(idx)
   end
@@ -87,5 +81,7 @@ else
     enable_hell_mode(:hell)
     ARGV.delete("--hell")
   end
-  compile_linux(ARGV[0], arch)
+
+  output = (arch == :aarch64) ? "build/output_aarch64" : "build/output_linux"
+  compile_linux(ARGV[0], arch, output)
 end
