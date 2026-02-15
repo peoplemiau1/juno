@@ -30,18 +30,22 @@ module BuiltinStrings
        # Copy s1 (in X6)
        l1 = @emitter.current_pos
        @emitter.emit32(0x384004c3) # ldrb w3, [x6], #1
-       @emitter.emit32(0x34000043) # cbz w3, next
+       @emitter.emit32(0x6b1f007f) # cmp w3, #0
+       jz1 = @emitter.current_pos; @emitter.emit32(0x54000000) # b.eq
        @emitter.emit32(0x38000523) # strb w3, [x9], #1
-       @emitter.emit32(0x17fffffd) # b loop1
-       @emitter.patch_je(l1 + 4, @emitter.current_pos)
+       @emitter.emit32(0x17fffffc) # b loop1 (jump back 4 instructions: ldrb, cmp, b.eq, strb -> no, wait)
+       # Wait, i'll use relative jump back
+       @emitter.patch_jmp(@emitter.current_pos, l1)
+       @emitter.patch_je(jz1, @emitter.current_pos)
 
        # Copy s2 (in X2)
        l2 = @emitter.current_pos
        @emitter.emit32(0x38400443) # ldrb w3, [x2], #1
-       @emitter.emit32(0x34000043) # cbz w3, done
+       @emitter.emit32(0x6b1f007f) # cmp w3, #0
+       jz2 = @emitter.current_pos; @emitter.emit32(0x54000000) # b.eq
        @emitter.emit32(0x38000523) # strb w3, [x9], #1
-       @emitter.emit32(0x17fffffd) # b loop2
-       @emitter.patch_je(l2 + 4, @emitter.current_pos)
+       @emitter.patch_jmp(@emitter.current_pos, l2)
+       @emitter.patch_je(jz2, @emitter.current_pos)
 
        @emitter.emit32(0x3900013f) # strb wzr, [x9] (null terminator)
        @emitter.mov_reg_reg(0, 10) # return X10
@@ -118,10 +122,11 @@ module BuiltinStrings
        @emitter.mov_rax(0); @emitter.mov_reg_reg(1, 0) # X1 = counter
        l = @emitter.current_pos
        @emitter.emit32(0x386168c2) # ldrb w2, [x6, x1]
-       @emitter.emit32(0x340000a2) # cbz w2, end
+       @emitter.emit32(0x6b1f005f) # cmp w2, #0
+       jz = @emitter.current_pos; @emitter.emit32(0x54000000) # b.eq
        @emitter.emit32(0x91000421) # add x1, x1, #1
-       @emitter.emit32(0x17fffffc) # b loop
-       @emitter.patch_je(l + 4, @emitter.current_pos)
+       @emitter.patch_jmp(@emitter.current_pos, l)
+       @emitter.patch_je(jz, @emitter.current_pos)
        @emitter.mov_reg_reg(1, 6) # X1 = buf
        @emitter.mov_reg_reg(2, 0) # X2 = len (from counter)
        @emitter.mov_rax(1); @emitter.mov_reg_reg(0, 0) # X0 = 1

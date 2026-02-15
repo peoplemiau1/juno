@@ -102,12 +102,27 @@ module ParserExpressions
     node = parse_unary
     while match?(:star) || match_symbol?('/') || match_symbol?('%')
       if match?(:star)
-        if peek_next && peek_next[:type] == :ident
-          next_next = @tokens[2]
-          if next_next && next_next[:type] == :symbol && next_next[:value] == '='
-            break
+        # Hack to avoid grabbing * in *ptr = expr as multiplication
+        is_assign = false
+        if peek_next && (peek_next[:type] == :ident || peek_next[:value] == '(')
+          # Simple lookahead for '='
+          i = 1
+          depth = 0
+          star_line = peek[:line]
+          while i < 10 && (t = @tokens[i])
+            break if t[:line] > star_line
+            break if t[:value] == '}' || t[:value] == '{' || t[:value] == ';'
+            if t[:value] == '(' then depth += 1
+            elsif t[:value] == ')' then depth -= 1
+            elsif t[:value] == '=' && depth == 0
+              is_assign = true
+              break
+            end
+            i += 1
           end
         end
+        break if is_assign
+
         consume(:star)
         op = '*'
       else

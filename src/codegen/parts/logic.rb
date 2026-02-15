@@ -39,7 +39,10 @@ module GeneratorLogic
     if node[:name].include?('.')
        save_member_rax(node[:name])
     else
-       @ctx.var_types[node[:name]] = node[:var_type] if node[:var_type]
+       if node[:var_type]
+         @ctx.var_types[node[:name]] = node[:var_type]
+         @ctx.var_is_ptr[node[:name]] = true if node[:var_type] == "ptr" || @ctx.structs.key?(node[:var_type])
+       end
        if @ctx.in_register?(node[:name])
          reg = @emitter.class.reg_code(@ctx.get_register(node[:name]))
          @emitter.mov_reg_from_rax(reg)

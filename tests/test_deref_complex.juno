@@ -1,0 +1,23 @@
+fn main() {
+    let data: ptr = malloc(16)
+
+    // Test simple dereference assignment
+    *data = 100
+    print(*data)
+
+    // Test complex dereference assignment
+    let idx = 1
+    print(idx)
+    *(data + idx) = 200
+    print(*(data + idx))
+
+    if (*data == 100) {
+        if (*(data + 1) == 200) {
+            prints("Complex dereference test SUCCESS")
+            return 0
+        }
+    }
+
+    prints("Complex dereference test FAILED")
+    return 1
+}

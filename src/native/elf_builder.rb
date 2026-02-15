@@ -18,11 +18,15 @@ class ELFBuilder
     header << [1].pack("L")           # Version
     entry = (@arch == :aarch64) ? 0x1000 : 0x401000
     header << [entry].pack("Q")       # ENTRY POINT
+    total_code_size = 0x1000 + @code.length
+    sh_offset = total_code_size
+    sh_num = 1
+
     header << [64].pack("Q")          # Program Header Start
-    header << [0].pack("Q")           # Section Header Start
+    header << [sh_offset].pack("Q")   # Section Header Start
     header << [0].pack("L")           # Flags
     header << [64, 56, 1].pack("SSS") # HdrSize, PhEntSize, PhNum
-    header << [64, 0, 0].pack("SSS")  # ShEntSize, ShNum, ShStrIdx
+    header << [64, sh_num, 0].pack("SSS") # ShEntSize, ShNum, ShStrIdx
 
     # Program Header (56 bytes)
     ph = [1, 7].pack("LL")            # PT_LOAD, PF_R | PF_W | PF_X
@@ -40,6 +44,8 @@ class ELFBuilder
     # Padding to 0x1000
     padding = "\x00".b * (0x1000 - (header.length + ph.length))
 
-    header + ph + padding + @code.pack("C*")
+    result = header + ph + padding + @code.pack("C*")
+    result += "\x00".b * 64 # Dummy NULL section
+    result
   end
 end

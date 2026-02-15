@@ -136,8 +136,9 @@ class NativeGenerator
        @emitter.emit32(0x39000083) # strb w3, [x4]
        @emitter.mov_reg_reg(0, 2) # x0 = quot
        @emitter.emit32(0xeb1f001f) # cmp x0, #0
-       @emitter.patch_jne(@emitter.current_pos, l)
+       pos = @emitter.current_pos
        @emitter.emit32(0x54000001) # b.ne placeholder
+       @emitter.patch_jne(pos, l)
        @emitter.mov_reg_reg(1, 4) # X1 = buffer start
        @emitter.emit_load_address("int_buffer", @linker)
        @emitter.emit32(0x9100fc02) # X2 = buf + 63

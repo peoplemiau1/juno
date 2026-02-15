@@ -344,8 +344,7 @@ module ParserStatements
   def parse_deref_assign
     consume(:star)
     # Parse just the variable/expression for the pointer, not full expression
-    target_name = consume_ident
-    target = { type: :variable, name: target_name }
+    target = parse_primary
     consume_symbol('=')
     value = parse_expression
     { type: :deref_assign, target: target, value: value }

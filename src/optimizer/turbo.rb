@@ -140,6 +140,10 @@ class TurboOptimizer
     when :assignment
       node[:expression] = optimize_expr(node[:expression])
       node
+    when :deref_assign
+      node[:target] = optimize_expr(node[:target])
+      node[:value] = optimize_expr(node[:value])
+      node
     when :if_statement
       optimize_if(node)
     when :while_statement, :for_statement
@@ -357,6 +361,10 @@ class TurboOptimizer
       end
       node[:expression] = try_inline_expr(node[:expression])
       node
+    when :deref_assign
+      node[:target] = try_inline_expr(node[:target])
+      node[:value] = try_inline_expr(node[:value])
+      node
     when :fn_call
       if @inline_candidates.include?(node[:name])
         return inline_call(node, nil)
@@ -560,6 +568,7 @@ class TurboOptimizer
     case node[:type]
     when :assignment then vars << node[:name]
     when :increment then vars << node[:name]
+    when :deref_assign then nil
     end
     
     node.values.each do |v|
@@ -692,6 +701,12 @@ class TurboOptimizer
         else
           constants.delete(node[:name])
         end
+        node
+      when :deref_assign
+        node[:target] = substitute_constants_expr(node[:target], constants)
+        node[:target] = optimize_expr(node[:target])
+        node[:value] = substitute_constants_expr(node[:value], constants)
+        node[:value] = optimize_expr(node[:value])
         node
       when :increment
         constants.delete(node[:name])
