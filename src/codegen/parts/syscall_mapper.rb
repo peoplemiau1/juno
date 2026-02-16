@@ -22,7 +22,6 @@ module SyscallMapper
     socket:   { x86_64: 41,  aarch64: 198 },
     connect:  { x86_64: 42,  aarch64: 203 },
     accept:   { x86_64: 43,  aarch64: 202 },
-    accept4:  { x86_64: 288, aarch64: 242 },
     sendto:   { x86_64: 44,  aarch64: 206 },
     recvfrom: { x86_64: 45,  aarch64: 207 },
     bind:     { x86_64: 49,  aarch64: 200 },
@@ -41,6 +40,7 @@ module SyscallMapper
     getuid:   { x86_64: 102, aarch64: 174 },
     getgid:   { x86_64: 104, aarch64: 176 },
     getppid:  { x86_64: 110, aarch64: 173 },
+    time:     { x86_64: 201, aarch64: 169 }, # 169 is gettimeofday on arm
     memfd_create: { x86_64: 319, aarch64: 279 }
   }
 

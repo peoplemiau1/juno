@@ -144,8 +144,9 @@ class NativeGenerator
        @emitter.emit_load_address("int_buffer", @linker)
        @emitter.emit_add_imm(2, 0, 63) # X2 = buf + 63
        @emitter.emit32(0xcb010042) # X2 = X2 - X1 = len
-       @emitter.mov_rax(1); @emitter.mov_reg_reg(0, 0) # X0 = 1 (stdout)
-       @emitter.mov_rax(64); @emitter.mov_reg_reg(8, 0); @emitter.syscall # write
+       @emitter.mov_rax(1) # X0 = 1 (stdout)
+       @emitter.mov_x8(64) # X8 = 64 (write)
+       @emitter.syscall
        @emitter.pop_reg(4); @emitter.pop_reg(3); @emitter.pop_reg(2); @emitter.pop_reg(1); @emitter.pop_reg(0)
     else
       @emitter.push_reg(0); @emitter.push_reg(7); @emitter.push_reg(6); @emitter.push_reg(2); @emitter.push_reg(1)

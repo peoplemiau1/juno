@@ -55,9 +55,9 @@ class AArch64Emitter
     end
   end
 
-  def mov_rax(val)
+  def mov_reg_imm(reg, val)
     if val == 0
-      emit32(0xd2800000)
+      emit32(0xd2800000 | reg)
       return
     end
     first = true
@@ -65,11 +65,13 @@ class AArch64Emitter
       part = (val >> (i * 16)) & 0xFFFF
       if part != 0 || (first && val >= 0)
         opcode = first ? 0xd2800000 : 0xf2800000
-        emit32(opcode | (part << 5) | (i << 21))
+        emit32(opcode | (part << 5) | (i << 21) | reg)
         first = false
       end
     end
   end
+
+  def mov_rax(val); mov_reg_imm(0, val); end
 
   def mov_reg_reg(dst, src)
     emit32(0xaa0003e0 | (src << 16) | dst)
@@ -115,22 +117,6 @@ class AArch64Emitter
     end
   end
 
-  def mov_mem_idx(base, offset, src, size = 8)
-    # str src, [base, #offset]
-    if size == 8
-      emit32(0xf9000000 | ((offset / 8) << 10) | (base << 5) | src)
-    elsif size == 4
-      emit32(0xb9000000 | (offset << 10) | (base << 5) | src)
-    elsif size == 2
-      emit32(0x79000000 | ((offset / 2) << 10) | (base << 5) | src)
-    elsif size == 1
-      emit32(0x39000000 | (offset << 10) | (base << 5) | src)
-    end
-  end
-
-  def emit_add_rax(val); emit_add_imm(0, 0, val); end
-  def emit_sub_rax(val); emit_sub_imm(0, 0, val); end
-
   def mov_r11_rax; mov_reg_reg(11, 0); end
 
   def mov_rax_rbp_disp32(disp)
@@ -151,12 +137,11 @@ class AArch64Emitter
   def shr_rax_imm(c); c &= 63; emit32(0xd3400000 | (c << 16) | (63 << 10)); end
 
   def div_rax_by_rdx; emit32(0x9ac20c00); end
-  def mod_rax_by_rdx
-    # sdiv x3, x0, x2; msub x0, x3, x2, x0
-    emit32(0x9ac20c03) # sdiv x3, x0, x2
-    emit32(0x1b028060) # msub x0, x3, x2, x0
-  end
 
+  def mod_rax_by_rdx
+    emit32(0x9ac20c01) # sdiv x1, x0, x2
+    emit32(0x9b028020) # msub x0, x1, x2, x0
+  end
 
   def cmp_rax_rdx(op)
     emit32(0xeb02001f)
@@ -168,7 +153,6 @@ class AArch64Emitter
   end
 
   def test_rax_rax; emit32(0xf100001f); end # cmp x0, #0
-  def test_reg_reg(r1, r2); emit32(0xeb00001f | (r1 << 16) | (r2 << 5)); end # cmp r1, r2
 
   def cmp_reg_imm(reg, imm)
     # subs xzr, reg, #imm
@@ -177,7 +161,6 @@ class AArch64Emitter
 
   def call_rel32; emit32(0x94000000); end
   def call_ind_rel32; emit32(0xd63f0000); end
-  def call_reg(reg); emit32(0xd63f0000 | (reg << 5)); end
 
   def jmp_rel32; pos = current_pos; emit32(0x14000000); pos; end
   def je_rel32; pos = current_pos; emit32(0x54000000); pos; end
@@ -199,11 +182,7 @@ class AArch64Emitter
     @bytes[pos...pos+4] = [0x54000001 | ((offset << 5) & 0xFFFFE0)].pack("L<").bytes
   end
 
-  def mov_x8(imm)
-    # 0xd2800008 is MOV X8, #0
-    # Encoding: 0xd2800000 | (imm << 5) | reg
-    emit32(0xd2800008 | ((imm & 0xFFFF) << 5))
-  end
+  def mov_x8(val); mov_reg_imm(8, val); end
 
   def emit_sys_exit_rax
     mov_x8(93)
@@ -271,13 +250,13 @@ class AArch64Emitter
   end
 
   def je_rel32
-    pos = current_pos
+    pos = @code.length
     emit32(0x54000000) # b.eq .
     pos
   end
 
   def jne_rel32
-    pos = current_pos
+    pos = @code.length
     emit32(0x54000001) # b.ne .
     pos
   end
@@ -285,17 +264,17 @@ class AArch64Emitter
   def patch_je(pos, target)
     offset = (target - pos) / 4
     instr = 0x54000000 | ((offset & 0x7ffff) << 5)
-    @bytes[pos...pos+4] = [instr].pack("L<").bytes
+    @code[pos...pos+4] = [instr].pack("L<").bytes
   end
 
   def patch_jne(pos, target)
     offset = (target - pos) / 4
     instr = 0x54000001 | ((offset & 0x7ffff) << 5)
-    @bytes[pos...pos+4] = [instr].pack("L<").bytes
+    @code[pos...pos+4] = [instr].pack("L<").bytes
   end
 
   def jmp_rel32
-    pos = current_pos
+    pos = @code.length
     emit32(0x14000000) # b .
     pos
   end
@@ -303,6 +282,6 @@ class AArch64Emitter
   def patch_jmp(pos, target)
     offset = (target - pos) / 4
     instr = 0x14000000 | (offset & 0x3ffffff)
-    @bytes[pos...pos+4] = [instr].pack("L<").bytes
+    @code[pos...pos+4] = [instr].pack("L<").bytes
   end
 end

@@ -51,6 +51,12 @@ class CodeEmitter
     emit([rex, 0x89, modrm])
   end
 
+  def mov_reg_sp(dst)
+    rex = 0x48
+    rex |= 0x01 if dst >= 8
+    emit([rex, 0x89, 0xe0 | (dst & 7)])
+  end
+
   def mov_stack_reg_val(offset, src)
     return if offset.nil?
     rex = 0x48
@@ -100,25 +106,6 @@ class CodeEmitter
     end
   end
 
-  def mov_mem_idx(base, offset, src, size = 8)
-    if base == 4 # rsp
-      if size == 8
-        emit([0x48, 0x89, 0x44, 0x24, offset]) # wait, src reg
-        # Actually x86-64 encoding for [rsp+offset] is complex if src is not RAX
-        # simplified for now: assume src=RAX
-        emit([0x48, 0x89, 0x04, 0x24 + offset]) if src == 0 && offset == 0
-      end
-    end
-    # Fallback to simple mov_stack_reg_val if it was rsp
-    if base == 4 && src == 0 && size == 8
-       mov_stack_reg_val(-offset, 0)
-    elsif base == 4 && size == 4
-       emit([0x89, 0x44, 0x24, offset]) # mov [rsp+offset], eax
-    elsif base == 4 && size == 2
-       emit([0x66, 0x89, 0x44, 0x24, offset]) # mov [rsp+offset], ax
-    end
-  end
-
   def mov_r11_rax; emit([0x49, 0x89, 0xc3]); end
 
   def mov_rax_rbp_disp32(disp)
@@ -136,8 +123,6 @@ class CodeEmitter
   def shl_rax_cl; emit([0x48, 0x89, 0xd1, 0x48, 0xd3, 0xe0]); end
   def shr_rax_cl; emit([0x48, 0x89, 0xd1, 0x48, 0xd3, 0xe8]); end
   def shl_rax_imm(c); emit([0x48, 0xc1, 0xe0, c & 0x3f]); end
-  def shl_reg_imm(reg, c); emit([0x48, 0xc1, 0xe0 + (reg % 8), c & 0x3f]); end
-  def or_rax_reg(reg); emit([0x48, 0x09, 0xc0 + (reg % 8)]); end
   def shr_rax_imm(c); emit([0x48, 0xc1, 0xe8, c & 0x3f]); end
 
   def div_rax_by_rdx
@@ -161,7 +146,6 @@ class CodeEmitter
   end
 
   def test_rax_rax; emit([0x48, 0x85, 0xc0]); end
-  def test_reg_reg(r1, r2); emit([0x48, 0x85, 0xc0 + (r1 % 8) + (r2 % 8) * 8]); end # wait, test is 0x85
 
   def cmp_reg_imm(reg, imm)
     if reg == 0 # rax
@@ -172,7 +156,6 @@ class CodeEmitter
   end
 
   def call_rel32; emit([0xe8, 0, 0, 0, 0]); end
-  def call_reg(reg); emit([0xff, 0xd0 + (reg % 8)]); end
   def call_ind_rel32; emit([0xff, 0x15, 0, 0, 0, 0]); end
 
   def jmp_rel32; pos = current_pos; emit([0xe9, 0, 0, 0, 0]); pos; end

@@ -148,13 +148,16 @@ module BuiltinStrings
        @emitter.patch_jmp(@emitter.current_pos, l)
        @emitter.patch_je(jz, @emitter.current_pos)
        @emitter.mov_reg_reg(1, 6) # X1 = buf
-       @emitter.mov_reg_reg(2, 0) # X2 = len (from counter)
-       @emitter.mov_rax(1); @emitter.mov_reg_reg(0, 0) # X0 = 1
-       @emitter.mov_rax(64); @emitter.mov_reg_reg(8, 0); @emitter.syscall
+       @emitter.mov_reg_reg(2, 1) # X2 = len (from counter X1)
+       @emitter.mov_rax(1)        # X0 = 1 (stdout)
+       @emitter.mov_x8(64)       # X8 = 64 (write)
+       @emitter.syscall
        @emitter.emit_load_address("newline_char", @linker)
-       @emitter.mov_reg_reg(1, 0); @emitter.mov_rax(1); @emitter.mov_reg_reg(0, 0)
-       @emitter.mov_rax(1); @emitter.mov_reg_reg(2, 0)
-       @emitter.mov_rax(64); @emitter.mov_reg_reg(8, 0); @emitter.syscall
+       @emitter.mov_reg_reg(1, 0) # X1 = buf (newline)
+       @emitter.mov_rax(1)        # X0 = 1 (stdout)
+       @emitter.mov_reg_imm(2, 1) # X2 = 1 (len)
+       @emitter.mov_x8(64)        # X8 = 64 (write)
+       @emitter.syscall
     else
        @emitter.mov_reg_reg(6, 0); @emitter.mov_rax(0); @emitter.mov_reg_reg(1, 0)
        l = @emitter.current_pos; @emitter.emit([0x80, 0x3c, 0x0e, 0x00, 0x74, 0x05, 0x48, 0xff, 0xc1, 0xeb, 0xf5])
