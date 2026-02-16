@@ -5,194 +5,86 @@ module BuiltinCollections
   def setup_collections
     return if @collections_setup
     @collections_setup = true
-    
     @linker.add_data("vec_storage", "\x00" * 65536)
     @linker.add_data("vec_storage_ptr", [0].pack("Q<"))
   end
 
-  # vec_new(capacity) - Create new vector
   def gen_vec_new(node)
-    return unless @target_os == :linux
     setup_collections
-    
     args = node[:args] || []
-    if args[0]
-      eval_expression(args[0])
-    else
-      @emitter.emit([0xb8, 0x10, 0x00, 0x00, 0x00])  # mov eax, 16
-    end
-    @emitter.emit([0x49, 0x89, 0xc4])  # mov r12, rax (capacity)
-    
-    # Total size = 16 + capacity*8
-    @emitter.emit([0x49, 0xc1, 0xe4, 0x03])  # shl r12, 3
-    @emitter.emit([0x49, 0x83, 0xc4, 0x10])  # add r12, 16
-    
-    # Get storage pointer address
-    @emitter.emit([0x48, 0x8d, 0x3d])  # lea rdi, [rip+offset]
-    @linker.add_data_patch(@emitter.current_pos, "vec_storage_ptr")
-    @emitter.emit([0x00, 0x00, 0x00, 0x00])
-    @emitter.emit([0x48, 0x8b, 0x07])  # mov rax, [rdi]
-    
-    # Get storage base
-    @emitter.emit([0x48, 0x8d, 0x35])  # lea rsi, [rip+offset]
-    @linker.add_data_patch(@emitter.current_pos, "vec_storage")
-    @emitter.emit([0x00, 0x00, 0x00, 0x00])
-    @emitter.emit([0x48, 0x01, 0xf0])  # add rax, rsi
-    @emitter.emit([0x49, 0x89, 0xc5])  # mov r13, rax (vec ptr)
-    
-    # Update pointer
-    @emitter.emit([0x48, 0x8b, 0x07])  # mov rax, [rdi]
-    @emitter.emit([0x4c, 0x01, 0xe0])  # add rax, r12
-    @emitter.emit([0x48, 0x89, 0x07])  # mov [rdi], rax
-    
-    # Init capacity
-    @emitter.emit([0x49, 0x83, 0xec, 0x10])
-    @emitter.emit([0x49, 0xc1, 0xec, 0x03])
-    @emitter.emit([0x4d, 0x89, 0x65, 0x00])  # [r13] = r12 (cap)
-    @emitter.emit([0x49, 0xc7, 0x45, 0x08, 0x00, 0x00, 0x00, 0x00])  # [r13+8] = 0 (len)
-    
-    @emitter.emit([0x4c, 0x89, 0xe8])  # mov rax, r13
+    if args[0] then eval_expression(args[0]) else @emitter.mov_rax(16) end
+
+    @emitter.mov_reg_reg(4, 0) # r12/x4 = capacity
+    @emitter.shl_rax_imm(3)
+    @emitter.emit_add_rax(16) # total size = capacity*8 + 16
+    @emitter.mov_reg_reg(5, 0) # r13/x5 = total size
+
+    @emitter.emit_load_address("vec_storage_ptr", @linker)
+    @emitter.mov_reg_reg(@arch == :aarch64 ? 6 : 14, 0) # ptr_addr
+    @emitter.mov_rax_mem(0) # rax = current offset
+    @emitter.push_reg(0) # save current offset
+
+    @emitter.emit_load_address("vec_storage", @linker)
+    @emitter.mov_reg_reg(2, 0)
+    @emitter.pop_reg(0)
+    @emitter.add_rax_rdx # rax = absolute address of new vector
+    @emitter.mov_reg_reg(@arch == :aarch64 ? 7 : 15, 0) # r15/x7 = vec_ptr
+
+    # Update storage ptr
+    @emitter.mov_rax_mem_idx(@arch == :aarch64 ? 6 : 14, 0)
+    @emitter.mov_reg_reg(2, 5) # total size
+    @emitter.add_rax_rdx
+    @emitter.mov_mem_idx(@arch == :aarch64 ? 6 : 14, 0, 0, 8)
+
+    # Init vec header
+    @emitter.mov_reg_reg(0, 4) # capacity
+    @emitter.mov_mem_idx(@arch == :aarch64 ? 7 : 15, 0, 0, 8)
+    @emitter.mov_rax(0) # len
+    @emitter.mov_mem_idx(@arch == :aarch64 ? 7 : 15, 8, 0, 8)
+
+    @emitter.mov_reg_reg(0, @arch == :aarch64 ? 7 : 15)
   end
 
-  # vec_push(vec, value)
   def gen_vec_push(node)
-    return unless @target_os == :linux
-    
-    args = node[:args] || []
-    return if args.length < 2
-    
-    eval_expression(args[0])
-    @emitter.emit([0x49, 0x89, 0xc4])  # mov r12, rax
-    
-    eval_expression(args[1])
-    @emitter.emit([0x49, 0x89, 0xc5])  # mov r13, rax
-    
-    # Get len, check capacity
-    @emitter.emit([0x49, 0x8b, 0x44, 0x24, 0x08])  # mov rax, [r12+8]
-    @emitter.emit([0x49, 0x8b, 0x0c, 0x24])  # mov rcx, [r12]
-    @emitter.emit([0x48, 0x39, 0xc8])  # cmp rax, rcx
-    @emitter.emit([0x73, 0x12])  # jae skip
-    
-    # Store at 16 + len*8
-    @emitter.emit([0x48, 0xc1, 0xe0, 0x03])
-    @emitter.emit([0x48, 0x83, 0xc0, 0x10])
-    @emitter.emit([0x4c, 0x01, 0xe0])  # add rax, r12
-    @emitter.emit([0x4c, 0x89, 0x28])  # [rax] = r13
-    @emitter.emit([0x49, 0xff, 0x44, 0x24, 0x08])  # inc [r12+8]
-    # skip:
-    @emitter.emit([0x4c, 0x89, 0xe0])  # mov rax, r12
+    eval_expression(node[:args][1]); @emitter.push_reg(0) # value
+    eval_expression(node[:args][0]); @emitter.push_reg(0) # vec
+    @emitter.pop_reg(@arch == :aarch64 ? 4 : 12) # vec
+    @emitter.pop_reg(@arch == :aarch64 ? 5 : 13) # value
+
+    @emitter.mov_rax_mem_idx(@arch == :aarch64 ? 4 : 12, 8) # len
+    @emitter.mov_reg_reg(2, 0) # len
+    @emitter.mov_rax_mem_idx(@arch == :aarch64 ? 4 : 12, 0) # cap
+    @emitter.cmp_rax_rdx(">") # if cap > len
+    p = @emitter.je_rel32 # simplified: if cap <= len skip
+
+    @emitter.mov_reg_reg(0, 2) # len
+    @emitter.shl_rax_imm(3)
+    @emitter.emit_add_rax(16)
+    @emitter.mov_reg_reg(2, @arch == :aarch64 ? 4 : 12)
+    @emitter.add_rax_rdx # rax = slot addr
+    @emitter.mov_mem_idx(0, 0, @arch == :aarch64 ? 5 : 13, 8)
+
+    # Increment len
+    @emitter.mov_rax_mem_idx(@arch == :aarch64 ? 4 : 12, 8)
+    @emitter.emit_add_rax(1)
+    @emitter.mov_mem_idx(@arch == :aarch64 ? 4 : 12, 8, 0, 8)
+
+    @emitter.patch_je(p, @emitter.current_pos)
+    @emitter.mov_reg_reg(0, @arch == :aarch64 ? 4 : 12)
   end
 
-  # vec_pop(vec)
-  def gen_vec_pop(node)
-    return unless @target_os == :linux
-    
-    args = node[:args] || []
-    return @emitter.emit([0x48, 0x31, 0xc0]) if args.empty?
-    
-    eval_expression(args[0])
-    @emitter.emit([0x49, 0x89, 0xc4])  # r12 = vec
-    
-    @emitter.emit([0x49, 0x8b, 0x44, 0x24, 0x08])  # rax = len
-    @emitter.emit([0x48, 0x85, 0xc0])  # test
-    @emitter.emit([0x75, 0x05])  # jnz ok
-    @emitter.emit([0x48, 0x31, 0xc0])  # return 0
-    @emitter.emit([0xeb, 0x13])  # jmp end
-    
-    # Decrement len, get value
-    @emitter.emit([0x48, 0xff, 0xc8])  # dec rax
-    @emitter.emit([0x49, 0x89, 0x44, 0x24, 0x08])  # [r12+8] = rax
-    @emitter.emit([0x48, 0xc1, 0xe0, 0x03])
-    @emitter.emit([0x48, 0x83, 0xc0, 0x10])
-    @emitter.emit([0x4c, 0x01, 0xe0])
-    @emitter.emit([0x48, 0x8b, 0x00])  # rax = [rax]
-    # end
-  end
-
-  # vec_get(vec, index)
-  def gen_vec_get(node)
-    return unless @target_os == :linux
-    
-    args = node[:args] || []
-    return @emitter.emit([0x48, 0x31, 0xc0]) if args.length < 2
-    
-    eval_expression(args[0])
-    @emitter.emit([0x49, 0x89, 0xc4])
-    
-    eval_expression(args[1])
-    @emitter.emit([0x49, 0x89, 0xc5])  # r13 = index
-    
-    # Bounds check
-    @emitter.emit([0x49, 0x8b, 0x4c, 0x24, 0x08])  # rcx = len
-    @emitter.emit([0x4c, 0x39, 0xe9])  # cmp rcx, r13
-    @emitter.emit([0x77, 0x05])  # ja ok
-    @emitter.emit([0x48, 0x31, 0xc0])  # return 0
-    @emitter.emit([0xeb, 0x0c])  # jmp end
-    
-    # Get value at 16 + index*8
-    @emitter.emit([0x4c, 0x89, 0xe8])  # rax = r13
-    @emitter.emit([0x48, 0xc1, 0xe0, 0x03])
-    @emitter.emit([0x48, 0x83, 0xc0, 0x10])
-    @emitter.emit([0x4c, 0x01, 0xe0])
-    @emitter.emit([0x48, 0x8b, 0x00])
-    # end
-  end
-
-  # vec_set(vec, index, value)
-  def gen_vec_set(node)
-    return unless @target_os == :linux
-    
-    args = node[:args] || []
-    return if args.length < 3
-    
-    eval_expression(args[0])
-    @emitter.emit([0x49, 0x89, 0xc4])
-    
-    eval_expression(args[1])
-    @emitter.emit([0x49, 0x89, 0xc5])
-    
-    eval_expression(args[2])
-    @emitter.emit([0x49, 0x89, 0xc6])  # r14 = value
-    
-    # Calculate offset
-    @emitter.emit([0x4c, 0x89, 0xe8])
-    @emitter.emit([0x48, 0xc1, 0xe0, 0x03])
-    @emitter.emit([0x48, 0x83, 0xc0, 0x10])
-    @emitter.emit([0x4c, 0x01, 0xe0])
-    @emitter.emit([0x4c, 0x89, 0x30])  # [rax] = r14
-    @emitter.emit([0x4c, 0x89, 0xe0])
-  end
-
-  # vec_len(vec)
   def gen_vec_len(node)
-    return unless @target_os == :linux
-    
-    args = node[:args] || []
-    return @emitter.emit([0x48, 0x31, 0xc0]) if args.empty?
-    
-    eval_expression(args[0])
-    @emitter.emit([0x48, 0x8b, 0x40, 0x08])  # rax = [rax+8]
+    eval_expression(node[:args][0])
+    @emitter.mov_rax_mem_idx(0, 8)
   end
 
-  # vec_cap(vec)
-  def gen_vec_cap(node)
-    return unless @target_os == :linux
-    
-    args = node[:args] || []
-    return @emitter.emit([0x48, 0x31, 0xc0]) if args.empty?
-    
-    eval_expression(args[0])
-    @emitter.emit([0x48, 0x8b, 0x00])  # rax = [rax]
-  end
-
-  # vec_clear(vec)
-  def gen_vec_clear(node)
-    return unless @target_os == :linux
-    
-    args = node[:args] || []
-    return @emitter.emit([0x48, 0x31, 0xc0]) if args.empty?
-    
-    eval_expression(args[0])
-    @emitter.emit([0x48, 0xc7, 0x40, 0x08, 0x00, 0x00, 0x00, 0x00])
+  def gen_vec_get(node)
+    eval_expression(node[:args][1]); @emitter.push_reg(0) # index
+    eval_expression(node[:args][0]); @emitter.pop_reg(1) # vec
+    @emitter.mov_reg_reg(2, 1)
+    @emitter.shl_rax_imm(3)
+    @emitter.emit_add_rax(16)
+    @emitter.add_rax_rdx
+    @emitter.mov_rax_mem(0)
   end
 end

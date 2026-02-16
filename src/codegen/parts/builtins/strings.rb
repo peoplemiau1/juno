@@ -13,7 +13,7 @@ module BuiltinStrings
        # Since I don't have LSE by default, use a loop or just simple add for now?
        # Let's use simple add for now as I don't want to overcomplicate the emitter.
        @emitter.emit32(0xf9400009) # ldr x9, [x0]
-       @emitter.emit32(0x9100052b) # add x11, x9, #1
+       @emitter.emit_add_imm(11, 9, 1) # add x11, x9, #1
        @emitter.emit32(0xf900000b) # str x11, [x0]
        @emitter.emit32(0x92400d29) # and x9, x9, #15
 
@@ -85,10 +85,24 @@ module BuiltinStrings
   def gen_substr(node)
     eval_expression(node[:args][0]); @emitter.push_reg(0)
     eval_expression(node[:args][1]); @emitter.push_reg(0)
-    eval_expression(node[:args][2]); @emitter.mov_reg_reg(1, 0) # rcx = len
-    @emitter.pop_reg(2); @emitter.pop_reg(6) # rdx=start, rsi=s
+    eval_expression(node[:args][2]); @emitter.mov_reg_reg(1, 0) # X1 = len
+    @emitter.pop_reg(2); @emitter.pop_reg(6) # X2=start, X6=s
     if @arch == :aarch64
-       @emitter.mov_rax(0)
+       @emitter.emit32(0x8b0200c6) # add x6, x6, x2 (s = s + start)
+       @emitter.emit_load_address("substr_buffer", @linker)
+       @emitter.mov_reg_reg(9, 0) # X9 = buffer
+       @emitter.mov_reg_reg(10, 0) # X10 = return
+
+       # Copy loop
+       l = @emitter.current_pos
+       @emitter.emit32(0xb40000a1) # cbz x1, end
+       @emitter.emit32(0x384004c2) # ldrb w2, [x6], #1
+       @emitter.emit32(0x38000522) # strb w2, [x9], #1
+       @emitter.emit_sub_imm(1, 1, 1)
+       @emitter.patch_jmp(@emitter.current_pos, l)
+
+       @emitter.emit32(0x3900013f) # strb wzr, [x9]
+       @emitter.mov_reg_reg(0, 10)
     else
        @emitter.emit([0x48, 0x01, 0xd6]) # rsi = s + start
        @emitter.emit_load_address("substr_buffer", @linker)
@@ -100,7 +114,13 @@ module BuiltinStrings
   def gen_chr(node)
     eval_expression(node[:args][0])
     if @arch == :aarch64
-       @emitter.mov_rax(0)
+       @emitter.push_reg(0)
+       @emitter.emit_load_address("chr_buffer", @linker)
+       @emitter.mov_reg_reg(1, 0)
+       @emitter.pop_reg(0)
+       @emitter.emit32(0x39000020) # strb w0, [x1]
+       @emitter.emit32(0x3900043f) # strb wzr, [x1, #1]
+       @emitter.mov_reg_reg(0, 1)
     else
        @emitter.push_reg(0)
        @emitter.emit_load_address("chr_buffer", @linker)
@@ -124,7 +144,7 @@ module BuiltinStrings
        @emitter.emit32(0x386168c2) # ldrb w2, [x6, x1]
        @emitter.emit32(0x6b1f005f) # cmp w2, #0
        jz = @emitter.current_pos; @emitter.emit32(0x54000000) # b.eq
-       @emitter.emit32(0x91000421) # add x1, x1, #1
+       @emitter.emit_add_imm(1, 1, 1) # add x1, x1, #1
        @emitter.patch_jmp(@emitter.current_pos, l)
        @emitter.patch_je(jz, @emitter.current_pos)
        @emitter.mov_reg_reg(1, 6) # X1 = buf

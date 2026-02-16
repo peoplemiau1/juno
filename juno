@@ -25,9 +25,9 @@ end
 
 $hell_mode = nil
 
-def enable_hell_mode
+def enable_hell_mode(arch = :x86_64)
   require_relative "src/polymorph/hell_mode"
-  $hell_mode = HellMode.new(:hell)
+  $hell_mode = HellMode.new(:hell, arch)
 end
 
 def compile(input_file, output_path, arch = :x86_64)
@@ -96,13 +96,14 @@ end
 
 def cmd_run(args)
   file = args.find { |a| a.end_with?(".juno") }
-  enable_hell_mode if args.include?("--hell")
   
   arch = :x86_64
   if args.include?("--arch")
     idx = args.index("--arch")
     arch = args[idx + 1].to_sym if idx + 1 < args.length
   end
+
+  enable_hell_mode(arch) if args.include?("--hell")
 
   unless file
     puts "Usage: juno run <file.juno> [--arch aarch64]"
@@ -130,8 +131,6 @@ def cmd_build(args)
     if args[i] == "-o"
       i += 1
       output = args[i]
-    elsif args[i] == "--hell"
-      enable_hell_mode
     elsif args[i] == "--arch"
       i += 1
       arch = args[i].to_sym
@@ -141,6 +140,8 @@ def cmd_build(args)
     i += 1
   end
   
+  enable_hell_mode(arch) if args.include?("--hell")
+
   unless file
     puts "Usage: juno build <file.juno> [-o name] [--arch aarch64]"
     exit 1

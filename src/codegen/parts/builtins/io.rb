@@ -1,6 +1,17 @@
 # I/O built-in functions for Juno
 
 module BuiltinIO
+  def gen_output(node)
+    # Generic output: try to guess if it's string or int, or just call prints
+    # In Juno v2.0, we'll favor prints
+    gen_prints(node)
+  end
+
+  def gen_output_int(node)
+    eval_expression(node[:args][0])
+    gen_print_int_compatibility(node)
+  end
+
   def gen_open(node)
     arg = node[:args][0]
     if arg[:type] == :string_literal
@@ -17,25 +28,25 @@ module BuiltinIO
       @emitter.mov_rax(0xffffff9c); @emitter.mov_reg_reg(0, 0) # X0 = AT_FDCWD (-100)
       @emitter.mov_rax(0); @emitter.mov_reg_reg(2, 0) # X2 = flags (O_RDONLY)
       @emitter.mov_rax(0); @emitter.mov_reg_reg(3, 0) # X3 = mode
-      @emitter.mov_rax(56); @emitter.mov_reg_reg(8, 0); @emitter.syscall
+      emit_syscall(:open)
     else
       @emitter.mov_reg_reg(7, 0) # RDI = path
       @emitter.mov_rax(0); @emitter.mov_reg_reg(6, 0) # RSI = flags (O_RDONLY)
       @emitter.mov_rax(0); @emitter.mov_reg_reg(2, 0) # RDX = mode
-      @emitter.mov_rax(2); @emitter.syscall
+      emit_syscall(:open)
     end
   end
 
   def gen_read(node)
     eval_expression(node[:args][0]); @emitter.push_reg(0) # fd
     eval_expression(node[:args][1]); @emitter.push_reg(0) # buf
-    eval_expression(node[:args][2]); @emitter.mov_reg_reg(2, 0) # count
+    eval_expression(node[:args][2]); @emitter.mov_reg_reg(2, 0) # count/len
     if @arch == :aarch64
       @emitter.pop_reg(1); @emitter.pop_reg(0) # X1=buf, X0=fd
-      @emitter.mov_rax(63); @emitter.mov_reg_reg(8, 0); @emitter.syscall
+      emit_syscall(:read)
     else
       @emitter.pop_reg(6); @emitter.pop_reg(7) # RSI=buf, RDI=fd
-      @emitter.mov_rax(0); @emitter.syscall
+      emit_syscall(:read)
     end
   end
 
@@ -43,10 +54,10 @@ module BuiltinIO
     eval_expression(node[:args][0])
     # fd is already in X0/RAX
     if @arch == :aarch64
-      @emitter.mov_rax(57); @emitter.mov_reg_reg(8, 0); @emitter.syscall
+      emit_syscall(:close)
     else
       @emitter.mov_reg_reg(7, 0) # RDI = fd
-      @emitter.mov_rax(3); @emitter.syscall
+      emit_syscall(:close)
     end
   end
 
@@ -60,12 +71,12 @@ module BuiltinIO
         @emitter.mov_reg_reg(1, 0) # X1 = buf
         @emitter.mov_rax(1); @emitter.mov_reg_reg(0, 0) # X0 = stdout
         @emitter.mov_rax(len); @emitter.mov_reg_reg(2, 0) # X2 = len
-        @emitter.mov_rax(64); @emitter.mov_reg_reg(8, 0); @emitter.syscall
+        emit_syscall(:write)
       else
         @emitter.mov_reg_reg(6, 0) # RSI = buf
         @emitter.mov_rax(1); @emitter.mov_reg_reg(7, 0) # RDI = stdout
         @emitter.mov_rax(len); @emitter.mov_reg_reg(2, 0) # RDX = len
-        @emitter.mov_rax(1); @emitter.syscall
+        emit_syscall(:write)
       end
     else
       eval_expression(arg); gen_print_int_compatibility(node)

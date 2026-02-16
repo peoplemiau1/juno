@@ -109,7 +109,7 @@ module ParserExpressions
           i = 1
           depth = 0
           star_line = peek[:line]
-          while i < 10 && (t = @tokens[i])
+          while i < 10 && (t = @tokens[@pos + i])
             break if t[:line] > star_line
             break if t[:value] == '}' || t[:value] == '{' || t[:value] == ';'
             if t[:value] == '(' then depth += 1

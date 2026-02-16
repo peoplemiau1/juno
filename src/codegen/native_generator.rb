@@ -7,6 +7,7 @@ require_relative "parts/emitter"
 require_relative "parts/emitter_aarch64"
 require_relative "parts/logic"
 require_relative "parts/calls"
+require_relative "parts/syscall_mapper"
 require_relative "../optimizer/register_allocator"
 
 class NativeGenerator
@@ -14,6 +15,7 @@ class NativeGenerator
 
   include GeneratorLogic
   include GeneratorCalls
+  include SyscallMapper
 
   def initialize(ast, target_os, arch = :x86_64)
     @ast = ast
@@ -94,7 +96,6 @@ class NativeGenerator
     @emitter.emit_prologue(@stack_size)
     @linker.add_fn_patch(@emitter.current_pos + (@arch == :aarch64 ? 0 : 1), "main", @arch == :aarch64 ? :aarch64_bl : :rel32)
     @emitter.call_rel32
-    @emitter.mov_rax(0)
     @target_os == :linux ? @emitter.emit_sys_exit_rax : @emitter.emit_epilogue(@stack_size)
   end
 
@@ -124,7 +125,7 @@ class NativeGenerator
     if @arch == :aarch64
        @emitter.push_reg(0); @emitter.push_reg(1); @emitter.push_reg(2); @emitter.push_reg(3); @emitter.push_reg(4)
        @emitter.emit_load_address("int_buffer", @linker)
-       @emitter.mov_reg_reg(4, 0); @emitter.emit32(0x9100f884) # X4 = buf + 62
+       @emitter.mov_reg_reg(4, 0); @emitter.emit_add_imm(4, 4, 62) # X4 = buf + 62
        @emitter.mov_rax(10); @emitter.emit32(0x39000080) # [x4] = '\n'
        @emitter.mov_rax(10); @emitter.mov_reg_reg(1, 0) # X1 = 10
        @emitter.emit32(0xf94013e0) # ldr x0, [sp, #32] (original value)
@@ -141,8 +142,8 @@ class NativeGenerator
        @emitter.patch_jne(pos, l)
        @emitter.mov_reg_reg(1, 4) # X1 = buffer start
        @emitter.emit_load_address("int_buffer", @linker)
-       @emitter.emit32(0x9100fc02) # X2 = buf + 63
-       @emitter.emit32(0xcb010042) # X2 = 63 - (X1 - buf) = len
+       @emitter.emit_add_imm(2, 0, 63) # X2 = buf + 63
+       @emitter.emit32(0xcb010042) # X2 = X2 - X1 = len
        @emitter.mov_rax(1); @emitter.mov_reg_reg(0, 0) # X0 = 1 (stdout)
        @emitter.mov_rax(64); @emitter.mov_reg_reg(8, 0); @emitter.syscall # write
        @emitter.pop_reg(4); @emitter.pop_reg(3); @emitter.pop_reg(2); @emitter.pop_reg(1); @emitter.pop_reg(0)

@@ -14,9 +14,9 @@ class HellMode
     hell: 5       # АД - максимум всего
   }
 
-  def initialize(level = :hell)
+  def initialize(level = :hell, arch = :x86_64)
     @level = LEVELS[level] || 5
-    @poly = PolymorphEngine.new
+    @poly = PolymorphEngine.new(arch)
     @poly.mutation_level = @level
     @mutator = CodeMutator.new(level: @level, anti_debug: @level >= 4, encrypt_strings: @level >= 3)
     @anti = AntiReverse.new

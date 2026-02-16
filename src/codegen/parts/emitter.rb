@@ -83,6 +83,42 @@ class CodeEmitter
     emit([0x48, 0x8b, 0x40, disp & 0xFF])
   end
 
+  def mov_rax_mem_idx(reg, offset, size = 8)
+    if reg == 4 # rsp
+      if size == 8
+        emit([0x48, 0x8b, 0x44, 0x24, offset])
+      elsif size == 4
+        emit([0x8b, 0x44, 0x24, offset])
+      elsif size == 1
+        emit([0x48, 0x0f, 0xb6, 0x44, 0x24, offset])
+      end
+    else
+      # fall back to rax as base
+      if size == 8
+        emit([0x48, 0x8b, 0x40 + reg, offset])
+      end
+    end
+  end
+
+  def mov_mem_idx(base, offset, src, size = 8)
+    if base == 4 # rsp
+      if size == 8
+        emit([0x48, 0x89, 0x44, 0x24, offset]) # wait, src reg
+        # Actually x86-64 encoding for [rsp+offset] is complex if src is not RAX
+        # simplified for now: assume src=RAX
+        emit([0x48, 0x89, 0x04, 0x24 + offset]) if src == 0 && offset == 0
+      end
+    end
+    # Fallback to simple mov_stack_reg_val if it was rsp
+    if base == 4 && src == 0 && size == 8
+       mov_stack_reg_val(-offset, 0)
+    elsif base == 4 && size == 4
+       emit([0x89, 0x44, 0x24, offset]) # mov [rsp+offset], eax
+    elsif base == 4 && size == 2
+       emit([0x66, 0x89, 0x44, 0x24, offset]) # mov [rsp+offset], ax
+    end
+  end
+
   def mov_r11_rax; emit([0x49, 0x89, 0xc3]); end
 
   def mov_rax_rbp_disp32(disp)
@@ -100,6 +136,8 @@ class CodeEmitter
   def shl_rax_cl; emit([0x48, 0x89, 0xd1, 0x48, 0xd3, 0xe0]); end
   def shr_rax_cl; emit([0x48, 0x89, 0xd1, 0x48, 0xd3, 0xe8]); end
   def shl_rax_imm(c); emit([0x48, 0xc1, 0xe0, c & 0x3f]); end
+  def shl_reg_imm(reg, c); emit([0x48, 0xc1, 0xe0 + (reg % 8), c & 0x3f]); end
+  def or_rax_reg(reg); emit([0x48, 0x09, 0xc0 + (reg % 8)]); end
   def shr_rax_imm(c); emit([0x48, 0xc1, 0xe8, c & 0x3f]); end
 
   def div_rax_by_rdx
@@ -123,12 +161,23 @@ class CodeEmitter
   end
 
   def test_rax_rax; emit([0x48, 0x85, 0xc0]); end
+  def test_reg_reg(r1, r2); emit([0x48, 0x85, 0xc0 + (r1 % 8) + (r2 % 8) * 8]); end # wait, test is 0x85
+
+  def cmp_reg_imm(reg, imm)
+    if reg == 0 # rax
+      emit([0x48, 0x3d] + [imm].pack("L<").bytes)
+    else
+      emit([0x48, 0x81, 0xf8 + (reg % 8)] + [imm].pack("L<").bytes)
+    end
+  end
 
   def call_rel32; emit([0xe8, 0, 0, 0, 0]); end
+  def call_reg(reg); emit([0xff, 0xd0 + (reg % 8)]); end
   def call_ind_rel32; emit([0xff, 0x15, 0, 0, 0, 0]); end
 
   def jmp_rel32; pos = current_pos; emit([0xe9, 0, 0, 0, 0]); pos; end
   def je_rel32; pos = current_pos; emit([0x0f, 0x84, 0, 0, 0, 0]); pos; end
+  def jne_rel32; pos = current_pos; emit([0x0f, 0x85, 0, 0, 0, 0]); pos; end
 
   def patch_jmp(pos, target)
     offset = target - (pos + 5)
@@ -139,6 +188,7 @@ class CodeEmitter
     offset = target - (pos + 6)
     @bytes[pos+2..pos+5] = [offset].pack("l<").bytes
   end
+  def patch_jne(pos, target); patch_je(pos, target); end
 
   def emit_sys_exit_rax
     emit([0x48, 0x89, 0xc7, 0x48, 0xc7, 0xc0, 60, 0, 0, 0, 0x0f, 0x05])
@@ -185,4 +235,14 @@ class CodeEmitter
   end
 
   def syscall; emit([0x0f, 0x05]); end
+
+  def memcpy
+    # dest=RDI, src=RSI, n=RCX
+    emit([0xf3, 0xa4]) # rep movsb
+  end
+
+  def memset
+    # dest=RDI, val=AL, n=RCX
+    emit([0xf3, 0xaa]) # rep stosb
+  end
 end

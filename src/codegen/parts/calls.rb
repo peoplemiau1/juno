@@ -34,9 +34,6 @@ module GeneratorCalls
 
   def gen_fn_call(node)
     name = node[:name]
-    if name == "output" || name == "output_int"
-       return (@target_os == :linux ? handle_linux_io(node) : handle_windows_io_stub(node))
-    end
     builtin_method = "gen_#{name}"
     return send(builtin_method, node) if respond_to?(builtin_method)
     aliases = {

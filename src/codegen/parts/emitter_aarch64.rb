@@ -15,6 +15,7 @@ class AArch64Emitter
 
   def current_pos; @bytes.length; end
   def emit32(v); @bytes += [v].pack("L<").bytes; end
+  def emit(arr); @bytes += arr; end
 
   def emit_prologue(stack_size)
     emit32(0xa9bf7bfd) # stp x29, x30, [sp, #-16]!
@@ -28,11 +29,19 @@ class AArch64Emitter
     emit32(0xd65f03c0) # ret
   end
 
+  def emit_add_imm(rd, rn, imm)
+    emit32(0x91000000 | ((imm & 0xFFF) << 10) | (rn << 5) | rd)
+  end
+
+  def emit_sub_imm(rd, rn, imm)
+    emit32(0xd1000000 | ((imm & 0xFFF) << 10) | (rn << 5) | rd)
+  end
+
   def emit_sub_rsp(size)
     return if size <= 0
     while size > 0
       chunk = [size, 0xfff].min
-      emit32(0xd10003ff | (chunk << 10))
+      emit_sub_imm(31, 31, chunk)
       size -= chunk
     end
   end
@@ -41,7 +50,7 @@ class AArch64Emitter
     return if size <= 0
     while size > 0
       chunk = [size, 0xfff].min
-      emit32(0x910003ff | (chunk << 10))
+      emit_add_imm(31, 31, chunk)
       size -= chunk
     end
   end
@@ -64,6 +73,11 @@ class AArch64Emitter
 
   def mov_reg_reg(dst, src)
     emit32(0xaa0003e0 | (src << 16) | dst)
+  end
+
+  def mov_reg_sp(dst)
+    # mov dst, sp  -> add dst, sp, #0
+    emit32(0x910003e0 | dst)
   end
 
   def mov_stack_reg_val(offset, src)
@@ -89,6 +103,34 @@ class AArch64Emitter
     emit32(0xf9400000 | ((disp / 8) << 10))
   end
 
+  def mov_rax_mem_idx(reg, offset, size = 8)
+    # ldr x0, [reg, #offset]
+    # reg 31 is SP
+    if size == 8
+      emit32(0xf9400000 | ((offset / 8) << 10) | (reg << 5))
+    elsif size == 4
+      emit32(0xb9400000 | (offset << 10) | (reg << 5))
+    elsif size == 1
+      emit32(0x39400000 | (offset << 10) | (reg << 5))
+    end
+  end
+
+  def mov_mem_idx(base, offset, src, size = 8)
+    # str src, [base, #offset]
+    if size == 8
+      emit32(0xf9000000 | ((offset / 8) << 10) | (base << 5) | src)
+    elsif size == 4
+      emit32(0xb9000000 | (offset << 10) | (base << 5) | src)
+    elsif size == 2
+      emit32(0x79000000 | ((offset / 2) << 10) | (base << 5) | src)
+    elsif size == 1
+      emit32(0x39000000 | (offset << 10) | (base << 5) | src)
+    end
+  end
+
+  def emit_add_rax(val); emit_add_imm(0, 0, val); end
+  def emit_sub_rax(val); emit_sub_imm(0, 0, val); end
+
   def mov_r11_rax; mov_reg_reg(11, 0); end
 
   def mov_rax_rbp_disp32(disp)
@@ -109,11 +151,12 @@ class AArch64Emitter
   def shr_rax_imm(c); c &= 63; emit32(0xd3400000 | (c << 16) | (63 << 10)); end
 
   def div_rax_by_rdx; emit32(0x9ac20c00); end
-
   def mod_rax_by_rdx
-    emit32(0x9ac20c01) # sdiv x1, x0, x2
-    emit32(0x9b028020) # msub x0, x1, x2, x0
+    # sdiv x3, x0, x2; msub x0, x3, x2, x0
+    emit32(0x9ac20c03) # sdiv x3, x0, x2
+    emit32(0x1b028060) # msub x0, x3, x2, x0
   end
+
 
   def cmp_rax_rdx(op)
     emit32(0xeb02001f)
@@ -124,10 +167,17 @@ class AArch64Emitter
     emit32(0x1a9f07e0 | (cond << 12))
   end
 
-  def test_rax_rax; emit32(0xeb00001f); end
+  def test_rax_rax; emit32(0xf100001f); end # cmp x0, #0
+  def test_reg_reg(r1, r2); emit32(0xeb00001f | (r1 << 16) | (r2 << 5)); end # cmp r1, r2
+
+  def cmp_reg_imm(reg, imm)
+    # subs xzr, reg, #imm
+    emit32(0xf100001f | ((imm & 0xfff) << 10) | (reg << 5))
+  end
 
   def call_rel32; emit32(0x94000000); end
   def call_ind_rel32; emit32(0xd63f0000); end
+  def call_reg(reg); emit32(0xd63f0000 | (reg << 5)); end
 
   def jmp_rel32; pos = current_pos; emit32(0x14000000); pos; end
   def je_rel32; pos = current_pos; emit32(0x54000000); pos; end
@@ -149,9 +199,15 @@ class AArch64Emitter
     @bytes[pos...pos+4] = [0x54000001 | ((offset << 5) & 0xFFFFE0)].pack("L<").bytes
   end
 
+  def mov_x8(imm)
+    # 0xd2800008 is MOV X8, #0
+    # Encoding: 0xd2800000 | (imm << 5) | reg
+    emit32(0xd2800008 | ((imm & 0xFFFF) << 5))
+  end
+
   def emit_sys_exit_rax
-    mov_rax(93)
-    mov_reg_reg(8, 0)
+    mov_x8(93)
+    # x0 is already rax
     emit32(0xd4000001)
   end
 
@@ -191,4 +247,62 @@ class AArch64Emitter
   end
 
   def syscall; emit32(0xd4000001); end
+
+  def memcpy
+    # dest=X0, src=X1, n=X2
+    # x3 = temp byte
+    emit32(0xb4000082) # cbz x2, +16 (to end)
+    # loop:
+    emit32(0x38400423) # ldrb w3, [x1], #1
+    emit32(0x38000403) # strb w3, [x0], #1
+    emit32(0xd1000442) # sub x2, x2, #1
+    emit32(0x35fffffd) # cbnz x2, -12 (back to ldrb)
+    # end:
+  end
+
+  def memset
+    # dest=X0, val=X1, n=X2
+    emit32(0xb4000062) # cbz x2, +12 (to end)
+    # loop:
+    emit32(0x38000401) # strb w1, [x0], #1
+    emit32(0xd1000442) # sub x2, x2, #1
+    emit32(0x35fffffe) # cbnz x2, -8 (back to strb)
+    # end:
+  end
+
+  def je_rel32
+    pos = current_pos
+    emit32(0x54000000) # b.eq .
+    pos
+  end
+
+  def jne_rel32
+    pos = current_pos
+    emit32(0x54000001) # b.ne .
+    pos
+  end
+
+  def patch_je(pos, target)
+    offset = (target - pos) / 4
+    instr = 0x54000000 | ((offset & 0x7ffff) << 5)
+    @bytes[pos...pos+4] = [instr].pack("L<").bytes
+  end
+
+  def patch_jne(pos, target)
+    offset = (target - pos) / 4
+    instr = 0x54000001 | ((offset & 0x7ffff) << 5)
+    @bytes[pos...pos+4] = [instr].pack("L<").bytes
+  end
+
+  def jmp_rel32
+    pos = current_pos
+    emit32(0x14000000) # b .
+    pos
+  end
+
+  def patch_jmp(pos, target)
+    offset = (target - pos) / 4
+    instr = 0x14000000 | (offset & 0x3ffffff)
+    @bytes[pos...pos+4] = [instr].pack("L<").bytes
+  end
 end

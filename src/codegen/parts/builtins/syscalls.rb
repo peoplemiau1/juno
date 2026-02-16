@@ -6,47 +6,50 @@ module BuiltinSyscalls
   # Returns: 0 in child, child PID in parent, -1 on error
   def gen_fork(node)
     return unless @target_os == :linux
-    @emitter.emit([0xb8, 0x39, 0x00, 0x00, 0x00]) # mov eax, 57 (fork)
-    @emitter.emit([0x0f, 0x05]) # syscall
+    if @arch == :aarch64
+      # On ARM64 fork is often implemented via clone
+      # clone(SIGCHLD, 0, 0, 0, 0)
+      @emitter.mov_rax(17) # SIGCHLD
+      @emitter.mov_reg_reg(0, 0) # x0
+      @emitter.mov_rax(0)
+      @emitter.mov_reg_reg(1, 0); @emitter.mov_reg_reg(2, 0); @emitter.mov_reg_reg(3, 0); @emitter.mov_reg_reg(4, 0)
+      emit_syscall(:fork)
+    else
+      emit_syscall(:fork)
+    end
   end
 
   # getpid() - get process ID
   def gen_getpid(node)
     return unless @target_os == :linux
-    @emitter.emit([0xb8, 0x27, 0x00, 0x00, 0x00]) # mov eax, 39 (getpid)
-    @emitter.emit([0x0f, 0x05])
+    emit_syscall(:getpid)
   end
 
   # getuid() - get user ID
   def gen_getuid(node)
     return unless @target_os == :linux
-    @emitter.emit([0xb8, 0x66, 0x00, 0x00, 0x00]) # mov eax, 102 (getuid)
-    @emitter.emit([0x0f, 0x05])
+    emit_syscall(:getuid)
   end
 
   # getppid() - get parent process ID
   def gen_getppid(node)
     return unless @target_os == :linux
-    @emitter.emit([0xb8, 0x6e, 0x00, 0x00, 0x00]) # mov eax, 110 (getppid)
-    @emitter.emit([0x0f, 0x05])
+    emit_syscall(:getppid)
   end
 
   # getgid() - get group ID
   def gen_getgid(node)
     return unless @target_os == :linux
-    @emitter.emit([0xb8, 0x68, 0x00, 0x00, 0x00]) # mov eax, 104 (getgid)
-    @emitter.emit([0x0f, 0x05])
+    emit_syscall(:getgid)
   end
 
   # kill(pid, sig) - send signal to process
   def gen_kill(node)
     return unless @target_os == :linux
-    eval_expression(node[:args][0])
-    @emitter.emit([0x48, 0x89, 0xc7]) # mov rdi, rax (pid)
-    eval_expression(node[:args][1])
-    @emitter.emit([0x48, 0x89, 0xc6]) # mov rsi, rax (sig)
-    @emitter.emit([0xb8, 0x3e, 0x00, 0x00, 0x00]) # mov eax, 62 (kill)
-    @emitter.emit([0x0f, 0x05])
+    eval_expression(node[:args][0]); @emitter.push_reg(0)
+    eval_expression(node[:args][1]); @emitter.mov_reg_reg(@arch == :aarch64 ? 1 : 6, 0)
+    @emitter.pop_reg(@arch == :aarch64 ? 0 : 7)
+    emit_syscall(:kill)
   end
 
   # wait(status_ptr) - wait for child process
@@ -54,17 +57,21 @@ module BuiltinSyscalls
   def gen_wait(node)
     return unless @target_os == :linux
     # wait4(-1, status, 0, NULL)
-    @emitter.emit([0x48, 0xc7, 0xc7, 0xff, 0xff, 0xff, 0xff]) # mov rdi, -1
+    @emitter.mov_rax(0); @emitter.emit_sub_rax(1); @emitter.push_reg(0) # rdi = -1
     if node[:args] && node[:args][0]
       eval_expression(node[:args][0])
-      @emitter.emit([0x48, 0x89, 0xc6]) # mov rsi, rax
     else
-      @emitter.emit([0x48, 0x31, 0xf6]) # xor rsi, rsi
+      @emitter.mov_rax(0)
     end
-    @emitter.emit([0x48, 0x31, 0xd2]) # xor rdx, rdx (options=0)
-    @emitter.emit([0x4d, 0x31, 0xd2]) # xor r10, r10 (rusage=NULL)
-    @emitter.emit([0xb8, 0x3d, 0x00, 0x00, 0x00]) # mov eax, 61 (wait4)
-    @emitter.emit([0x0f, 0x05])
+    @emitter.push_reg(0) # rsi = status
+    @emitter.mov_rax(0); @emitter.push_reg(0) # rdx = options=0
+    @emitter.mov_rax(0); @emitter.push_reg(0) # r10 = rusage=NULL
+
+    @emitter.pop_reg(@arch == :aarch64 ? 3 : 10) # arg 4
+    @emitter.pop_reg(@arch == :aarch64 ? 2 : 2)  # arg 3
+    @emitter.pop_reg(@arch == :aarch64 ? 1 : 6)  # arg 2
+    @emitter.pop_reg(@arch == :aarch64 ? 0 : 7)  # arg 1
+    emit_syscall(:wait4)
   end
 
   # pipe(fds) - create pipe
@@ -72,93 +79,121 @@ module BuiltinSyscalls
   def gen_pipe(node)
     return unless @target_os == :linux
     eval_expression(node[:args][0])
-    @emitter.emit([0x48, 0x89, 0xc7]) # mov rdi, rax
-    @emitter.emit([0xb8, 0x16, 0x00, 0x00, 0x00]) # mov eax, 22 (pipe)
-    @emitter.emit([0x0f, 0x05])
+    if @arch == :aarch64
+       @emitter.mov_reg_reg(0, 0)
+       @emitter.mov_rax(0); @emitter.mov_reg_reg(1, 0) # flags=0
+       emit_syscall(:pipe2)
+    else
+       @emitter.mov_reg_reg(7, 0)
+       emit_syscall(:pipe)
+    end
   end
 
   # dup(fd) - duplicate file descriptor
   def gen_dup(node)
     return unless @target_os == :linux
     eval_expression(node[:args][0])
-    @emitter.emit([0x48, 0x89, 0xc7]) # mov rdi, rax
-    @emitter.emit([0xb8, 0x20, 0x00, 0x00, 0x00]) # mov eax, 32 (dup)
-    @emitter.emit([0x0f, 0x05])
+    @emitter.mov_reg_reg(@arch == :aarch64 ? 0 : 7, 0)
+    emit_syscall(:dup)
   end
 
   # dup2(oldfd, newfd) - duplicate to specific fd
   def gen_dup2(node)
     return unless @target_os == :linux
+    eval_expression(node[:args][1]); @emitter.push_reg(0)
     eval_expression(node[:args][0])
-    @emitter.emit([0x48, 0x89, 0xc7]) # mov rdi, rax
-    eval_expression(node[:args][1])
-    @emitter.emit([0x48, 0x89, 0xc6]) # mov rsi, rax
-    @emitter.emit([0xb8, 0x21, 0x00, 0x00, 0x00]) # mov eax, 33 (dup2)
-    @emitter.emit([0x0f, 0x05])
+    @emitter.pop_reg(@arch == :aarch64 ? 1 : 6)
+    @emitter.mov_reg_reg(@arch == :aarch64 ? 0 : 7, 0)
+    emit_syscall(:dup2)
   end
 
   # mkdir(path, mode) - create directory
   def gen_mkdir(node)
     return unless @target_os == :linux
-    eval_expression(node[:args][0])
-    @emitter.emit([0x48, 0x89, 0xc7]) # mov rdi, rax (path)
     if node[:args][1]
       eval_expression(node[:args][1])
     else
       @emitter.mov_rax(0o755)
     end
-    @emitter.emit([0x48, 0x89, 0xc6]) # mov rsi, rax (mode)
-    @emitter.emit([0xb8, 0x53, 0x00, 0x00, 0x00]) # mov eax, 83 (mkdir)
-    @emitter.emit([0x0f, 0x05])
+    @emitter.push_reg(0) # mode
+    eval_expression(node[:args][0]) # path
+
+    if @arch == :aarch64
+       @emitter.pop_reg(2) # mode
+       @emitter.mov_reg_reg(1, 0) # path
+       @emitter.mov_rax(0xffffff9c); @emitter.mov_reg_reg(0, 0) # AT_FDCWD
+       emit_syscall(:mkdirat)
+    else
+       @emitter.pop_reg(6)
+       @emitter.mov_reg_reg(7, 0)
+       emit_syscall(:mkdir)
+    end
   end
 
   # rmdir(path) - remove directory
   def gen_rmdir(node)
     return unless @target_os == :linux
     eval_expression(node[:args][0])
-    @emitter.emit([0x48, 0x89, 0xc7]) # mov rdi, rax
-    @emitter.emit([0xb8, 0x54, 0x00, 0x00, 0x00]) # mov eax, 84 (rmdir)
-    @emitter.emit([0x0f, 0x05])
+    if @arch == :aarch64
+       @emitter.mov_reg_reg(1, 0) # path
+       @emitter.mov_rax(0xffffff9c); @emitter.mov_reg_reg(0, 0) # AT_FDCWD
+       @emitter.mov_rax(0x200); @emitter.mov_reg_reg(2, 0) # AT_REMOVEDIR
+       emit_syscall(:unlinkat)
+    else
+       @emitter.mov_reg_reg(7, 0)
+       emit_syscall(:rmdir)
+    end
   end
 
   # unlink(path) - delete file
   def gen_unlink(node)
     return unless @target_os == :linux
     eval_expression(node[:args][0])
-    @emitter.emit([0x48, 0x89, 0xc7]) # mov rdi, rax
-    @emitter.emit([0xb8, 0x57, 0x00, 0x00, 0x00]) # mov eax, 87 (unlink)
-    @emitter.emit([0x0f, 0x05])
+    if @arch == :aarch64
+       @emitter.mov_reg_reg(1, 0) # path
+       @emitter.mov_rax(0xffffff9c); @emitter.mov_reg_reg(0, 0) # AT_FDCWD
+       @emitter.mov_rax(0); @emitter.mov_reg_reg(2, 0) # flags=0
+       emit_syscall(:unlinkat)
+    else
+       @emitter.mov_reg_reg(7, 0)
+       emit_syscall(:unlink)
+    end
   end
 
   # chmod(path, mode) - change file permissions
   def gen_chmod(node)
     return unless @target_os == :linux
+    eval_expression(node[:args][1]); @emitter.push_reg(0)
     eval_expression(node[:args][0])
-    @emitter.emit([0x48, 0x89, 0xc7]) # mov rdi, rax
-    eval_expression(node[:args][1])
-    @emitter.emit([0x48, 0x89, 0xc6]) # mov rsi, rax
-    @emitter.emit([0xb8, 0x5a, 0x00, 0x00, 0x00]) # mov eax, 90 (chmod)
-    @emitter.emit([0x0f, 0x05])
+    if @arch == :aarch64
+       @emitter.pop_reg(2) # mode
+       @emitter.mov_reg_reg(1, 0) # path
+       @emitter.mov_rax(0xffffff9c); @emitter.mov_reg_reg(0, 0) # AT_FDCWD
+       # arm64 uses fchmodat
+       @emitter.mov_x8(34); @emitter.syscall # fchmodat
+    else
+       @emitter.pop_reg(6)
+       @emitter.mov_reg_reg(7, 0)
+       emit_syscall(:chmod)
+    end
   end
 
   # chdir(path) - change directory
   def gen_chdir(node)
     return unless @target_os == :linux
     eval_expression(node[:args][0])
-    @emitter.emit([0x48, 0x89, 0xc7]) # mov rdi, rax
-    @emitter.emit([0xb8, 0x50, 0x00, 0x00, 0x00]) # mov eax, 80 (chdir)
-    @emitter.emit([0x0f, 0x05])
+    @emitter.mov_reg_reg(@arch == :aarch64 ? 0 : 7, 0)
+    emit_syscall(:chdir)
   end
 
   # getcwd(buf, size) - get current directory
   def gen_getcwd(node)
     return unless @target_os == :linux
+    eval_expression(node[:args][1]); @emitter.push_reg(0)
     eval_expression(node[:args][0])
-    @emitter.emit([0x48, 0x89, 0xc7]) # mov rdi, rax
-    eval_expression(node[:args][1])
-    @emitter.emit([0x48, 0x89, 0xc6]) # mov rsi, rax
-    @emitter.emit([0xb8, 0x4f, 0x00, 0x00, 0x00]) # mov eax, 79 (getcwd)
-    @emitter.emit([0x0f, 0x05])
+    @emitter.pop_reg(@arch == :aarch64 ? 1 : 6)
+    @emitter.mov_reg_reg(@arch == :aarch64 ? 0 : 7, 0)
+    emit_syscall(:getcwd)
   end
 
   # mmap(addr, len, prot, flags, fd, offset) - map memory
@@ -166,110 +201,92 @@ module BuiltinSyscalls
   def gen_mmap(node)
     return unless @target_os == :linux
     
-    # addr
+    # args: RDI, RSI, RDX, R10, R8, R9 (x86)
+    # args: X0, X1, X2, X3, X4, X5 (ARM)
+    eval_expression(node[:args][5]); @emitter.push_reg(0)
+    eval_expression(node[:args][4]); @emitter.push_reg(0)
+    eval_expression(node[:args][3]); @emitter.push_reg(0)
+    eval_expression(node[:args][2]); @emitter.push_reg(0)
+    eval_expression(node[:args][1]); @emitter.push_reg(0)
     eval_expression(node[:args][0])
-    @emitter.emit([0x48, 0x89, 0xc7]) # mov rdi, rax
     
-    # len
-    eval_expression(node[:args][1])
-    @emitter.emit([0x48, 0x89, 0xc6]) # mov rsi, rax
+    if @arch == :aarch64
+       @emitter.pop_reg(1) # len
+       @emitter.pop_reg(2) # prot
+       @emitter.pop_reg(3) # flags
+       @emitter.pop_reg(4) # fd
+       @emitter.pop_reg(5) # offset
+       # addr is already in X0
+    else
+       @emitter.pop_reg(6)  # rsi = len
+       @emitter.pop_reg(2)  # rdx = prot
+       @emitter.pop_reg(10) # r10 = flags
+       @emitter.pop_reg(8)  # r8  = fd
+       @emitter.pop_reg(9)  # r9  = offset
+       @emitter.mov_reg_reg(7, 0) # rdi = addr
+    end
     
-    # prot
-    eval_expression(node[:args][2])
-    @emitter.emit([0x48, 0x89, 0xc2]) # mov rdx, rax
-    
-    # flags
-    eval_expression(node[:args][3])
-    @emitter.emit([0x49, 0x89, 0xc2]) # mov r10, rax
-    
-    # fd
-    eval_expression(node[:args][4])
-    @emitter.emit([0x49, 0x89, 0xc0]) # mov r8, rax
-    
-    # offset
-    eval_expression(node[:args][5])
-    @emitter.emit([0x49, 0x89, 0xc1]) # mov r9, rax
-    
-    @emitter.emit([0xb8, 0x09, 0x00, 0x00, 0x00]) # mov eax, 9 (mmap)
-    @emitter.emit([0x0f, 0x05])
+    emit_syscall(:mmap)
   end
 
   # munmap(addr, len) - unmap memory
   def gen_munmap(node)
     return unless @target_os == :linux
-    eval_expression(node[:args][0])
-    @emitter.emit([0x48, 0x89, 0xc7]) # mov rdi, rax
-    eval_expression(node[:args][1])
-    @emitter.emit([0x48, 0x89, 0xc6]) # mov rsi, rax
-    @emitter.emit([0xb8, 0x0b, 0x00, 0x00, 0x00]) # mov eax, 11 (munmap)
-    @emitter.emit([0x0f, 0x05])
+    eval_expression(node[:args][0]); @emitter.push_reg(0)
+    eval_expression(node[:args][1]); @emitter.mov_reg_reg(@arch == :aarch64 ? 1 : 6, 0)
+    @emitter.pop_reg(@arch == :aarch64 ? 0 : 7)
+    emit_syscall(:munmap)
   end
 
   # memcpy(dest, src, n) - copy memory
   def gen_memcpy(node)
-    eval_expression(node[:args][0])
-    @emitter.emit([0x48, 0x89, 0xc7]) # mov rdi, rax (dest)
-    eval_expression(node[:args][1])
-    @emitter.emit([0x48, 0x89, 0xc6]) # mov rsi, rax (src)
-    eval_expression(node[:args][2])
-    @emitter.emit([0x48, 0x89, 0xc1]) # mov rcx, rax (count)
-    
-    # Save dest for return value
-    @emitter.emit([0x57]) # push rdi
-    
-    # rep movsb
-    @emitter.emit([0xf3, 0xa4])
-    
-    # Return dest
-    @emitter.emit([0x58]) # pop rax
+    eval_expression(node[:args][2]); @emitter.push_reg(0) # n
+    eval_expression(node[:args][1]); @emitter.push_reg(0) # src
+    eval_expression(node[:args][0]) # dest
+    @emitter.push_reg(0) # save dest for return
+    @emitter.pop_reg(@arch == :aarch64 ? 0 : 7) # dest
+    @emitter.pop_reg(@arch == :aarch64 ? 1 : 6) # src
+    @emitter.pop_reg(@arch == :aarch64 ? 2 : 2) # n
+    @emitter.memcpy
+    @emitter.pop_reg(0) # return dest
   end
 
   # memset(dest, val, n) - set memory
   def gen_memset(node)
-    eval_expression(node[:args][0])
-    @emitter.emit([0x48, 0x89, 0xc7]) # mov rdi, rax (dest)
-    eval_expression(node[:args][1])
-    @emitter.emit([0x48, 0x89, 0xc6]) # mov rsi, rax (val) - save
-    eval_expression(node[:args][2])
-    @emitter.emit([0x48, 0x89, 0xc1]) # mov rcx, rax (count)
-    @emitter.emit([0x48, 0x89, 0xf0]) # mov rax, rsi (val to al)
-    
-    # Save dest for return value
-    @emitter.emit([0x57]) # push rdi
-    
-    # rep stosb
-    @emitter.emit([0xf3, 0xaa])
-    
-    # Return dest
-    @emitter.emit([0x58]) # pop rax
+    eval_expression(node[:args][2]); @emitter.push_reg(0) # n
+    eval_expression(node[:args][1]); @emitter.push_reg(0) # val
+    eval_expression(node[:args][0]) # dest
+    @emitter.push_reg(0) # save dest for return
+    @emitter.pop_reg(@arch == :aarch64 ? 0 : 7) # dest
+    @emitter.pop_reg(@arch == :aarch64 ? 1 : 0) # val
+    @emitter.pop_reg(@arch == :aarch64 ? 2 : 2) # n
+    @emitter.memset
+    @emitter.pop_reg(0) # return dest
   end
 
   # execve(path, argv, envp) - execute program
   def gen_execve(node)
     return unless @target_os == :linux
+    eval_expression(node[:args][2]); @emitter.push_reg(0)
+    eval_expression(node[:args][1]); @emitter.push_reg(0)
     eval_expression(node[:args][0])
-    @emitter.emit([0x48, 0x89, 0xc7]) # mov rdi, rax (path)
-    eval_expression(node[:args][1])
-    @emitter.emit([0x48, 0x89, 0xc6]) # mov rsi, rax (argv)
-    eval_expression(node[:args][2])
-    @emitter.emit([0x48, 0x89, 0xc2]) # mov rdx, rax (envp)
-    @emitter.emit([0xb8, 0x3b, 0x00, 0x00, 0x00]) # mov eax, 59 (execve)
-    @emitter.emit([0x0f, 0x05])
+    @emitter.pop_reg(@arch == :aarch64 ? 1 : 6) # argv
+    @emitter.pop_reg(@arch == :aarch64 ? 2 : 2) # envp
+    @emitter.mov_reg_reg(@arch == :aarch64 ? 0 : 7, 0) # path
+    emit_syscall(:execve)
   end
 
-  # Constants for mmap
   # lseek(fd, offset, whence) - reposition file offset
   # whence: SEEK_SET=0, SEEK_CUR=1, SEEK_END=2
   def gen_lseek(node)
     return unless @target_os == :linux
+    eval_expression(node[:args][2]); @emitter.push_reg(0)
+    eval_expression(node[:args][1]); @emitter.push_reg(0)
     eval_expression(node[:args][0])
-    @emitter.emit([0x48, 0x89, 0xc7])  # mov rdi, rax (fd)
-    eval_expression(node[:args][1])
-    @emitter.emit([0x48, 0x89, 0xc6])  # mov rsi, rax (offset)
-    eval_expression(node[:args][2])
-    @emitter.emit([0x48, 0x89, 0xc2])  # mov rdx, rax (whence)
-    @emitter.emit([0xb8, 0x08, 0x00, 0x00, 0x00])  # mov eax, 8 (lseek)
-    @emitter.emit([0x0f, 0x05])
+    @emitter.pop_reg(@arch == :aarch64 ? 1 : 6) # offset
+    @emitter.pop_reg(@arch == :aarch64 ? 2 : 2) # whence
+    @emitter.mov_reg_reg(@arch == :aarch64 ? 0 : 7, 0) # fd
+    emit_syscall(:lseek)
   end
 
   # lseek whence constants
@@ -285,24 +302,24 @@ module BuiltinSyscalls
     
     args = node[:args] || []
     
-    # name (can be empty string)
+    # name
     if args[0]
       eval_expression(args[0])
-      @emitter.emit([0x48, 0x89, 0xc7])  # mov rdi, rax
     else
-      @emitter.emit([0x48, 0x31, 0xff])  # xor rdi, rdi
+      @emitter.mov_rax(0)
     end
+    @emitter.push_reg(0) # arg1
     
     # flags
     if args[1]
       eval_expression(args[1])
-      @emitter.emit([0x48, 0x89, 0xc6])  # mov rsi, rax
     else
-      @emitter.emit([0x48, 0x31, 0xf6])  # xor rsi, rsi
+      @emitter.mov_rax(0)
     end
+    @emitter.mov_reg_reg(@arch == :aarch64 ? 1 : 6, 0) # arg2
+    @emitter.pop_reg(@arch == :aarch64 ? 0 : 7) # arg1
     
-    @emitter.emit([0xb8, 0x3f, 0x01, 0x00, 0x00])  # mov eax, 319 (memfd_create)
-    @emitter.emit([0x0f, 0x05])  # syscall
+    emit_syscall(:memfd_create)
   end
 
   # memfd_create flags
