@@ -1,0 +1,38 @@
+// JunoFetch - Системный информатор на языке Juno
+// Использует нативные вызовы Linux для сбора данных
+
+fn main() {
+    // Цвета (ANSI escape codes)
+    let c_cyan: str = "\e[36m";
+    let c_white: str = "\e[37m";
+    let c_yellow: str = "\e[33m";
+    let c_reset: str = "\e[0m";
+    let c_bold: str = "\e[1m";
+
+    // Собираем данные
+    let kernel: str = file_read_all("/proc/sys/kernel/osrelease");
+    let shell: str = "bash (proot)";
+    
+    // Пытаемся достать имя дистрибутива (упрощенно)
+    let os_name: str = "Debian (PRoot)";
+    
+    // Достаем имя хоста
+    let hostname: str = file_read_all("/etc/hostname");
+
+    // Выводим логотип и инфу (в стиле Neofetch)
+    output("");
+    output("  \e[36m      _                      \e[37mroot\e[0m@\e[36mlocalhost");
+    output("  \e[36m     | |                     \e[0m-----------------");
+    output("  \e[36m     | |_   _  _ __    ___   \e[36mOS:      \e[0mDebian Trixie (ARM64)");
+    output("  \e[36m _   | | | | || '_ \  / _ \  \e[36mKernel:  \e[0m" + kernel);
+    output("  \e[36m| |__| | |_| || | | || (_) | \e[36mShell:   \e[0m" + shell);
+    output("  \e[36m \____/ \__,_||_| |_| \___/  \e[36mArch:    \e[0maarch64");
+    output("  \e[36m                             \e[36mLanguage:\e[0m Juno v1.1 (Native)");
+    output("");
+
+    // Выводим цветовую палитру внизу
+    output("  \e[40m   \e[41m   \e[42m   \e[43m   \e[44m   \e[45m   \e[46m   \e[47m   \e[0m");
+    output("");
+    
+    return 0;
+}

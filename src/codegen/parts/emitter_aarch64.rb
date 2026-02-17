@@ -177,7 +177,7 @@ class AArch64Emitter
 
   def patch_jmp(pos, target)
     offset = (target - pos) / 4
-    @bytes[pos...pos+4] = [0x14000000 | (offset & 0x3FFFFFF)].pack("L<").bytes
+    @bytes[pos...pos+4] = [0x14000000 | (offset & 0x03FFFFFF)].pack("L<").bytes
   end
 
   def patch_je(pos, target)
@@ -259,4 +259,15 @@ class AArch64Emitter
     # end:
   end
 
+  def mov_mem_idx(base, offset, src, size = 8)
+    if size == 8
+      emit32(0xf9000000 | ((offset / 8) << 10) | (base << 5) | src)
+    elsif size == 4
+      emit32(0xb9000000 | (offset << 10) | (base << 5) | src)
+    elsif size == 2
+      emit32(0x79000000 | ((offset / 2) << 10) | (base << 5) | src)
+    elsif size == 1
+      emit32(0x39000000 | (offset << 10) | (base << 5) | src)
+    end
+  end
 end

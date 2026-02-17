@@ -1,0 +1,213 @@
+# ================================================
+# JUNO HELL ENCRYPTOR v666 - ОДИН ФАЙЛ, ВСЁ НАМЕШАНО
+# Использует: structs, vectors, file_api, generics, loops,
+#             hell_mode junk, multi-layer cipher (XOR + rolling + shuffle)
+#             self-referential structs, heap, network (fake), math
+# "вес там хор все намешац" - полный ад в одном файле
+# ================================================
+
+import "std.juno"  # базовые вещи (предполагаем что есть)
+
+# === STRUCTS (с generics и packed) ===
+packed struct CipherKey<T> {
+    seed: i64
+    rounds: i64
+    magic: T
+}
+
+struct CipherState {
+    key: CipherKey<i64>
+    buffer: vec<i64>
+    pos: i64
+}
+
+union CipherBlock {
+    bytes: vec<u8>
+    ints: vec<i64>
+}
+
+# === GENERIC HELPERS ===
+fn xor_block<T>(data: vec<T>, key: T) -> vec<T> {
+    let result = vec_new(data.len())
+    let i = 0
+    while i < data.len() {
+        result.push(u8(data[i] ^ key)
+        i = i + 1
+    }
+    result
+}
+
+fn rolling_key(seed: i64, len: i64) -> vec<i64> {
+    let k = vec_new(len)
+    let cur = seed
+    let i = 0
+    while i < len {
+        k.push(cur)
+        cur = (cur * 31 + 17) % 0x100000000
+        i = i + 1
+    }
+    k
+}
+
+# === FILE I/O LAYER ===
+fn read_file_safe(path: str) -> str {
+    let fd = file_open(path, 0)  # read
+    if fd < 0 {
+        output("HELL ERROR: cannot open " + path)
+        return ""
+    }
+    let buf = file_read_all(path)
+    file_close(fd)
+    buf
+}
+
+fn write_file_safe(path: str, data: str) {
+    let fd = file_open(path, 1)  # write
+    if fd < 0 {
+        output("HELL ERROR: cannot write " + path)
+        return
+    }
+    file_write(fd, data, data.len())
+    file_close(fd)
+}
+
+# === MAIN CIPHER ENGINE (многослойный horror) ===
+fn hell_encrypt(data: str, master_key: i64) -> str {
+    # Layer 1: to vector of bytes
+    let bytes_vec = vec_new(data.len())
+    let i = 0
+    while i < data.len() {
+        bytes_vec.push(u8(data[i]))  # implicit cast
+        i = i + 1
+    }
+
+    # Layer 2: rolling XOR
+    let rkey = rolling_key(master_key, bytes_vec.len())
+    let xored = xor_block(bytes_vec, 0)  # placeholder
+    let j = 0
+    while j < bytes_vec.len() {
+        xored[j] = bytes_vec[j] ^ (rkey[j]))
+        j = j + 1
+    }
+
+    # Layer 3: block shuffle (hell mode)
+    let blocks = vec_new(xored.len() / 16 + 1)
+    let k = 0
+    while k < xored.len() {
+        let block = vec_new(16)
+        let m = 0
+        while m < 16 && k + m < xored.len() {
+            block.push(xored[k + m])
+            m = m + 1
+        }
+        # fake shuffle with math
+        let shuffle_seed = master_key ^ k
+        block = shuffle_block(block, shuffle_seed)
+        blocks.push(block)
+        k = k + 16
+    }
+
+    # Layer 4: back to string (with nulls for fun)
+    let result = ""
+    let n = 0
+    while n < blocks.len() {
+        let b = blocks[n]
+        let p = 0
+        while p < b.len() {
+            result = result + (i32(b[p]))
+            p = p + 1
+        }
+        n = n + 1
+    }
+
+    # Add hell signature
+    result + "\x00HELL666\x00"
+}
+
+fn shuffle_block(block: vec<u8>, seed: i64) -> vec<u8> {
+    let out = vec_new(block.len())
+    let i = 0
+    while i < block.len() {
+        let idx = (i * seed + 1337) % block.len()
+        out.push(block[idx])
+        i = i + 1
+    }
+    out
+}
+
+# === DECRYPT (reverse hell) ===
+fn hell_decrypt(ciphertext: str, master_key: i64) -> str {
+    # Remove signature
+    let clean = ciphertext.replace("\x00HELL666\x00", "")
+    
+    # Reverse layers (simplified - in real would be full reverse)
+    let bytes_vec = vec_new(clean.len())
+    let i = 0
+    while i < clean.len() {
+        bytes_vec.push(clean[i]))
+        i = i + 1
+    }
+    
+    let rkey = rolling_key(master_key, bytes_vec.len())
+    let decrypted = vec_new(bytes_vec.len())
+    let j = 0
+    while j < bytes_vec.len() {
+        decrypted.push(bytes_vec[j] ^ (rkey[j])))
+        j = j + 1
+    }
+    
+    let result = ""
+    let k = 0
+    while k < decrypted.len() {
+        result = result + (decrypted[k]))
+        k = k + 1
+    }
+    result
+}
+
+# === MAIN - полный микс всего ===
+fn main() {
+    output("=== JUNO HELL ENCRYPTOR v666 ===\n")
+    output("Mixing structs + vectors + files + generics + loops...\n")
+
+    # Struct demo
+    let key = CipherKey<i64> { seed: 0xDEADBEEF, rounds: 666, magic: 1337 }
+    let state = CipherState {
+        key: key,
+        buffer: vec_new(1024),
+        pos: 0
+    }
+
+    # Command line simulation (hardcoded for demo)
+    let mode = "encrypt"  # or "decrypt"
+    let input_path = "secret.txt"
+    let output_path = "secret.hell"
+    let master_key = 0xCAFEBABE666
+
+    let raw = read_file_safe(input_path)
+    if raw == "" {
+        output("No input file - using demo text")
+        raw = "Juno is the future. Hell mode activated."
+    }
+
+    if mode == "encrypt" {
+        let encrypted = hell_encrypt(raw, master_key)
+        write_file_safe(output_path, encrypted)
+        output_int(encrypted.len())
+        output(" -> ENCRYPTED to " + output_path + " (HELL MODE)")
+    } else {
+        let decrypted = hell_decrypt(raw, master_key)
+        write_file_safe("decrypted.txt", decrypted)
+        output("DECRYPTED back!")
+    }
+
+    # Extra junk demo (hell style)
+    let dummy = CipherBlock { bytes: vec_new(10) }
+    dummy.ints.push(42)  # union usage
+
+    output("\n=== ALL FEATURES MIXED. YOU ARE IN HELL NOW ===\n")
+    output("Made with love and 100% Juno in ONE file.\n")
+}
+
+# Запуск
+main()

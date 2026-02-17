@@ -35,7 +35,7 @@ def compile_juno_native(source_path)
     ast = optimizer.optimize
 
     puts "Step 6: Native Code Generation..."
-    generator = NativeGenerator.new(ast, :windows)
+    generator = NativeGenerator.new(ast, :linux)
     FileUtils.mkdir_p("build")
     output_exe = File.join("build", "output.exe")
     generator.generate(output_exe)

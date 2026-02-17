@@ -13,6 +13,7 @@ require_relative "parts/print_utils"
 require_relative "../optimizer/register_allocator"
 
 class NativeGenerator
+  attr_accessor :hell_mode
   STACK_SIZE = 65536
 
   include GeneratorLogic
