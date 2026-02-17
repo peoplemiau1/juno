@@ -1,0 +1,9 @@
+fn test_stack_arm(a, b, c, d, e, f, g, h, i, j) {
+    return i + j
+}
+
+fn main() {
+    let res = test_stack_arm(1, 2, 3, 4, 5, 6, 7, 8, 90, 10)
+    print(res)
+    return res
+}

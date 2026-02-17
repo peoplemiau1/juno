@@ -90,10 +90,14 @@ class NativeGenerator
     if node[:name].include?('.') then @ctx.var_types["self"] = node[:name].split('.')[0]; @ctx.var_is_ptr["self"] = true end
     @emitter.emit_prologue(@stack_size)
     regs = (@arch == :aarch64) ? [0,1,2,3,4,5,6,7] : [7,6,2,1,8,9]
+    stack_step = (@arch == :aarch64) ? 16 : 8
     params.each_with_index do |p, i|
       off = @ctx.declare_variable(p)
       if i < regs.length then @emitter.mov_stack_reg_val(off, regs[i])
-      else @emitter.mov_rax_rbp_disp32(16 + 8 * (i - regs.length)); @emitter.mov_stack_reg_val(off, 0) end
+      else
+        @emitter.mov_rax_rbp_disp32(16 + stack_step * (i - regs.length))
+        @emitter.mov_stack_reg_val(off, 0)
+      end
     end
     node[:body].each { |c| process_node(c) }
     @emitter.emit_epilogue(@stack_size)

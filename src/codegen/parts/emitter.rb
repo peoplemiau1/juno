@@ -89,6 +89,11 @@ class CodeEmitter
     emit([0x4c, 0x89, 0x58, disp & 0xFF])
   end
 
+  def mov_mem_rax(reg)
+    # mov [reg], rax
+    emit([0x48, 0x89, 0x00 + (reg % 8)])
+  end
+
   def mov_rax_mem(disp)
     emit([0x48, 0x8b, 0x40, disp & 0xFF])
   end

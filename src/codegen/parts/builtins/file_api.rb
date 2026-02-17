@@ -173,7 +173,7 @@ module BuiltinFileAPI
     @emitter.add_rax_rdx
     @emitter.mov_reg_reg(@arch == :aarch64 ? 1 : 7, 0) # ptr to terminate
     @emitter.mov_rax(0)
-    @emitter.mov_mem_rax(0) # [ptr] = 0
+    @emitter.mov_mem_rax(@arch == :aarch64 ? 1 : 7) # [ptr] = 0
 
     # close
     @emitter.mov_reg_reg(@arch == :aarch64 ? 0 : 7, @arch == :aarch64 ? 5 : 13) # fd

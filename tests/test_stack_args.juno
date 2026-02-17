@@ -1,0 +1,9 @@
+fn test_stack(a, b, c, d, e, f, g, h) {
+    return g + h
+}
+
+fn main() {
+    let res = test_stack(1, 2, 3, 4, 5, 6, 70, 8)
+    print(res)
+    return res
+}

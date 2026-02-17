@@ -66,20 +66,19 @@ module BuiltinThreads
   end
 
   def gen_alloc_stack(node)
-    eval_expression(node[:args][0]); @emitter.push_reg(0) # size
     @emitter.mov_reg_imm(0, 0); @emitter.push_reg(0) # offset
     @emitter.mov_reg_imm(0, 0); @emitter.emit_sub_rax(1); @emitter.push_reg(0) # fd = -1
     @emitter.mov_reg_imm(0, 0x22 | 0x20000); @emitter.push_reg(0) # flags
     @emitter.mov_reg_imm(0, 3); @emitter.push_reg(0) # prot
-    # size is already on stack
-    @emitter.mov_reg_imm(0, 0); @emitter.push_reg(0) # addr = 0
+    eval_expression(node[:args][0]); @emitter.push_reg(0) # size
+    @emitter.mov_reg_imm(0, 0) # addr = 0
 
-    @emitter.pop_reg(@arch == :aarch64 ? 0 : 7)
-    @emitter.pop_reg(@arch == :aarch64 ? 1 : 6) # size
-    @emitter.pop_reg(@arch == :aarch64 ? 2 : 2)
-    @emitter.pop_reg(@arch == :aarch64 ? 3 : 10)
-    @emitter.pop_reg(@arch == :aarch64 ? 4 : 8)
-    @emitter.pop_reg(@arch == :aarch64 ? 5 : 9)
+    @emitter.pop_reg(@arch == :aarch64 ? 1 : 6)  # size
+    @emitter.pop_reg(@arch == :aarch64 ? 2 : 2)  # prot
+    @emitter.pop_reg(@arch == :aarch64 ? 3 : 10) # flags
+    @emitter.pop_reg(@arch == :aarch64 ? 4 : 8)  # fd
+    @emitter.pop_reg(@arch == :aarch64 ? 5 : 9)  # offset
+    @emitter.mov_reg_reg(@arch == :aarch64 ? 0 : 7, 0) if @arch == :x86_64
     emit_syscall(:mmap)
 
     @emitter.push_reg(0)

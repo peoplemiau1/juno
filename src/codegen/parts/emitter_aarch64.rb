@@ -101,6 +101,11 @@ class AArch64Emitter
     emit32(0xf900000b | ((disp / 8) << 10))
   end
 
+  def mov_mem_rax(reg)
+    # str x0, [reg]
+    emit32(0xf9000000 | (reg << 5) | 0)
+  end
+
   def mov_rax_mem(disp)
     emit32(0xf9400000 | ((disp / 8) << 10))
   end

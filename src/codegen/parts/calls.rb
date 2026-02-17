@@ -62,7 +62,8 @@ module GeneratorCalls
            else [1,2,8,9] end
 
     num_stack = [0, args.length - regs.length].max
-    padding = (num_stack % 2 == 1) ? 8 : 0
+    stack_step = (@arch == :aarch64) ? 16 : 8
+    padding = (@arch == :aarch64) ? 0 : (num_stack % 2 == 1 ? 8 : 0)
 
     @emitter.emit_sub_rsp(padding) if padding > 0
     args.reverse_each { |a| eval_expression(a); @emitter.push_reg(0) }
@@ -75,7 +76,7 @@ module GeneratorCalls
     @emitter.call_rel32
     @emitter.emit_add_rsp(32) if @target_os == :windows
 
-    @emitter.emit_add_rsp(num_stack * 8 + padding) if (num_stack * 8 + padding) > 0
+    @emitter.emit_add_rsp(num_stack * stack_step + padding) if (num_stack * stack_step + padding) > 0
   end
 
   def gen_method_call(node)
@@ -89,7 +90,8 @@ module GeneratorCalls
            else [1,2,8,9] end
 
     num_stack = [0, (args.length + 1) - regs.length].max
-    padding = (num_stack % 2 == 1) ? 8 : 0
+    stack_step = (@arch == :aarch64) ? 16 : 8
+    padding = (@arch == :aarch64) ? 0 : (num_stack % 2 == 1 ? 8 : 0)
 
     @emitter.emit_sub_rsp(padding) if padding > 0
 
@@ -112,7 +114,7 @@ module GeneratorCalls
     @emitter.call_rel32
     @emitter.emit_add_rsp(32) if @target_os == :windows
 
-    @emitter.emit_add_rsp(num_stack * 8 + padding) if (num_stack * 8 + padding) > 0
+    @emitter.emit_add_rsp(num_stack * stack_step + padding) if (num_stack * stack_step + padding) > 0
   end
 
   def handle_linux_io(node)
