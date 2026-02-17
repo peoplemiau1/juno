@@ -139,24 +139,29 @@ module BuiltinStrings
     eval_expression(node[:args][0])
     if @arch == :aarch64
        @emitter.mov_reg_reg(6, 0) # X6 = str
-       @emitter.mov_rax(0); @emitter.mov_reg_reg(1, 0) # X1 = counter
+       @emitter.mov_reg_imm(1, 0) # X1 = counter
        l = @emitter.current_pos
-       @emitter.emit32(0x386168c2) # ldrb w2, [x6, x1]
-       @emitter.emit32(0x6b1f005f) # cmp w2, #0
-       jz = @emitter.current_pos; @emitter.emit32(0x54000000) # b.eq
+       # ldrb w2, [x6, x1]
+       @emitter.emit32(0x386168c2)
+       # cmp w2, #0
+       @emitter.emit32(0x6b1f005f)
+       jz = @emitter.je_rel32
        @emitter.emit_add_imm(1, 1, 1) # add x1, x1, #1
        @emitter.patch_jmp(@emitter.current_pos, l)
        @emitter.patch_je(jz, @emitter.current_pos)
-       @emitter.mov_reg_reg(1, 6) # X1 = buf
-       @emitter.mov_reg_reg(2, 1) # X2 = len (from counter X1)
-       @emitter.mov_rax(1)        # X0 = 1 (stdout)
-       @emitter.mov_x8(64)       # X8 = 64 (write)
+
+       # X1 currently has length
+       @emitter.mov_reg_reg(2, 1) # X2 = len
+       @emitter.mov_reg_reg(1, 6) # X1 = buf (str)
+       @emitter.mov_reg_imm(0, 1) # X0 = stdout
+       @emitter.mov_x8(64)        # X8 = write
        @emitter.syscall
+
        @emitter.emit_load_address("newline_char", @linker)
        @emitter.mov_reg_reg(1, 0) # X1 = buf (newline)
-       @emitter.mov_rax(1)        # X0 = 1 (stdout)
-       @emitter.mov_reg_imm(2, 1) # X2 = 1 (len)
-       @emitter.mov_x8(64)        # X8 = 64 (write)
+       @emitter.mov_reg_imm(0, 1) # X0 = stdout
+       @emitter.mov_reg_imm(2, 1) # X2 = 1
+       @emitter.mov_x8(64)
        @emitter.syscall
     else
        @emitter.mov_reg_reg(6, 0); @emitter.mov_rax(0); @emitter.mov_reg_reg(1, 0)

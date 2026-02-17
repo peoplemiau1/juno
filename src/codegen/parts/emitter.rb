@@ -39,9 +39,13 @@ class CodeEmitter
     emit([0x48, 0x81, 0xc4] + [size].pack("l<").bytes)
   end
 
-  def mov_rax(val)
-    emit([0x48, 0xb8] + [val].pack("Q<").bytes)
+  def mov_reg_imm(reg, val)
+    rex = 0x48
+    rex |= 0x01 if reg >= 8
+    emit([rex, 0xb8 + (reg % 8)] + [val].pack("Q<").bytes)
   end
+
+  def mov_rax(val); mov_reg_imm(0, val); end
 
   def mov_reg_reg(dst, src)
     rex = 0x48
@@ -143,6 +147,20 @@ class CodeEmitter
     when "<=" then emit([0x0f, 0x9e, 0xc0])
     when ">=" then emit([0x0f, 0x9d, 0xc0])
     end
+  end
+
+  def cmov(cond, dst, src)
+    # 48 0F 4x
+    # cond: 0x44 (EQ), 0x45 (NE), 0x4C (L), 0x4F (G)
+    op = case cond
+         when "==" then 0x44 when "!=" then 0x45
+         when "<"  then 0x4c when ">"  then 0x4f
+         when "<=" then 0x4e when ">=" then 0x4d
+         end
+    rex = 0x48
+    rex |= 0x04 if src >= 8
+    rex |= 0x01 if dst >= 8
+    emit([rex, 0x0f, op, 0xc0 + (dst % 8) * 8 + (src % 8)])
   end
 
   def test_rax_rax; emit([0x48, 0x85, 0xc0]); end

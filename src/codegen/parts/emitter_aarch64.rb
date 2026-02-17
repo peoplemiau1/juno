@@ -159,11 +159,20 @@ class AArch64Emitter
     emit32(0xf100001f | ((imm & 0xfff) << 10) | (reg << 5))
   end
 
+  def csel(cond, rd, rn, rm)
+    c = case cond
+        when "==" then 0 when "!=" then 1 when "<"  then 11
+        when ">"  then 12 when "<=" then 13 when ">=" then 10
+        end
+    emit32(0x9a800000 | (rm << 16) | (c << 12) | (rn << 5) | rd)
+  end
+
   def call_rel32; emit32(0x94000000); end
   def call_ind_rel32; emit32(0xd63f0000); end
 
   def jmp_rel32; pos = current_pos; emit32(0x14000000); pos; end
   def je_rel32; pos = current_pos; emit32(0x54000000); pos; end
+  def jne_rel32; pos = current_pos; emit32(0x54000001); pos; end
 
   def patch_jmp(pos, target)
     offset = (target - pos) / 4
@@ -249,39 +258,4 @@ class AArch64Emitter
     # end:
   end
 
-  def je_rel32
-    pos = @code.length
-    emit32(0x54000000) # b.eq .
-    pos
-  end
-
-  def jne_rel32
-    pos = @code.length
-    emit32(0x54000001) # b.ne .
-    pos
-  end
-
-  def patch_je(pos, target)
-    offset = (target - pos) / 4
-    instr = 0x54000000 | ((offset & 0x7ffff) << 5)
-    @code[pos...pos+4] = [instr].pack("L<").bytes
-  end
-
-  def patch_jne(pos, target)
-    offset = (target - pos) / 4
-    instr = 0x54000001 | ((offset & 0x7ffff) << 5)
-    @code[pos...pos+4] = [instr].pack("L<").bytes
-  end
-
-  def jmp_rel32
-    pos = @code.length
-    emit32(0x14000000) # b .
-    pos
-  end
-
-  def patch_jmp(pos, target)
-    offset = (target - pos) / 4
-    instr = 0x14000000 | (offset & 0x3ffffff)
-    @code[pos...pos+4] = [instr].pack("L<").bytes
-  end
 end

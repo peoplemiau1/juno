@@ -14,6 +14,8 @@ require_relative "builtins/strings_v2"
 require_relative "builtins/file_api"
 require_relative "builtins/collections"
 require_relative "builtins/lib_linux"
+require_relative "builtins/fs_ops"
+require_relative "builtins/process_ops"
 
 module GeneratorCalls
   include BuiltinStrings
@@ -31,6 +33,8 @@ module GeneratorCalls
   include BuiltinFileAPI
   include BuiltinCollections
   include BuiltinLibLinux
+  include BuiltinFS
+  include BuiltinProcess
 
   def gen_fn_call(node)
     name = node[:name]
