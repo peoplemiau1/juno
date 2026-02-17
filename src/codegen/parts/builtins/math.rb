@@ -47,13 +47,13 @@ module BuiltinMath
     @emitter.test_reg_reg(1, 1)
     p_end = @emitter.je_rel32
     @emitter.imul_rax_rdx
-    @emitter.mov_reg_reg(0, 0) # NOOP
     if @arch == :aarch64
        @emitter.emit_sub_imm(1, 1, 1)
     else
        @emitter.emit([0x48, 0xff, 0xc9]) # dec rcx
     end
-    @emitter.patch_jmp(@emitter.current_pos, l)
+    p_loop = @emitter.jmp_rel32
+    @emitter.patch_jmp(p_loop, l)
     @emitter.patch_je(p_end, @emitter.current_pos)
   end
 end

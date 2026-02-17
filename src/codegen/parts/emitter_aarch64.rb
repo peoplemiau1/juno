@@ -153,6 +153,7 @@ class AArch64Emitter
   end
 
   def test_rax_rax; emit32(0xf100001f); end # cmp x0, #0
+  def test_reg_reg(r1, r2); emit32(0xeb00001f | (r2 << 16) | (r1 << 5)); end # cmp r1, r2
 
   def cmp_reg_imm(reg, imm)
     # subs xzr, reg, #imm
@@ -181,14 +182,14 @@ class AArch64Emitter
 
   def patch_je(pos, target)
     offset = (target - pos) / 4
-    # Default to B.EQ (cond 0)
-    @bytes[pos...pos+4] = [0x54000000 | ((offset << 5) & 0xFFFFE0)].pack("L<").bytes
+    # imm19 at bits 5-23
+    @bytes[pos...pos+4] = [0x54000000 | ((offset & 0x7FFFF) << 5)].pack("L<").bytes
   end
 
   def patch_jne(pos, target)
     offset = (target - pos) / 4
-    # B.NE (cond 1)
-    @bytes[pos...pos+4] = [0x54000001 | ((offset << 5) & 0xFFFFE0)].pack("L<").bytes
+    # imm19 at bits 5-23, cond=1 (NE)
+    @bytes[pos...pos+4] = [0x54000001 | ((offset & 0x7FFFF) << 5)].pack("L<").bytes
   end
 
   def mov_x8(val); mov_reg_imm(8, val); end
