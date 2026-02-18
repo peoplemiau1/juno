@@ -23,8 +23,8 @@ module BuiltinHTTPS
     return unless @target_os == :linux
     setup_https_data
     @emitter.emit([0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57]) # push r12-r15
-    eval_expression(node[:args][0])
-    @emitter.emit([0x49, 0x89, 0xc4]) # r12 = url
+    eval_expression(node[:args][0]); @emitter.push_reg(0) # url
+    @emitter.pop_reg(12) # r12 = url
     
     @emitter.emit([0x48, 0x83, 0xec, 0x10, 0x48, 0x89, 0xe7, 0xb8, 0x16, 0,0,0, 0x0f, 0x05, 0xb8, 0x39, 0,0,0, 0x0f, 0x05, 0x48, 0x85, 0xc0])
     child_jmp = @emitter.current_pos
@@ -63,14 +63,15 @@ module BuiltinHTTPS
     return unless @target_os == :linux
     setup_https_data
     @emitter.emit([0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57]) # push r12-r15
-    eval_expression(node[:args][0]) # method
-    @emitter.emit([0x49, 0x89, 0xc4]) # r12
-    eval_expression(node[:args][1]) # url
-    @emitter.emit([0x49, 0x89, 0xc5]) # r13
-    eval_expression(node[:args][2]) # headers
-    @emitter.emit([0x49, 0x89, 0xc6]) # r14
-    eval_expression(node[:args][3]) # data
-    @emitter.emit([0x49, 0x89, 0xc7]) # r15
+    eval_expression(node[:args][0]); @emitter.push_reg(0) # method
+    eval_expression(node[:args][1]); @emitter.push_reg(0) # url
+    eval_expression(node[:args][2]); @emitter.push_reg(0) # headers
+    eval_expression(node[:args][3]); @emitter.push_reg(0) # data
+
+    @emitter.pop_reg(15) # data
+    @emitter.pop_reg(14) # headers
+    @emitter.pop_reg(13) # url
+    @emitter.pop_reg(12) # method
 
     @emitter.emit([0x48, 0x83, 0xec, 0x10, 0x48, 0x89, 0xe7, 0xb8, 0x16, 0,0,0, 0x0f, 0x05, 0xb8, 0x39, 0,0,0, 0x0f, 0x05, 0x48, 0x85, 0xc0])
     child_jmp = @emitter.current_pos
@@ -114,10 +115,11 @@ module BuiltinHTTPS
     return unless @target_os == :linux
     setup_https_data
     @emitter.emit([0x41, 0x54, 0x41, 0x55, 0x41, 0x56, 0x41, 0x57]) # push r12-r15
-    eval_expression(node[:args][0])
-    @emitter.emit([0x49, 0x89, 0xc4]) # url
-    eval_expression(node[:args][1])
-    @emitter.emit([0x49, 0x89, 0xc5]) # data
+    eval_expression(node[:args][0]); @emitter.push_reg(0) # url
+    eval_expression(node[:args][1]); @emitter.push_reg(0) # data
+
+    @emitter.pop_reg(13) # data
+    @emitter.pop_reg(12) # url
     
     @emitter.emit([0x48, 0x83, 0xec, 0x10, 0x48, 0x89, 0xe7, 0xb8, 0x16, 0,0,0, 0x0f, 0x05, 0xb8, 0x39, 0,0,0, 0x0f, 0x05, 0x48, 0x85, 0xc0])
     child_jmp = @emitter.current_pos

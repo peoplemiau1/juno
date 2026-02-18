@@ -34,27 +34,28 @@ module GeneratorAssignments
   end
 
   def process_deref_assign(node)
-    eval_expression(node[:value])
-    @emitter.mov_r11_rax
+    eval_expression(node[:value]); @emitter.push_reg(0)
     eval_expression(node[:target])
-    @emitter.mov_mem_r11(0)
+    @emitter.mov_reg_reg(7, 0) # RDI = target
+    @emitter.pop_reg(0)        # RAX = value
+    @emitter.mov_mem_rax_sized(8) # [RDI] = RAX
   end
 
   def gen_array_assign(node)
-    eval_expression(node[:value])
-    @emitter.mov_r11_rax
-    eval_expression(node[:index])
-    @emitter.shl_rax_imm(3)
-    @emitter.push_reg(0)
+    eval_expression(node[:value]); @emitter.push_reg(0)
+    eval_expression(node[:index]); @emitter.shl_rax_imm(3); @emitter.push_reg(0)
+
     arr_info = @ctx.get_array(node[:name])
     if arr_info
       @emitter.mov_reg_stack_val(0, arr_info[:ptr_offset])
     else
       @emitter.mov_reg_stack_val(0, @ctx.get_variable_offset(node[:name]))
     end
-    @emitter.mov_reg_reg(2, 0)
-    @emitter.pop_reg(0)
+
+    @emitter.pop_reg(2) # RDX = offset
     @emitter.add_rax_rdx
-    @emitter.mov_mem_r11(0)
+    @emitter.mov_reg_reg(7, 0) # RDI = target addr
+    @emitter.pop_reg(0)        # RAX = value
+    @emitter.mov_mem_rax_sized(8)
   end
 end

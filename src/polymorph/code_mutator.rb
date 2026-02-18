@@ -4,12 +4,17 @@
 require_relative 'polymorph_engine'
 
 class CodeMutator
+  attr_reader :stats
+  attr_accessor :arch
+
   def initialize(options = {})
     @engine = PolymorphEngine.new(options[:seed])
     @engine.mutation_level = options[:level] || 3
+    @stats = { junk_added: 0 }
     @enabled = options[:enabled] != false
     @anti_debug = options[:anti_debug] || false
     @encrypt_strings = options[:encrypt_strings] || false
+    @arch = options[:arch] || :x86_64
   end
 
   # Мутировать блок машинного кода
@@ -52,7 +57,8 @@ class CodeMutator
     end
     
     # Основной код функции с junk между инструкциями
-    result += inject_junk(func_bytes)
+    res, _ = inject_junk(func_bytes)
+    result += res
     
     result
   end
@@ -83,26 +89,39 @@ class CodeMutator
     ]
   end
 
-  # Вставка junk между инструкциями
+  # Вставка junk между инструкциями с возвратом маппинга смещений
   def inject_junk(bytes)
-    return bytes if bytes.empty?
+    return [bytes, {}] if bytes.empty? || !@enabled
     
     result = []
     i = 0
+    mapping = {}
     
     while i < bytes.length
-      # Копируем инструкцию (упрощённо - по 1-7 байт)
-      instr_len = estimate_instruction_length(bytes, i)
+      # Запоминаем маппинг для каждого байта текущей инструкции
+      instr_len = (@arch == :aarch64) ? 4 : estimate_instruction_length(bytes, i)
+      instr_len.times { |j| mapping[i + j] = result.length + j }
+
       result += bytes[i, instr_len]
       i += instr_len
       
       # С вероятностью добавляем junk после инструкции
       if rand < 0.3 && i < bytes.length
-        result += @engine.junk_instructions
+        # Junk instructions for AArch64 should be 4-byte aligned
+        junk = (@arch == :aarch64) ? [0x1f, 0x20, 0x03, 0xd5] * (rand(3)+1) : @engine.poly_nop(rand(3)+1)
+        result += junk
+        @stats[:junk_added] += 1
       end
     end
     
-    result
+    mapping[bytes.length] = result.length
+    [result, mapping]
+  end
+
+  # Для обратной совместимости
+  def mutate_code(bytes)
+    res, _ = inject_junk(bytes)
+    res
   end
 
   # Контроль сложности обфускации
@@ -134,36 +153,96 @@ class CodeMutator
 
   private
 
-  # Примерная оценка длины x64 инструкции
+  # Улучшенная оценка длины x64 инструкции (для Juno)
   def estimate_instruction_length(bytes, offset)
     return 1 if offset >= bytes.length
     
+    start = offset
     b = bytes[offset]
     
-    # REX prefix
-    has_rex = (b >= 0x40 && b <= 0x4f)
-    base = has_rex ? offset + 1 : offset
-    return 1 if base >= bytes.length
+    # Skip prefixes
+    has_rex = false
+    while b && ([0x66, 0x67, 0xf0, 0xf2, 0xf3].include?(b) || (b >= 0x40 && b <= 0x4f))
+      has_rex = true if b >= 0x40 && b <= 0x4f
+      offset += 1
+      b = bytes[offset]
+    end
+
+    return offset - start + 1 if offset >= bytes.length
     
-    opcode = bytes[base]
+    opcode = bytes[offset]
+    offset += 1
     
-    # Простые однобайтовые
-    return (has_rex ? 2 : 1) if [0x90, 0xc3, 0xcc, 0x50, 0x51, 0x52, 0x53, 
-                                  0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5a,
-                                  0x5b, 0x5c, 0x5d, 0x5e, 0x5f, 0x9c, 0x9d,
-                                  0xf8, 0xf9, 0xf5].include?(opcode)
+    # 2-byte opcodes
+    if opcode == 0x0f
+      opcode = bytes[offset]
+      offset += 1
+
+      # 0x0F 0x05 (syscall), 0x0F 0xA4 (shld), 0x0F 0xAF (imul)
+      return offset - start if opcode == 0x05 # syscall
+
+      # Jcc rel32 (0x0F 0x80 - 0x0F 0x8F)
+      return offset - start + 4 if opcode >= 0x80 && opcode <= 0x8f
+
+      # Common 0x0F instructions with ModRM (like cmov, imul, setcc)
+      offset += 1 # ModRM
+      return offset - start
+    end
     
-    # mov reg, imm32
-    return (has_rex ? 7 : 6) if opcode == 0xc7
+    # One-byte opcodes with immediate
+    return offset - start + 4 if opcode == 0xe8 || opcode == 0xe9 # call/jmp rel32
+    return offset - start + 1 if opcode == 0xeb || (opcode >= 0x70 && opcode <= 0x7f) # short jmp/jcc
     
     # mov reg, imm64 (REX.W + B8+r)
-    return 10 if has_rex && (opcode >= 0xb8 && opcode <= 0xbf)
+    return offset - start + 8 if has_rex && (opcode >= 0xb8 && opcode <= 0xbf)
+
+    # mov reg, imm32 (B8+r)
+    return offset - start + 4 if (opcode >= 0xb8 && opcode <= 0xbf)
     
-    # Syscall
-    return 2 if opcode == 0x0f && bytes[base + 1] == 0x05
+    # Instructions with ModRM
+    # 0x80-0x83 (arith/cmp), 0x88-0x8B (mov), 0xC6-0xC7 (mov imm), 0x8d (lea)
+    # 0x01 (add), 0x29 (sub), 0x31 (xor), 0x39 (cmp), 0x85 (test), 0xf7 (not/idiv)
+    # 0x09 (or), 0x21 (and), 0x8a/0x8b (mov)
+    if [0x80, 0x81, 0x82, 0x83, 0x88, 0x89, 0x8a, 0x8b, 0xc6, 0xc7, 0x8d, 0x31, 0x01, 0x29, 0x39,
+        0x85, 0xf7, 0x09, 0x21, 0xd3, 0xc1, 0x84].include?(opcode)
+      modrm = bytes[offset]
+      offset += 1
+      return offset - start if modrm.nil?
+
+      mod = (modrm >> 6) & 3
+      rm  = modrm & 7
+
+      # SIB
+      if mod != 3 && rm == 4
+        offset += 1 # SIB byte
+      end
+
+      # Displacement
+      if mod == 1
+        offset += 1
+      elsif mod == 2 || (mod == 0 && rm == 5)
+        offset += 4
+      end
+
+      # Immediate
+      if opcode == 0x81 || opcode == 0xc7
+        offset += 4
+      elsif opcode == 0x80 || opcode == 0x82 || opcode == 0x83 || opcode == 0xc1 || opcode == 0xc6
+        offset += 1
+      end
+
+      return offset - start
+    end
     
-    # Default - возвращаем 3
-    [3, bytes.length - offset].min
+    # Simple one-byte instructions
+    return offset - start if [0x90, 0xc3, 0x50, 0x51, 0x52, 0x53, 0x54, 0x55,
+                               0x56, 0x57, 0x58, 0x59, 0x5a, 0x5b, 0x5c, 0x5d,
+                               0x5e, 0x5f, 0xcc, 0x9c, 0x9d, 0xf8, 0xf9, 0xf5,
+                               0xa4, 0xaa, 0x99].include?(opcode)
+
+    # Default: if we don't know, assume it might have a ModRM or is just 1 byte
+    # For Juno, most unknown are 1-byte opcodes or handled above
+    offset - start
   end
 end
 

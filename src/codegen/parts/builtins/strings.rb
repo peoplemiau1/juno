@@ -157,12 +157,22 @@ module BuiltinStrings
     else
        @emitter.push_reg(0)
        @emitter.emit_load_address("int_buffer", @linker)
-       @emitter.emit([0x48, 0x83, 0xc0, 63, 0xc6, 0x00, 0x00, 0x48, 0x89, 0xc6, 0x48, 0xc7, 0xc1, 10, 0, 0, 0, 0x48, 0x8b, 0x44, 0x24, 8])
+       # sub rax, 63; mov byte [rax], 0
+       @emitter.emit([0x48, 0x83, 0xc0, 63, 0xc6, 0x00, 0x00])
+       @emitter.mov_reg_reg(6, 0) # rsi = end of buffer
+       @emitter.mov_reg_imm(1, 10) # rcx = 10
+       @emitter.mov_reg_stack_val(0, 8) # rax = original val
+
        l = @emitter.current_pos
-       @emitter.emit([0x48, 0x31, 0xd2, 0x48, 0xf7, 0xf1, 0x80, 0xc2, 0x30, 0x48, 0xff, 0xce, 0x88, 0x16, 0x48, 0x85, 0xc0, 0x75])
-       @emitter.emit([(l - (@emitter.current_pos + 1)) & 0xFF])
-       @emitter.mov_reg_reg(0, 6)
-       @emitter.emit([0x48, 0x83, 0xc4, 8])
+       @emitter.emit([0x48, 0x31, 0xd2, 0x48, 0xf7, 0xf1]) # xor rdx, rdx; div rcx
+       @emitter.emit([0x80, 0xc2, 0x30]) # add dl, '0'
+       @emitter.emit([0x48, 0xff, 0xce, 0x88, 0x16]) # dec rsi; mov [rsi], dl
+       @emitter.test_rax_rax
+       p_loop = @emitter.jne_rel32
+       @emitter.patch_jne(p_loop, l)
+
+       @emitter.mov_reg_reg(0, 6) # return rsi
+       @emitter.pop_reg(2) # clean stack
     end
   end
 
@@ -183,10 +193,19 @@ module BuiltinStrings
        @emitter.patch_jmp(p_loop, l)
        @emitter.patch_je(p_end, @emitter.current_pos)
     else
-       @emitter.mov_reg_reg(6, 0); @emitter.mov_rax(0)
+       @emitter.mov_reg_reg(6, 0) # RSI = s
+       @emitter.mov_reg_imm(0, 0) # RAX = 0 (res)
        l = @emitter.current_pos
-       @emitter.emit([0x48, 0x31, 0xd2, 0x8a, 0x16, 0x80, 0xfa, 0x00, 0x74, 0x0d])
-       @emitter.emit([0x48, 0x83, 0xea, 0x30, 0x48, 0x6b, 0xc0, 0x0a, 0x48, 0x01, 0xd0, 0x48, 0xff, 0xc6, 0xeb, 0xec])
+       @emitter.emit([0x48, 0x31, 0xd2, 0x8a, 0x16]) # xor rdx, rdx; mov dl, [rsi]
+       @emitter.emit([0x80, 0xfa, 0x00]) # cmp dl, 0
+       p_done = @emitter.je_rel32
+       @emitter.emit([0x48, 0x83, 0xea, 0x30]) # sub rdx, '0'
+       @emitter.emit([0x48, 0x6b, 0xc0, 0x0a]) # imul rax, 10
+       @emitter.add_rax_rdx
+       @emitter.emit([0x48, 0xff, 0xc6]) # inc rsi
+       p_loop = @emitter.jmp_rel32
+       @emitter.patch_jmp(p_loop, l)
+       @emitter.patch_je(p_done, @emitter.current_pos)
     end
   end
 
@@ -220,11 +239,28 @@ module BuiltinStrings
        @emitter.mov_x8(64)
        @emitter.syscall
     else
-       @emitter.mov_reg_reg(6, 0); @emitter.mov_rax(0); @emitter.mov_reg_reg(1, 0)
-       l = @emitter.current_pos; @emitter.emit([0x80, 0x3c, 0x0e, 0x00, 0x74, 0x05, 0x48, 0xff, 0xc1, 0xeb, 0xf5])
-       @emitter.mov_reg_reg(2, 1); @emitter.mov_rax(1); @emitter.mov_reg_reg(7, 0); @emitter.emit([0x0f, 0x05])
+       @emitter.mov_reg_reg(6, 0); @emitter.mov_reg_imm(1, 0)
+       l = @emitter.current_pos
+       # cmp byte ptr [rsi+rcx], 0 -> 80 3c 0e 00
+       @emitter.emit([0x80, 0x3c, 0x0e, 0x00])
+       p_done = @emitter.je_rel32
+       @emitter.emit([0x48, 0xff, 0xc1]) # inc rcx
+       p_loop = @emitter.jmp_rel32
+       @emitter.patch_jmp(p_loop, l)
+       @emitter.patch_je(p_done, @emitter.current_pos)
+
+       @emitter.mov_reg_reg(2, 1) # RDX = len
+       @emitter.mov_reg_reg(6, 6) # RSI = buf
+       @emitter.mov_reg_imm(7, 1) # RDI = 1 (stdout)
+       @emitter.mov_reg_imm(0, 1) # RAX = 1 (write)
+       @emitter.syscall
+
        @emitter.emit_load_address("newline_char", @linker)
-       @emitter.mov_reg_reg(6, 0); @emitter.mov_rax(1); @emitter.mov_reg_reg(2, 0); @emitter.mov_reg_reg(7, 0); @emitter.emit([0x0f, 0x05])
+       @emitter.mov_reg_reg(6, 0) # RSI = newline
+       @emitter.mov_reg_imm(7, 1) # RDI = 1 (stdout)
+       @emitter.mov_reg_imm(2, 1) # RDX = 1 (len)
+       @emitter.mov_reg_imm(0, 1) # RAX = 1 (write)
+       @emitter.syscall
     end
   end
 end

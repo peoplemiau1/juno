@@ -234,6 +234,9 @@ module ParserExpressions
       exp
     else
       token = peek
+      if token.nil?
+        error_eof("Expected expression")
+      end
       error = JunoParseError.new(
         "Unexpected token '#{token[:value]}' in expression",
         filename: @filename,

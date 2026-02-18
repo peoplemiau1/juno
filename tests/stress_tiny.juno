@@ -1,0 +1,5 @@
+fn main() {
+    output("A")
+    output("B")
+    return 0
+}

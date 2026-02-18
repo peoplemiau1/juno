@@ -80,12 +80,26 @@ module BuiltinHeap
        @emitter.push_reg(14); @emitter.push_reg(15)
        @emitter.mov_reg_reg(0, 14); gen_malloc(nil)
 
-       @emitter.emit([0x4d, 0x85, 0xff, 0x74, 0x1c])
-       @emitter.push_reg(0)
-       @emitter.emit([0x4d, 0x8b, 0x4f, 0xf8, 0x49, 0x83, 0xe9, 0x08])
-       @emitter.emit([0x4d, 0x39, 0xf1, 0x4d, 0x0f, 0x47, 0xce])
-       @emitter.mov_reg_reg(7, 0); @emitter.mov_reg_reg(6, 15); @emitter.mov_reg_reg(1, 9); @emitter.emit([0xf3, 0xa4])
-       @emitter.pop_reg(0)
+       # if (old_ptr == 0) return new_ptr
+       @emitter.emit([0x4d, 0x85, 0xff]) # test r15, r15
+       p_skip = @emitter.je_rel32
+
+       @emitter.push_reg(0) # save new_ptr
+       # r9 = min(old_size, new_size)
+       # [r15-8] has old total size
+       @emitter.mov_reg_mem_idx(1, 15, -8) # rcx = [r15-8]
+       @emitter.emit([0x48, 0x83, 0xe9, 0x08]) # sub rcx, 8 (old user size)
+       @emitter.mov_reg_reg(9, 1) # r9 = old user size
+       @emitter.emit([0x4d, 0x39, 0xf1]) # cmp r9, r14
+       @emitter.cmov("<=", 9, 14) # wait, cmov uses reg codes
+
+       @emitter.mov_reg_reg(7, 0) # rdi = new_ptr
+       @emitter.mov_reg_reg(6, 15) # rsi = old_ptr
+       @emitter.mov_reg_reg(1, 9) # rcx = min size
+       @emitter.memcpy
+
+       @emitter.pop_reg(0) # restore new_ptr
+       @emitter.patch_je(p_skip, @emitter.current_pos)
        @emitter.pop_reg(15); @emitter.pop_reg(14)
     end
   end
@@ -118,9 +132,15 @@ module BuiltinHeap
          @emitter.pop_reg(7) # RDI = ptr
          @emitter.mov_rax(11); @emitter.syscall
        else
-         @emitter.emit([0x48, 0x85, 0xc0, 0x74, 0x11])
-         @emitter.emit([0x48, 0x83, 0xe8, 0x08, 0x48, 0x89, 0xc7, 0x48, 0x8b, 0x37])
-         @emitter.mov_rax(11); @emitter.syscall
+         @emitter.test_rax_rax
+         p_skip = @emitter.je_rel32
+         @emitter.emit([0x48, 0x83, 0xe8, 0x08]) # rax -= 8
+         @emitter.mov_reg_reg(7, 0) # RDI = header addr
+         @emitter.mov_rax_mem(0) # RAX = total size (from [RDI])
+         @emitter.mov_reg_reg(6, 0) # RSI = total size
+         @emitter.mov_rax(11) # munmap
+         @emitter.syscall
+         @emitter.patch_je(p_skip, @emitter.current_pos)
        end
     end
   end

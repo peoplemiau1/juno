@@ -1,219 +1,121 @@
 #!/usr/bin/env ruby
-# Juno CLI v2.0
+# Unified Juno CLI
 
+require 'optparse'
 require 'fileutils'
-require 'tempfile'
-require 'tmpdir'
+require_relative "src/lexer"
+require_relative "src/parser"
+require_relative "src/importer"
+require_relative "src/monomorphizer"
+require_relative "src/optimizer/turbo"
+require_relative "src/codegen/native_generator"
+require_relative "src/preprocessor"
+require_relative "src/errors"
 
-JUNO_ROOT = File.dirname(File.realpath(__FILE__))
-USER_DIR = Dir.pwd
+options = {
+  arch: :x86_64,
+  os: :linux,
+  output: nil,
+  hell: false,
+  hell_level: :hell,
+  run: false
+}
 
-def load_compiler
-  Dir.chdir(JUNO_ROOT)
-  require_relative "src/lexer"
-  require_relative "src/parser"
-  require_relative "src/importer"
-  require_relative "src/monomorphizer"
-  require_relative "src/optimizer/optimizer"
-  require_relative "src/codegen/native_generator"
-  require_relative "src/errors"
-  begin
-    require_relative "src/preprocessor"
-  rescue LoadError
+OptionParser.new do |opts|
+  opts.banner = "Usage: juno [options] <input_file>"
+
+  opts.on("-a", "--arch ARCH", [:x86_64, :aarch64], "Target architecture (x86_64, aarch64)") do |a|
+    options[:arch] = a
   end
+
+  opts.on("-o", "--output FILE", "Output binary path") do |o|
+    options[:output] = o
+  end
+
+  opts.on("-t", "--target OS", [:linux, :windows, :flat], "Target OS (linux, windows, flat)") do |t|
+    options[:os] = t
+  end
+
+  opts.on("--hell [LEVEL]", [:easy, :medium, :hard, :nightmare, :hell], "Enable HELL MODE obfuscation") do |level|
+    options[:hell] = true
+    options[:hell_level] = level || :hell
+  end
+
+  opts.on("-r", "--run", "Run after compilation") do
+    options[:run] = true
+  end
+
+  opts.on("-h", "--help", "Prints this help") do
+    puts opts
+    exit
+  end
+end.parse!
+
+input_file = ARGV[0]
+if input_file.nil?
+  puts "Error: No input file specified."
+  exit 1
+end
+
+output_path = options[:output] || case options[:os]
+  when :linux then "build/output_#{options[:arch]}"
+  when :windows then "build/output.exe"
+  when :flat then "build/output.bin"
 end
 
 $hell_mode = nil
-
-def enable_hell_mode
+if options[:hell]
   require_relative "src/polymorph/hell_mode"
-  $hell_mode = HellMode.new(:hell)
+  $hell_mode = HellMode.new(options[:hell_level], options[:arch])
+  puts "HELL MODE ACTIVATED - Level: #{options[:hell_level]} for #{options[:arch]}"
 end
 
-def compile(input_file, output_path, arch = :x86_64)
-  load_compiler
-  
-  unless File.exist?(input_file)
-    $stderr.puts "Error: #{input_file} not found"
-    exit 1
-  end
-  
+begin
   code = File.read(input_file)
-  lines = code.lines
-  
-  begin
-    if defined?(Preprocessor)
-      pp = Preprocessor.new
-      pp.define("LINUX")
-      pp.define("__#{arch}__")
-      code = pp.process(code, input_file)
-    end
-    
-    lexer = Lexer.new(code, input_file)
-    tokens = lexer.tokenize
 
-    parser = Parser.new(tokens, input_file, code)
-    ast = parser.parse
+  preprocessor = Preprocessor.new
+  preprocessor.define(options[:os].to_s.upcase)
+  preprocessor.define("__JUNO__")
+  preprocessor.define("__#{options[:arch]}__")
+  code = preprocessor.process(code, input_file)
 
-    importer = Importer.new(File.dirname(File.expand_path(input_file)))
-    ast = importer.resolve(ast, input_file)
+  lexer = Lexer.new(code, input_file)
+  tokens = lexer.tokenize
 
-    mono = Monomorphizer.new(ast)
-    ast = mono.monomorphize
+  parser = Parser.new(tokens, input_file, code)
+  ast = parser.parse
 
-    # Use turbo optimizer for v2.0
-    require_relative "src/optimizer/turbo"
-    opt = TurboOptimizer.new(ast)
-    ast = opt.optimize
+  importer = Importer.new(File.dirname(input_file))
+  ast = importer.resolve(ast, input_file)
 
-    gen = NativeGenerator.new(ast, :linux, arch)
-    gen.hell_mode = $hell_mode if $hell_mode
-    
-    FileUtils.mkdir_p(File.dirname(output_path))
-    gen.generate(output_path)
-    File.chmod(0755, output_path)
-    
-    output_path
-    
-  rescue JunoError => e
-    e.display
-    exit 1
-  rescue => e
-    msg = e.message
-    if msg =~ /line (\d+)/i
-      ln = $1.to_i
-      $stderr.puts "\nError in #{input_file}:#{ln}\n"
-      $stderr.puts "  #{ln} | #{lines[ln-1]&.chomp}"
-      $stderr.puts "      | ^"
-      $stderr.puts "\n#{msg}\n"
+  monomorphizer = Monomorphizer.new(ast)
+  ast = monomorphizer.monomorphize
+
+  optimizer = TurboOptimizer.new(ast)
+  ast = optimizer.optimize
+
+  generator = NativeGenerator.new(ast, options[:os], options[:arch])
+  generator.hell_mode = $hell_mode if $hell_mode
+  FileUtils.mkdir_p("build")
+  generator.generate(output_path)
+
+  puts "Success! Binary generated: #{output_path}"
+  $hell_mode.report if $hell_mode
+
+  if options[:run]
+    if options[:os] == :linux
+      puts "Executing..."
+      exec("./#{output_path}")
     else
-      $stderr.puts "\nError: #{msg}\n"
-      $stderr.puts e.backtrace[0..5].join("\n")
+      puts "Running not supported for this target yet."
     end
-    exit 1
   end
-end
-
-def cmd_run(args)
-  file = args.find { |a| a.end_with?(".juno") }
-  enable_hell_mode if args.include?("--hell")
-  
-  arch = :x86_64
-  if args.include?("--arch")
-    idx = args.index("--arch")
-    arch = args[idx + 1].to_sym if idx + 1 < args.length
-  end
-
-  unless file
-    puts "Usage: juno run <file.juno> [--arch aarch64]"
-    exit 1
-  end
-  
-  input = File.expand_path(file, USER_DIR)
-  tmp = File.join(Dir.tmpdir, "juno_#{$$}")
-  
-  compile(input, tmp, arch)
-  system(tmp)
-  code = $?.exitstatus || 0
-  
-  File.delete(tmp) if File.exist?(tmp)
-  exit code
-end
-
-def cmd_build(args)
-  file = nil
-  output = nil
-  arch = :x86_64
-  
-  i = 0
-  while i < args.length
-    if args[i] == "-o"
-      i += 1
-      output = args[i]
-    elsif args[i] == "--hell"
-      enable_hell_mode
-    elsif args[i] == "--arch"
-      i += 1
-      arch = args[i].to_sym
-    elsif args[i].end_with?(".juno")
-      file = args[i]
-    end
-    i += 1
-  end
-  
-  unless file
-    puts "Usage: juno build <file.juno> [-o name] [--arch aarch64]"
-    exit 1
-  end
-  
-  input = File.expand_path(file, USER_DIR)
-  output ||= File.basename(file, ".juno")
-  output_path = File.expand_path(output, USER_DIR)
-  
-  compile(input, output_path, arch)
-  puts "Binary generated: #{output_path} [#{arch}]"
-end
-
-def cmd_new(args)
-  name = args[0] || "main"
-  name += ".juno" unless name.end_with?(".juno")
-  path = File.expand_path(name, USER_DIR)
-  
-  if File.exist?(path)
-    puts "Error: #{name} exists"
-    exit 1
-  end
-  
-  File.write(path, <<~CODE)
-    fn main(): int {
-        prints("Hello from Juno!")
-        return 0
-    }
-  CODE
-  
-  puts name
-end
-
-def cmd_test(args)
-  Dir.chdir(JUNO_ROOT)
-  system("bash", "test.sh")
-end
-
-def cmd_help
-  puts <<~HELP
-  Juno v2.0 - Fast Native Language
-
-  juno run <file>         Run program
-  juno build <file>       Compile to binary  
-  juno build <f> -o name  Compile with custom name
-  juno new <name>         Create new file
-  juno test               Run tests
-  juno help               Show help
-
-  Options:
-    --arch aarch64        Target ARM64 (Linux)
-    --arch x86_64         Target x86-64 (Default)
-    --hell                Obfuscation mode
-
-  HELP
-end
-
-# Main
-cmd = ARGV[0]
-args = ARGV[1..] || []
-
-case cmd
-when "run", "r"    then cmd_run(args)
-when "build", "b"  then cmd_build(args)
-when "new", "n"    then cmd_new(args)
-when "test", "t"   then cmd_test(args)
-when "help", "-h"  then cmd_help
-when nil           then cmd_help
-else
-  if cmd.end_with?(".juno")
-    cmd_run([cmd] + args)
-  else
-    puts "Unknown: #{cmd}"
-    exit 1
-  end
+rescue JunoError => e
+  e.display
+  exit 1
+rescue => e
+  puts "\e[31mInternal Compiler Error:\e[0m"
+  puts e.message
+  puts e.backtrace[0..10].join("\n")
+  exit 1
 end

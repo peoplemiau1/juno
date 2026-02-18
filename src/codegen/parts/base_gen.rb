@@ -12,7 +12,19 @@ module BaseGenerator
     @linker.register_function("main", @emitter.current_pos)
     @ctx.reset_for_function("main")
     @emitter.emit_prologue(@stack_size)
+
+    callee_saved = @emitter.callee_saved_regs
+    @emitter.push_callee_saved(callee_saved)
+    if @arch == :x86_64 && callee_saved.length % 2 == 1
+      @emitter.emit_sub_rsp(8)
+    end
+
     nodes.each { |c| process_node(c) }
+
+    if @arch == :x86_64 && @emitter.callee_saved_regs.length % 2 == 1
+      @emitter.emit_add_rsp(8)
+    end
+    @emitter.pop_callee_saved(@emitter.callee_saved_regs)
     @emitter.emit_epilogue(@stack_size)
   end
 

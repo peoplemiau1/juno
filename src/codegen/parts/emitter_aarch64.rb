@@ -11,7 +11,12 @@ class AArch64Emitter
   def initialize
     @bytes = []
     @stack_shadow_size = 0
+    @internal_patches = []
   end
+
+  attr_reader :internal_patches
+
+  def callee_saved_regs; [:rbx]; end
 
   def current_pos; @bytes.length; end
   def emit32(v); @bytes += [v].pack("L<").bytes; end
@@ -176,17 +181,20 @@ class AArch64Emitter
   def jne_rel32; pos = current_pos; emit32(0x54000001); pos; end
 
   def patch_jmp(pos, target)
+    @internal_patches << { pos: pos, target: target, type: :jmp_rel32 }
     offset = (target - pos) / 4
     @bytes[pos...pos+4] = [0x14000000 | (offset & 0x03FFFFFF)].pack("L<").bytes
   end
 
   def patch_je(pos, target)
+    @internal_patches << { pos: pos, target: target, type: :je_rel32 }
     offset = (target - pos) / 4
     # imm19 at bits 5-23
     @bytes[pos...pos+4] = [0x54000000 | ((offset & 0x7FFFF) << 5)].pack("L<").bytes
   end
 
   def patch_jne(pos, target)
+    @internal_patches << { pos: pos, target: target, type: :jne_rel32 }
     offset = (target - pos) / 4
     # imm19 at bits 5-23, cond=1 (NE)
     @bytes[pos...pos+4] = [0x54000001 | ((offset & 0x7FFFF) << 5)].pack("L<").bytes

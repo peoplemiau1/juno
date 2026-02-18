@@ -1,0 +1,24 @@
+fn main() {
+    let a = 5
+    let b = 1
+    let c = 4
+    let d = 2
+    let e = 8
+
+    // Manual bubble sort pass
+    if (a > b) { let t = a; a = b; b = t }
+    if (b > c) { let t = b; b = c; c = t }
+    if (c > d) { let t = c; c = d; d = t }
+    if (d > e) { let t = d; d = e; e = t }
+
+    if (a > b) { let t = a; a = b; b = t }
+    if (b > c) { let t = b; b = c; c = t }
+    if (c > d) { let t = c; c = d; d = t }
+
+    output_int(a)
+    output_int(b)
+    output_int(c)
+    output_int(d)
+    output_int(e)
+    return 0
+}

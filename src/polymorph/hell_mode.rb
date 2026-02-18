@@ -14,11 +14,11 @@ class HellMode
     hell: 5       # АД - максимум всего
   }
 
-  def initialize(level = :hell)
+  def initialize(level = :hell, arch = :x86_64)
     @level = LEVELS[level] || 5
     @poly = PolymorphEngine.new
     @poly.mutation_level = @level
-    @mutator = CodeMutator.new(level: @level, anti_debug: @level >= 4, encrypt_strings: @level >= 3)
+    @mutator = CodeMutator.new(level: @level, anti_debug: @level >= 4, encrypt_strings: @level >= 3, arch: arch)
     @anti = AntiReverse.new
     
     @stats = { 
@@ -29,7 +29,7 @@ class HellMode
     }
   end
 
-  attr_reader :stats
+  attr_reader :stats, :mutator
 
   # Применить все техники к машинному коду
   def obfuscate(code_bytes)
@@ -117,7 +117,8 @@ class HellMode
   def report
     puts "=== HELL MODE OBFUSCATION REPORT ==="
     puts "Level: #{@level}/5"
-    puts "Junk blocks added: #{@stats[:junk_added]}"
+    total_junk = @stats[:junk_added] + @mutator.stats[:junk_added]
+    puts "Junk blocks added: #{total_junk}"
     puts "Strings encrypted: #{@stats[:strings_encrypted]}"
     puts "Fake branches: #{@stats[:fake_branches]}"  
     puts "Metamorphic blocks: #{@stats[:metamorphic_blocks]}"

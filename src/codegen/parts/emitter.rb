@@ -16,7 +16,12 @@ class CodeEmitter
   def initialize
     @bytes = []
     @stack_shadow_size = 32
+    @internal_patches = []
   end
+
+  attr_reader :internal_patches
+
+  def callee_saved_regs; [:rbx, :r12, :r13, :r14, :r15]; end
 
   def current_pos; @bytes.length; end
   def emit(arr); @bytes += arr; end
@@ -93,22 +98,38 @@ class CodeEmitter
     emit([0x48, 0x8b, 0x40, disp & 0xFF])
   end
 
-  def mov_rax_mem_idx(reg, offset, size = 8)
-    if reg == 4 # rsp
-      if size == 8
-        emit([0x48, 0x8b, 0x44, 0x24, offset])
-      elsif size == 4
-        emit([0x8b, 0x44, 0x24, offset])
-      elsif size == 1
-        emit([0x48, 0x0f, 0xb6, 0x44, 0x24, offset])
+  def mov_reg_mem_idx(dst, base, offset, size = 8)
+    rex = (size == 8) ? 0x48 : nil
+    if dst >= 8 || base >= 8
+      rex ||= 0x40
+      rex |= 0x04 if dst >= 8
+      rex |= 0x01 if base >= 8
+    end
+
+    opcode = (size == 1) ? 0x8a : 0x8b
+
+    if offset == 0 && (base % 8) != 5 && (base % 8) != 4
+      modrm = 0x00 | ((dst & 7) << 3) | (base & 7)
+      emit([rex, opcode, modrm].compact)
+    elsif offset >= -128 && offset <= 127
+      modrm = 0x40 | ((dst & 7) << 3) | (base & 7)
+      if (base % 8) == 4 # SIB needed
+        emit([rex, opcode, modrm, 0x24, offset & 0xFF].compact)
+      else
+        emit([rex, opcode, modrm, offset & 0xFF].compact)
       end
     else
-      # fall back to rax as base
-      if size == 8
-        emit([0x48, 0x8b, 0x40 + reg, offset])
+      modrm = 0x80 | ((dst & 7) << 3) | (base & 7)
+      if (base % 8) == 4 # SIB needed
+        emit([rex, opcode, modrm, 0x24].compact + [offset].pack("l<").bytes)
+      else
+        emit([rex, opcode, modrm].compact + [offset].pack("l<").bytes)
       end
     end
   end
+
+  def mov_rax_mem_idx(reg, offset, size = 8); mov_reg_mem_idx(0, reg, offset, size); end
+  def mov_rcx_mem_idx(reg, offset, size = 8); mov_reg_mem_idx(1, reg, offset, size); end
 
   def mov_r11_rax; emit([0x49, 0x89, 0xc3]); end
 
@@ -116,8 +137,21 @@ class CodeEmitter
     emit([0x48, 0x8b, 0x85] + [disp].pack("l<").bytes)
   end
 
-  def add_rax_rdx; emit([0x48, 0x01, 0xd0]); end
-  def sub_rax_rdx; emit([0x48, 0x29, 0xd0]); end
+  def add_rax_reg(src)
+    rex = 0x48
+    rex |= 0x04 if src >= 8
+    modrm = 0xc0 | ((src & 7) << 3) | 0
+    emit([rex, 0x01, modrm])
+  end
+  def add_rax_rdx; add_rax_reg(2); end
+
+  def sub_rax_reg(src)
+    rex = 0x48
+    rex |= 0x04 if src >= 8
+    modrm = 0xc0 | ((src & 7) << 3) | 0
+    emit([rex, 0x29, modrm])
+  end
+  def sub_rax_rdx; sub_rax_reg(2); end
   def imul_rax_rdx; emit([0x48, 0x0f, 0xaf, 0xc2]); end
   def and_rax_rdx; emit([0x48, 0x21, 0xd0]); end
   def or_rax_rdx; emit([0x48, 0x09, 0xd0]); end
@@ -181,15 +215,22 @@ class CodeEmitter
   def jne_rel32; pos = current_pos; emit([0x0f, 0x85, 0, 0, 0, 0]); pos; end
 
   def patch_jmp(pos, target)
+    @internal_patches << { pos: pos, target: target, type: :jmp_rel32 }
     offset = target - (pos + 5)
     @bytes[pos+1..pos+4] = [offset].pack("l<").bytes
   end
 
   def patch_je(pos, target)
+    @internal_patches << { pos: pos, target: target, type: :je_rel32 }
     offset = target - (pos + 6)
     @bytes[pos+2..pos+5] = [offset].pack("l<").bytes
   end
-  def patch_jne(pos, target); patch_je(pos, target); end
+
+  def patch_jne(pos, target)
+    @internal_patches << { pos: pos, target: target, type: :jne_rel32 }
+    offset = target - (pos + 6)
+    @bytes[pos+2..pos+5] = [offset].pack("l<").bytes
+  end
 
   def emit_sys_exit_rax
     emit([0x48, 0x89, 0xc7, 0x48, 0xc7, 0xc0, 60, 0, 0, 0, 0x0f, 0x05])
@@ -232,6 +273,36 @@ class CodeEmitter
     when 2 then emit([0x66, 0x89, 0x07])
     when 4 then emit([0x89, 0x07])
     else        emit([0x48, 0x89, 0x07])
+    end
+  end
+
+  def mov_mem_reg_idx(base, offset, src, size = 8)
+    rex = (size == 8) ? 0x48 : nil
+    if src >= 8 || base >= 8
+      rex ||= 0x40
+      rex |= 0x04 if src >= 8
+      rex |= 0x01 if base >= 8
+    end
+
+    opcode = 0x89
+
+    if offset == 0 && (base % 8) != 5 && (base % 8) != 4
+      modrm = 0x00 | ((src & 7) << 3) | (base & 7)
+      emit([rex, opcode, modrm].compact)
+    elsif offset >= -128 && offset <= 127
+      modrm = 0x40 | ((src & 7) << 3) | (base & 7)
+      if (base % 8) == 4 # SIB needed
+        emit([rex, opcode, modrm, 0x24, offset & 0xFF].compact)
+      else
+        emit([rex, opcode, modrm, offset & 0xFF].compact)
+      end
+    else
+      modrm = 0x80 | ((src & 7) << 3) | (base & 7)
+      if (base % 8) == 4 # SIB needed
+        emit([rex, opcode, modrm, 0x24].compact + [offset].pack("l<").bytes)
+      else
+        emit([rex, opcode, modrm].compact + [offset].pack("l<").bytes)
+      end
     end
   end
 
