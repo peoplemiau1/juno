@@ -1,0 +1,13 @@
+fn long_function() {
+    let i = 0
+    while (i < 3) {
+        output("Loop")
+        i = i + 1
+    }
+}
+
+fn main() {
+    long_function()
+    output("Hell Mapping Test Passed")
+    return 0
+}

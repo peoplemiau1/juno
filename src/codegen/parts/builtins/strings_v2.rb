@@ -34,12 +34,11 @@ module BuiltinStringsV2
   def gen_str_copy(node)
     return unless @target_os == :linux
 
-    eval_expression(node[:args][0])
-    @emitter.emit([0x49, 0x89, 0xc4])  # mov r12, rax (dst)
-
-    eval_expression(node[:args][1])
-    @emitter.emit([0x48, 0x89, 0xc6])  # mov rsi, rax (src)
-    @emitter.emit([0x4c, 0x89, 0xe7])  # mov rdi, r12 (dst)
+    eval_expression(node[:args][0]); @emitter.push_reg(0) # dst
+    eval_expression(node[:args][1]) # src
+    @emitter.mov_reg_reg(6, 0) # RSI = src
+    @emitter.pop_reg(7)        # RDI = dst
+    @emitter.push_reg(7)       # save original dst for return
 
     # Copy loop
     @emitter.emit([0x8a, 0x06])  # mov al, [rsi]
@@ -50,28 +49,26 @@ module BuiltinStringsV2
     @emitter.emit([0x48, 0xff, 0xc7])  # inc rdi
     @emitter.emit([0xeb, 0xf2])  # jmp loop
 
-    @emitter.emit([0x4c, 0x89, 0xe0])  # mov rax, r12 (return dst)
+    @emitter.pop_reg(0) # return dst
   end
 
   # str_cat(dst, src) - Concatenate src to end of dst
   def gen_str_cat(node)
     return unless @target_os == :linux
 
-    eval_expression(node[:args][0])
-    @emitter.emit([0x49, 0x89, 0xc4])  # mov r12, rax (dst)
-
-    eval_expression(node[:args][1])
-    @emitter.emit([0x49, 0x89, 0xc5])  # mov r13, rax (src)
+    eval_expression(node[:args][0]); @emitter.push_reg(0) # dst
+    eval_expression(node[:args][1]); @emitter.push_reg(0) # src
+    @emitter.pop_reg(6)         # RSI = src
+    @emitter.pop_reg(7)         # RDI = dst
+    @emitter.push_reg(7)        # save original dst for return
 
     # Find end of dst
-    @emitter.emit([0x4c, 0x89, 0xe7])  # mov rdi, r12
     @emitter.emit([0x80, 0x3f, 0x00])  # cmp byte [rdi], 0
     @emitter.emit([0x74, 0x04])  # je found_end
     @emitter.emit([0x48, 0xff, 0xc7])  # inc rdi
     @emitter.emit([0xeb, 0xf6])  # jmp find_loop
 
     # Copy src to end
-    @emitter.emit([0x4c, 0x89, 0xee])  # mov rsi, r13 (src)
     @emitter.emit([0x8a, 0x06])  # mov al, [rsi]
     @emitter.emit([0x88, 0x07])  # mov [rdi], al
     @emitter.emit([0x84, 0xc0])  # test al, al
@@ -80,19 +77,17 @@ module BuiltinStringsV2
     @emitter.emit([0x48, 0xff, 0xc7])  # inc rdi
     @emitter.emit([0xeb, 0xf2])  # jmp copy_loop
 
-    @emitter.emit([0x4c, 0x89, 0xe0])  # mov rax, r12 (return dst)
+    @emitter.pop_reg(0) # return original dst
   end
 
   # str_cmp(s1, s2) - Compare strings, returns 0 if equal
   def gen_str_cmp(node)
     return unless @target_os == :linux
 
-    eval_expression(node[:args][0])
-    @emitter.emit([0x49, 0x89, 0xc4])  # mov r12, rax (s1)
-
-    eval_expression(node[:args][1])
-    @emitter.emit([0x48, 0x89, 0xc6])  # mov rsi, rax (s2)
-    @emitter.emit([0x4c, 0x89, 0xe7])  # mov rdi, r12 (s1)
+    eval_expression(node[:args][0]); @emitter.push_reg(0) # s1
+    eval_expression(node[:args][1]) # s2
+    @emitter.mov_reg_reg(6, 0) # RSI = s2
+    @emitter.pop_reg(7)        # RDI = s1
 
     # Compare loop
     @emitter.emit([0x8a, 0x07])  # mov al, [rdi]

@@ -17,10 +17,10 @@ module GeneratorLogic
     when :fn_call then gen_fn_call(node)
     when :return
        eval_expression(node[:expression])
-       used_regs = @ctx.used_callee_saved
-       padding = (used_regs.length % 2 == 1) ? 8 : 0
-       @emitter.pop_callee_saved(used_regs) unless used_regs.empty?
-       @emitter.emit_add_rsp(padding) if padding > 0
+       if @arch == :x86_64 && @emitter.callee_saved_regs.length % 2 == 1
+         @emitter.emit_add_rsp(8)
+       end
+       @emitter.pop_callee_saved(@emitter.callee_saved_regs)
        @emitter.emit_epilogue(@stack_size || 256)
     when :if_statement then gen_if(node)
     when :while_statement then gen_while(node)

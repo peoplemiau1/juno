@@ -61,26 +61,27 @@ module BuiltinCollections
     args = node[:args] || []
     return if args.length < 2
 
-    eval_expression(args[0])
-    @emitter.emit([0x49, 0x89, 0xc4])  # mov r12, rax
+    eval_expression(args[0]); @emitter.push_reg(0) # vec
+    eval_expression(args[1]); @emitter.push_reg(0) # value
 
-    eval_expression(args[1])
-    @emitter.emit([0x49, 0x89, 0xc5])  # mov r13, rax
+    @emitter.pop_reg(13) # value (R13)
+    @emitter.pop_reg(12) # vec (R12)
 
     # Get len, check capacity
-    @emitter.emit([0x49, 0x8b, 0x44, 0x24, 0x08])  # mov rax, [r12+8]
-    @emitter.emit([0x49, 0x8b, 0x0c, 0x24])  # mov rcx, [r12]
+    @emitter.mov_rax_mem_idx(12, 8) # mov rax, [r12+8] (len)
+    @emitter.mov_rcx_mem_idx(12, 0) # mov rcx, [r12] (cap)
     @emitter.emit([0x48, 0x39, 0xc8])  # cmp rax, rcx
-    @emitter.emit([0x73, 0x12])  # jae skip
+    p_skip = @emitter.je_rel32 # actually jae, but we use rel32 for safety
 
     # Store at 16 + len*8
-    @emitter.emit([0x48, 0xc1, 0xe0, 0x03])
-    @emitter.emit([0x48, 0x83, 0xc0, 0x10])
-    @emitter.emit([0x4c, 0x01, 0xe0])  # add rax, r12
-    @emitter.emit([0x4c, 0x89, 0x28])  # [rax] = r13
-    @emitter.emit([0x49, 0xff, 0x44, 0x24, 0x08])  # inc [r12+8]
-    # skip:
-    @emitter.emit([0x4c, 0x89, 0xe0])  # mov rax, r12
+    @emitter.shl_rax_imm(3)
+    @emitter.emit([0x48, 0x83, 0xc0, 0x10]) # add rax, 16
+    @emitter.add_rax_reg(12) # add rax, r12
+    @emitter.mov_mem_reg_idx(0, 0, 13) # [rax] = r13
+    @emitter.emit([0x49, 0xff, 0x44, 0x24, 0x08]) # inc [r12+8] (len)
+
+    @emitter.patch_je(p_skip, @emitter.current_pos)
+    @emitter.mov_rax_from_reg(12) # mov rax, r12
   end
 
   # vec_pop(vec)
@@ -116,11 +117,11 @@ module BuiltinCollections
     args = node[:args] || []
     return @emitter.emit([0x48, 0x31, 0xc0]) if args.length < 2
 
-    eval_expression(args[0])
-    @emitter.emit([0x49, 0x89, 0xc4])
+    eval_expression(args[0]); @emitter.push_reg(0) # vec
+    eval_expression(args[1]); @emitter.push_reg(0) # index
 
-    eval_expression(args[1])
-    @emitter.emit([0x49, 0x89, 0xc5])  # r13 = index
+    @emitter.pop_reg(13) # index (R13)
+    @emitter.pop_reg(12) # vec (R12)
 
     # Bounds check
     @emitter.emit([0x49, 0x8b, 0x4c, 0x24, 0x08])  # rcx = len
@@ -145,14 +146,13 @@ module BuiltinCollections
     args = node[:args] || []
     return if args.length < 3
 
-    eval_expression(args[0])
-    @emitter.emit([0x49, 0x89, 0xc4])
+    eval_expression(args[0]); @emitter.push_reg(0) # vec
+    eval_expression(args[1]); @emitter.push_reg(0) # index
+    eval_expression(args[2]); @emitter.push_reg(0) # value
 
-    eval_expression(args[1])
-    @emitter.emit([0x49, 0x89, 0xc5])
-
-    eval_expression(args[2])
-    @emitter.emit([0x49, 0x89, 0xc6])  # r14 = value
+    @emitter.pop_reg(14) # value (R14)
+    @emitter.pop_reg(13) # index (R13)
+    @emitter.pop_reg(12) # vec (R12)
 
     # Calculate offset
     @emitter.emit([0x4c, 0x89, 0xe8])

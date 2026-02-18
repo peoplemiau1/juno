@@ -19,6 +19,9 @@ module ParserStatements
 
   def parse_statement
     token = peek
+    if token.nil?
+      error_eof("Expected statement")
+    end
     if token[:type] == :keyword
       case token[:value]
       when 'if'     then parse_if
@@ -31,7 +34,7 @@ module ParserStatements
       when 'packed' then parse_packed_struct
       when 'union'  then parse_union_definition
       when 'import' then parse_import
-      else raise "Unknown keyword: #{token[:value]}"
+      else error_unexpected(token, "Unknown keyword")
       end
     elsif token[:type] == :insertC
       consume(:insertC)

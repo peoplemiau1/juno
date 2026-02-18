@@ -49,6 +49,21 @@ class Linker
     @import_patches << { pos: pos, name: name, type: type }
   end
 
+  def apply_mapping(mapping)
+    return if mapping.empty?
+
+    @fn_patches.each { |p| p[:pos] = mapping[p[:pos]] || p[:pos] }
+    @data_patches.each { |p| p[:pos] = mapping[p[:pos]] || p[:pos] }
+    @import_patches.each { |p| p[:pos] = mapping[p[:pos]] || p[:pos] }
+
+    @functions.each do |name, rva|
+      offset = rva - @base_rva
+      if mapping[offset]
+        @functions[name] = @base_rva + mapping[offset]
+      end
+    end
+  end
+
   def finalize(code_bytes)
     @data_pool.each do |item|
       item[:rva] = @base_rva + code_bytes.length

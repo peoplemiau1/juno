@@ -48,21 +48,28 @@ module PrintUtils
       @emitter.push_reg(2); @emitter.push_reg(1)
 
       @emitter.emit_load_address("int_buffer", @linker)
-      @emitter.emit([0x48, 0x83, 0xc0, 62, 0xc6, 0x00, 10, 0x48, 0x89, 0xc6])
+      # sub rax, 62; mov byte [rax], 10; rsi = rax
+      @emitter.emit([0x48, 0x83, 0xc0, 62, 0xc6, 0x00, 10])
+      @emitter.mov_reg_reg(6, 0)
       @emitter.mov_reg_imm(1, 10)
       # load original rax from stack [rsp+32]
       @emitter.emit([0x48, 0x8b, 0x44, 0x24, 32])
 
       l = @emitter.current_pos
-      @emitter.emit([0x48, 0x31, 0xd2, 0x48, 0xf7, 0xf1, 0x80, 0xc2, 0x30, 0x48, 0xff, 0xce, 0x88, 0x16, 0x48, 0x85, 0xc0])
+      @emitter.emit([0x48, 0x31, 0xd2, 0x48, 0xf7, 0xf1]) # xor rdx, rdx; div rcx
+      @emitter.emit([0x80, 0xc2, 0x30]) # add dl, '0'
+      @emitter.emit([0x48, 0xff, 0xce, 0x88, 0x16, 0x48, 0x85, 0xc0]) # dec rsi; mov [rsi], dl; test rax, rax
       p_loop = @emitter.jne_rel32
       @emitter.patch_jne(p_loop, l)
 
       @emitter.mov_reg_reg(11, 6) # start ptr
       @emitter.emit_load_address("int_buffer", @linker)
-      @emitter.emit([0x48, 0x83, 0xc0, 63, 0x4c, 0x29, 0xd8, 0x48, 0x89, 0xc2, 0x4c, 0x89, 0xde])
-      @emitter.mov_reg_imm(0, 1) # rax=1 for syscall write or fd?
-      # Wait, x86 syscall write is 1, fd is in RDI (7)
+      # rax += 63; sub rax, r11; rdx = rax; rsi = r11
+      @emitter.emit([0x48, 0x83, 0xc0, 63])
+      @emitter.sub_rax_reg(11) # rax = buf+63 - start
+      @emitter.mov_reg_reg(2, 0) # RDX = len
+      @emitter.mov_reg_reg(6, 11) # RSI = start
+
       @emitter.mov_reg_imm(7, 1) # RDI = 1
       @emitter.mov_reg_imm(0, 1) # RAX = 1
       @emitter.syscall
