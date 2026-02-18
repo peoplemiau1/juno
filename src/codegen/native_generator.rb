@@ -90,7 +90,7 @@ class NativeGenerator
 
         if @arch == :x86_64
           case p[:type]
-          when :je_rel32, :jne_rel32
+          when :je_rel32, :jne_rel32, :jae_rel32
             offset = new_target - (new_pos + 6)
             @emitter.bytes[new_pos+2..new_pos+5] = [offset].pack("l<").bytes
           when :jmp_rel32

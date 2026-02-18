@@ -91,9 +91,10 @@ module BuiltinHeap
        @emitter.emit([0x48, 0x83, 0xe9, 0x08]) # sub rcx, 8 (old user size)
        @emitter.mov_reg_reg(9, 1) # r9 = old user size
        @emitter.emit([0x4d, 0x39, 0xf1]) # cmp r9, r14
-       @emitter.cmov("<=", 9, 14) # wait, cmov uses reg codes
+       @emitter.cmov(">=", 9, 14) # R9 = min(old_size, new_size)
 
-       @emitter.mov_reg_reg(7, 0) # rdi = new_ptr
+       @emitter.pop_reg(7)        # rdi = new_ptr
+       @emitter.push_reg(7)       # save it again for return
        @emitter.mov_reg_reg(6, 15) # rsi = old_ptr
        @emitter.mov_reg_reg(1, 9) # rcx = min size
        @emitter.memcpy

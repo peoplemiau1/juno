@@ -213,6 +213,7 @@ class CodeEmitter
   def jmp_rel32; pos = current_pos; emit([0xe9, 0, 0, 0, 0]); pos; end
   def je_rel32; pos = current_pos; emit([0x0f, 0x84, 0, 0, 0, 0]); pos; end
   def jne_rel32; pos = current_pos; emit([0x0f, 0x85, 0, 0, 0, 0]); pos; end
+  def jae_rel32; pos = current_pos; emit([0x0f, 0x83, 0, 0, 0, 0]); pos; end
 
   def patch_jmp(pos, target)
     @internal_patches << { pos: pos, target: target, type: :jmp_rel32 }
@@ -222,6 +223,12 @@ class CodeEmitter
 
   def patch_je(pos, target)
     @internal_patches << { pos: pos, target: target, type: :je_rel32 }
+    offset = target - (pos + 6)
+    @bytes[pos+2..pos+5] = [offset].pack("l<").bytes
+  end
+
+  def patch_jae(pos, target)
+    @internal_patches << { pos: pos, target: target, type: :jae_rel32 }
     offset = target - (pos + 6)
     @bytes[pos+2..pos+5] = [offset].pack("l<").bytes
   end

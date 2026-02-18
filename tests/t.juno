@@ -1,0 +1,1 @@
+fn main() { output_int(1) }

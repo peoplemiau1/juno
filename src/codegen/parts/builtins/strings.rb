@@ -157,11 +157,11 @@ module BuiltinStrings
     else
        @emitter.push_reg(0)
        @emitter.emit_load_address("int_buffer", @linker)
-       # sub rax, 63; mov byte [rax], 0
+       # add rax, 63; mov byte [rax], 0
        @emitter.emit([0x48, 0x83, 0xc0, 63, 0xc6, 0x00, 0x00])
        @emitter.mov_reg_reg(6, 0) # rsi = end of buffer
        @emitter.mov_reg_imm(1, 10) # rcx = 10
-       @emitter.mov_reg_stack_val(0, 8) # rax = original val
+       @emitter.pop_reg(0)         # rax = original val
 
        l = @emitter.current_pos
        @emitter.emit([0x48, 0x31, 0xd2, 0x48, 0xf7, 0xf1]) # xor rdx, rdx; div rcx
@@ -172,7 +172,6 @@ module BuiltinStrings
        @emitter.patch_jne(p_loop, l)
 
        @emitter.mov_reg_reg(0, 6) # return rsi
-       @emitter.pop_reg(2) # clean stack
     end
   end
 

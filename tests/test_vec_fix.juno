@@ -1,0 +1,11 @@
+fn main() {
+    let v = vec_new(2)
+    vec_push(v, 10)
+    vec_push(v, 20)
+    vec_push(v, 30)
+
+    output_int(vec_len(v))
+    output_int(vec_get(v, 0))
+    output_int(vec_get(v, 1))
+    return 0
+}

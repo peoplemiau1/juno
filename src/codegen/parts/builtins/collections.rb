@@ -71,7 +71,7 @@ module BuiltinCollections
     @emitter.mov_rax_mem_idx(12, 8) # mov rax, [r12+8] (len)
     @emitter.mov_rcx_mem_idx(12, 0) # mov rcx, [r12] (cap)
     @emitter.emit([0x48, 0x39, 0xc8])  # cmp rax, rcx
-    p_skip = @emitter.je_rel32 # actually jae, but we use rel32 for safety
+    p_skip = @emitter.jae_rel32
 
     # Store at 16 + len*8
     @emitter.shl_rax_imm(3)
@@ -80,7 +80,7 @@ module BuiltinCollections
     @emitter.mov_mem_reg_idx(0, 0, 13) # [rax] = r13
     @emitter.emit([0x49, 0xff, 0x44, 0x24, 0x08]) # inc [r12+8] (len)
 
-    @emitter.patch_je(p_skip, @emitter.current_pos)
+    @emitter.patch_jae(p_skip, @emitter.current_pos)
     @emitter.mov_rax_from_reg(12) # mov rax, r12
   end
 

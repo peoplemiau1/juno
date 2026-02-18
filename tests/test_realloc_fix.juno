@@ -1,0 +1,16 @@
+fn main() {
+    let p1: ptr = malloc(16)
+    *p1 = 123
+    *(p1 + 1) = 456
+
+    let p2: ptr = realloc(p1, 32)
+    output_int(*p2)
+    output_int(*(p2 + 1))
+
+    if (*p2 == 123) {
+        if (*(p2 + 1) == 456) {
+            output("Realloc OK")
+        }
+    }
+    return 0
+}
