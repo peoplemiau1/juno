@@ -62,7 +62,7 @@ module GeneratorCalls
            else [1,2,8,9] end
 
     num_stack = [0, args.length - regs.length].max
-    padding = (num_stack % 2 == 1) ? 8 : 0
+    padding = (@arch == :aarch64 && num_stack > 0) ? (num_stack % 2 == 1 ? 8 : 0) : ((num_stack % 2 == 1) ? 8 : 0)
 
     @emitter.emit_sub_rsp(padding) if padding > 0
     args.reverse_each { |a| eval_expression(a); @emitter.push_reg(0) }
@@ -70,12 +70,12 @@ module GeneratorCalls
     num_pop = [args.length, regs.length].min
     num_pop.times { |i| @emitter.pop_reg(regs[i]) }
 
-    @emitter.emit_sub_rsp(32) if @target_os == :windows
+    @emitter.emit_sub_rsp(32) # if windows
     @linker.add_fn_patch(@emitter.current_pos + (@arch == :aarch64 ? 0 : 1), node[:name], @arch == :aarch64 ? :aarch64_bl : :rel32)
     @emitter.call_rel32
-    @emitter.emit_add_rsp(32) if @target_os == :windows
+    @emitter.emit_add_rsp(32) # if windows
 
-    @emitter.emit_add_rsp(num_stack * 8 + padding) if (num_stack * 8 + padding) > 0
+    @emitter.emit_add_rsp(num_stack * (@arch == :aarch64 ? 16 : 8) + padding) if (num_stack * (@arch == :aarch64 ? 16 : 8) + padding) > 0
   end
 
   def gen_method_call(node)
@@ -89,7 +89,7 @@ module GeneratorCalls
            else [1,2,8,9] end
 
     num_stack = [0, (args.length + 1) - regs.length].max
-    padding = (num_stack % 2 == 1) ? 8 : 0
+    padding = (@arch == :aarch64 && num_stack > 0) ? (num_stack % 2 == 1 ? 8 : 0) : ((num_stack % 2 == 1) ? 8 : 0)
 
     @emitter.emit_sub_rsp(padding) if padding > 0
 
@@ -107,12 +107,12 @@ module GeneratorCalls
     num_pop = [args.length + 1, regs.length].min
     num_pop.times { |i| @emitter.pop_reg(regs[i]) }
 
-    @emitter.emit_sub_rsp(32) if @target_os == :windows
+    @emitter.emit_sub_rsp(32) # if windows
     @linker.add_fn_patch(@emitter.current_pos + (@arch == :aarch64 ? 0 : 1), "#{st}.#{m}", @arch == :aarch64 ? :aarch64_bl : :rel32)
     @emitter.call_rel32
-    @emitter.emit_add_rsp(32) if @target_os == :windows
+    @emitter.emit_add_rsp(32) # if windows
 
-    @emitter.emit_add_rsp(num_stack * 8 + padding) if (num_stack * 8 + padding) > 0
+    @emitter.emit_add_rsp(num_stack * (@arch == :aarch64 ? 16 : 8) + padding) if (num_stack * (@arch == :aarch64 ? 16 : 8) + padding) > 0
   end
 
   def handle_linux_io(node)

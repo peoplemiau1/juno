@@ -25,7 +25,7 @@ class Lexer
       when /\A[ \t\r]+/
         cursor += $&.length
         @column += $&.length
-      when /\A\/\/.*$/
+      when /\A(\/\/|#).*$/
         cursor += $&.length
         @column += $&.length
       when /\A(struct|union|fn|func|def|if|else|return|while|let|for|import|packed)\b/

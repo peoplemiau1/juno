@@ -83,7 +83,7 @@ class Linker
       offset = target_rva - instr_rva
       instr = [code[pos..pos+3].pack("C*").unpack1("L<")].first
       immlo = offset & 0x3
-      immhi = (offset >> 2) & 0x7FFFF
+      immhi = ((offset >> 2) & 0x7FFFF)
       instr = (instr & 0x9F00001F) | (immlo << 29) | (immhi << 5)
       code[pos..pos+3] = [instr].pack("L<").bytes
     when :aarch64_movz
