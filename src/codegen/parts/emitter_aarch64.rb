@@ -16,7 +16,7 @@ class AArch64Emitter
 
   attr_reader :internal_patches
 
-  def callee_saved_regs; [:rbx]; end
+  def callee_saved_regs; [19, 20, 21, 22, 23, 24, 25, 26, 27, 28]; end
 
   def current_pos; @bytes.length; end
   def emit32(v); @bytes += [v].pack("L<").bytes; end
@@ -208,8 +208,8 @@ class AArch64Emitter
     emit32(0xd4000001)
   end
 
-  def push_reg(r); emit32(0xf81f0fe0 | r); end
-  def pop_reg(r); emit32(0xf84007e0 | r); end
+  def push_reg(r); emit32(0xf81f0fe0 | r); end # str r, [sp, #-16]!
+  def pop_reg(r); emit32(0xf84107e0 | r); end  # ldr r, [sp], #16
 
   def push_callee_saved(regs); regs.each { |r| push_reg(REG_MAP[r] || r) }; end
   def pop_callee_saved(regs); regs.reverse.each { |r| pop_reg(REG_MAP[r] || r) }; end

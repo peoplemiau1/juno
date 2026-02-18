@@ -12,6 +12,16 @@ require_relative "src/codegen/native_generator"
 require_relative "src/preprocessor"
 require_relative "src/errors"
 
+LOGO = <<-'EOF'
+      ____.
+     |    |__ __  ____   ____
+     |    |  |  \/    \ /  _ \
+ /\__|    |  |  /   |  (  <_> )
+ \________|____/|___|  /\____/
+                     \/
+    Juno Compiler v1.2 - "Hell Edition"
+EOF
+
 options = {
   arch: :x86_64,
   os: :linux,
@@ -21,8 +31,10 @@ options = {
   run: false
 }
 
-OptionParser.new do |opts|
+parser = OptionParser.new do |opts|
   opts.banner = "Usage: juno [options] <input_file>"
+  opts.separator ""
+  opts.separator "Options:"
 
   opts.on("-a", "--arch ARCH", [:x86_64, :aarch64], "Target architecture (x86_64, aarch64)") do |a|
     options[:arch] = a
@@ -45,15 +57,44 @@ OptionParser.new do |opts|
     options[:run] = true
   end
 
+  opts.on("-v", "--version", "Show version") do
+    puts LOGO
+    exit
+  end
+
   opts.on("-h", "--help", "Prints this help") do
+    puts LOGO
     puts opts
     exit
   end
-end.parse!
+end
+
+begin
+  parser.parse!
+rescue OptionParser::InvalidOption, OptionParser::MissingArgument => e
+  puts "\e[31mError:\e[0m #{e.message}"
+  puts "Use --help for usage information."
+  exit 1
+end
+
+if ARGV.empty?
+  puts LOGO
+  puts parser
+  exit
+end
+
+if ARGV[0] == "help"
+  puts LOGO
+  puts parser
+  exit
+elsif ARGV[0] == "version"
+  puts LOGO
+  exit
+end
 
 input_file = ARGV[0]
-if input_file.nil?
-  puts "Error: No input file specified."
+unless File.exist?(input_file)
+  puts "\e[31mError:\e[0m File not found: #{input_file}"
   exit 1
 end
 
