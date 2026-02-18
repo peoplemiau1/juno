@@ -1,0 +1,30 @@
+fn main() {
+    output("\e[36m--- JUNO DEBUG CRYPT ---\e[0m");
+    
+    let name: str = "secret.txt";
+    // Читаем всё содержимое
+    let content: str = file_read_all(name);
+    
+    if (content == "") {
+        output("ERROR: Buffer is empty!");
+        return 0;
+    }
+
+    // ВЫВОДИМ ТО, ЧТО ПРОЧИТАЛИ (для дебага)
+    output("Loaded data: ");
+    output(content);
+
+    output("Saving to output.bin...");
+    
+    let fd = file_open("output.bin", 1);
+    if (fd > 0) {
+        // Записываем первые 32 байта (этого хватит для теста)
+        file_write(fd, content, 32);
+        file_close(fd);
+        output("\e[32mDONE!\e[0m");
+    } else {
+        output("ERROR: Cannot write!");
+    }
+    
+    return 0;
+}

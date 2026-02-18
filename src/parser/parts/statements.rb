@@ -80,7 +80,7 @@ module ParserStatements
   def parse_assignment
     name = consume_ident
     consume_symbol('=')
-    { type: :assignment, name: name, expression: parse_expression }
+    { type: :assignment, name: name, expression: (match_symbol?(";") ? {type: :literal, value: 0} : parse_expression) }
   end
 
   def parse_if
@@ -110,7 +110,7 @@ module ParserStatements
 
   def parse_return
     consume_keyword('return')
-    { type: :return, expression: parse_expression }
+    { type: :return, expression: (match_symbol?(";") ? {type: :literal, value: 0} : parse_expression) }
   end
 
   def parse_fn_definition
@@ -265,7 +265,7 @@ module ParserStatements
       var_type = consume_type
     end
     consume_symbol('=')
-    node = { type: :assignment, name: name, expression: parse_expression }
+    node = { type: :assignment, name: name, expression: (match_symbol?(";") ? {type: :literal, value: 0} : parse_expression) }
     node[:var_type] = var_type if var_type
     node
   end

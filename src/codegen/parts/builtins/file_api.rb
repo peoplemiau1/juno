@@ -139,7 +139,7 @@ module BuiltinFileAPI
     @emitter.mov_reg_reg(@arch == :aarch64 ? 4 : 12, 0) # path
 
     # open(path, O_RDONLY, 0)
-    @emitter.mov_reg_reg(@arch == :aarch64 ? 1 : 7, 4) # path
+    @emitter.mov_reg_reg(@arch == :aarch64 ? 1 : 7, @arch == :aarch64 ? 4 : 12) # path
     @emitter.mov_rax(0); @emitter.mov_reg_reg(@arch == :aarch64 ? 2 : 6, 0) # flags=0
     @emitter.mov_rax(0); @emitter.mov_reg_reg(@arch == :aarch64 ? 3 : 2, 0) # mode=0
     if @arch == :aarch64

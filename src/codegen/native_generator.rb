@@ -1,4 +1,4 @@
-require_relative "../native/pe_builder"
+# require_relative "../native/pe_builder"
 require_relative "../native/elf_builder"
 require_relative "../native/flat_builder"
 require_relative "parts/context"
