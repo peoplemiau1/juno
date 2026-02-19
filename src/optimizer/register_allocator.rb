@@ -1,15 +1,13 @@
 class RegisterAllocator
-  ALLOCATABLE_REGS = [:rbx, :r12, :r13, :r14, :r15]
+  X86_64_REGS = [:rbx, :r12, :r13, :r14, :r15]
+  AARCH64_REGS = [19, 20, 21, 22, 23, 24, 25, 26, 27, 28]
 
-  def initialize
-    @allocations = {}
+  def initialize(arch = :x86_64)
+    @arch = arch
+    @allocatable_regs = (arch == :aarch64) ? AARCH64_REGS : X86_64_REGS
   end
 
-  def reset
-    @allocations = {}
-  end
-
-  def allocate(nodes)
+  def allocate(nodes, globals = [])
     # Very simple Linear Scan allocator
     # 1. Collect all variables and their last use index
     last_use = {}
@@ -27,7 +25,7 @@ class RegisterAllocator
 
     # 2. Assign registers based on availability
     allocations = {}
-    free_regs = ALLOCATABLE_REGS.dup
+    free_regs = @allocatable_regs.dup
     active = [] # [{var: name, reg: sym, end: idx}]
 
     nodes.each_with_index do |node, idx|
@@ -44,6 +42,7 @@ class RegisterAllocator
       # Allocate for variables defined here
       vars_defined = find_defined_vars(node)
       vars_defined.each do |v|
+        next if globals.include?(v) # NEVER allocate registers for globals
         next if allocations.key?(v) || free_regs.empty?
         next if addressed_vars.include?(v) # Skip variables with address taken
 
@@ -73,13 +72,17 @@ class RegisterAllocator
     when :while_statement
       vars += find_vars(node[:condition])
       (node[:body] || []).each { |n| vars += find_vars(n) }
+    when :return
+      vars += find_vars(node[:expression])
+    when :increment
+      vars << node[:name]
     end
     vars.uniq
   end
 
   def find_defined_vars(node)
     return [] unless node.is_a?(Hash)
-    if node[:type] == :assignment && node[:let] && node[:name]
+    if node[:type] == :assignment && node[:name]
       [node[:name]]
     else
       []

@@ -355,6 +355,38 @@ fn Queue.dequeue() {
     return val
 }
 
+// === Asynchronous I/O (Epoll) ===
+
+fn epoll_event_size() { return 16 } # events (4) + data (8) + padding (4)? No, packed is 12. Linux uses 16 for alignment.
+
+fn epoll_ctl_add() { return 1 }
+fn epoll_ctl_mod() { return 3 }
+fn epoll_ctl_del() { return 2 }
+
+fn epoll_in()  { return 1 }
+fn epoll_out() { return 4 }
+fn epoll_err() { return 8 }
+fn epoll_hup() { return 16 }
+
+struct EpollLoop {
+    let epfd
+}
+
+fn EpollLoop.init() {
+    self.epfd = epoll_create(1)
+}
+
+fn EpollLoop.add(fd, events) {
+    let ev[2] # 16 bytes
+    ev[0] = events
+    ev[1] = fd # data.fd
+    return epoll_ctl(self.epfd, epoll_ctl_add(), fd, &ev[0])
+}
+
+fn EpollLoop.wait(events_buf, max_events, timeout) {
+    return epoll_wait(self.epfd, events_buf, max_events, timeout)
+}
+
 // === Algorithms ===
 
 fn bubble_sort(arr, len) {

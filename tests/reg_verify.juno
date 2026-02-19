@@ -1,0 +1,21 @@
+// Test to verify register allocation across many variables
+fn main() {
+    let a = 1
+    let b = 2
+    let c = 3
+    let d = 4
+    let e = 5
+    let f = 6
+    let g = 7
+    let h = 8
+
+    let sum = a + b + c + d + e + f + g + h
+
+    print(sum) // Should be 36
+
+    if sum == 36 {
+        return 0
+    } else {
+        return 1
+    }
+}

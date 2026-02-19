@@ -14,7 +14,7 @@ require_relative "../optimizer/register_allocator"
 
 class NativeGenerator
   attr_accessor :hell_mode
-  STACK_SIZE = 65536
+  STACK_SIZE = 1024 # Smaller default stack frame
 
   include GeneratorLogic
   include GeneratorCalls
@@ -30,7 +30,7 @@ class NativeGenerator
     @arch = arch
     @ctx = CodegenContext.new(arch)
     @emitter = (arch == :aarch64) ? AArch64Emitter.new : CodeEmitter.new
-    @allocator = RegisterAllocator.new
+    @allocator = RegisterAllocator.new(arch)
     @stack_size = STACK_SIZE
 
     base_rva = if target_os == :linux
@@ -160,14 +160,23 @@ class NativeGenerator
   def gen_function(node)
     @linker.register_function(node[:name], @emitter.current_pos); @ctx.reset_for_function(node[:name])
 
-    # Run register allocator for function body
-    res = @allocator.allocate(node[:body])
+    # Run register allocator for function body, skip globals
+    res = @allocator.allocate(node[:body], @ctx.globals.keys)
     res[:allocations].each { |var, reg| @ctx.assign_register(var, reg) }
 
     params = node[:params].map { |p| p.is_a?(Hash) ? p[:name] : p }
     if node[:name].include?('.') then @ctx.var_types["self"] = node[:name].split('.')[0]; @ctx.var_is_ptr["self"] = true end
 
-    @emitter.emit_prologue(@stack_size)
+    # Calculate needed stack size
+    needed_stack = @stack_size
+    node[:body].each do |stmt|
+      if stmt[:type] == :array_decl
+        needed_stack += (stmt[:size] * 8 + 16)
+      end
+    end
+    @ctx.stack_ptr = 64 # Reset ptr but track for prologue
+
+    @emitter.emit_prologue(needed_stack)
 
     # Save callee-saved registers to allow builtins and allocator to use them safely
     callee_saved = @emitter.callee_saved_regs
@@ -216,7 +225,7 @@ class NativeGenerator
         @emitter.emit_add_rsp(8)
       end
       @emitter.pop_callee_saved(@emitter.callee_saved_regs)
-      @emitter.emit_epilogue(@stack_size)
+      @emitter.emit_epilogue(needed_stack)
     end
   end
 

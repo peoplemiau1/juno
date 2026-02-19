@@ -260,6 +260,10 @@ class AArch64Emitter
 
   def call_rel32; emit32(0x94000000); end
   def call_ind_rel32; emit32(0xd63f0000); end
+  def call_reg(reg)
+    # blr xN -> 0xd63f0000 | (n << 5)
+    emit32(0xd63f0000 | (reg << 5))
+  end
 
   def jmp_rel32; pos = current_pos; emit32(0x14000000); pos; end
   def je_rel32; pos = current_pos; emit32(0x54000000); pos; end
@@ -364,5 +368,27 @@ class AArch64Emitter
     elsif size == 1
       emit32(0x39000000 | (offset << 10) | (base << 5) | src)
     end
+  end
+
+  # --- NEON SIMD (AArch64) ---
+
+  # ld1 {v0.4s}, [x1], #16
+  def ld1_v4s_post(vd, rn)
+    emit32(0x4c417000 | (rn << 5) | vd)
+  end
+
+  # add v2.4s, v2.4s, v0.4s
+  def add_v4s(vd, vn, vm)
+    emit32(0x4e208400 | (vm << 16) | (vn << 5) | vd)
+  end
+
+  # st1 {v2.4s}, [x1]
+  def st1_v4s(vd, rn)
+    emit32(0x4c007000 | (rn << 5) | vd)
+  end
+
+  # dup v0.4s, w1
+  def dup_v4s_w(vd, rn)
+    emit32(0x4e040c00 | (rn << 5) | vd)
   end
 end

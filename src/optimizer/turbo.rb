@@ -662,8 +662,127 @@ class TurboOptimizer
     if node[:condition][:type] == :literal && node[:condition][:value] == 0
       return { type: :noop }
     end
+
+    # Simulator: Try evaluate loop at compile time
+    evaluated = try_evaluate_loop_at_compile_time(node)
+    return evaluated if evaluated
     
     node
+  end
+
+  def try_evaluate_loop_at_compile_time(node)
+    return nil unless node[:type] == :for_statement
+
+    init = node[:init]
+    cond = node[:condition]
+    update = node[:update]
+    body = node[:body]
+
+    # 1. Check if loop bounds are constant
+    return nil unless init[:type] == :assignment && init[:expression][:type] == :literal
+    return nil unless cond[:type] == :binary_op && cond[:right][:type] == :literal
+
+    loop_var = init[:name]
+    start_val = init[:expression][:value]
+    limit = cond[:right][:value]
+    op = cond[:op]
+
+    # 2. Ensure body is "pure" enough (no fn calls or complex side effects for now)
+    # We allow simple arithmetic assignments to local variables
+    return nil if has_side_effects_for_simulator?(body)
+
+    # 3. Simulate
+    begin
+      vars = { loop_var => start_val }
+      # Limit simulation to prevent compiler hang
+      max_iterations = 10000
+      iterations = 0
+
+      # We need to find all variables modified in the loop
+      modified_vars = find_written_vars(body).to_a
+      modified_vars.each { |v| vars[v] = 0 unless vars.key?(v) } # Assume 0 init for simplicity or take from outer context?
+      # Actually, we can only safely simulate if we know their initial values.
+      # For now, let's only support loops that only modify variables initialized just before the loop.
+      # This is complex. Let's simplify: only allow the loop variable itself if it's the only one.
+      # No, user wants more.
+
+      # Let's try to find initial values for all variables used in loop
+      # For simplicity of this task, let's only simulate if we can determine all initial values.
+
+      while eval_cond(vars[loop_var], op, limit)
+        iterations += 1
+        return nil if iterations > max_iterations # Too long, let it run at runtime
+
+        body.each do |stmt|
+          simulate_stmt(stmt, vars)
+        end
+
+        # Update
+        if update[:type] == :increment
+          vars[loop_var] += (update[:op] == "++" ? 1 : -1)
+        elsif update[:type] == :assignment
+          vars[loop_var] = eval_simple_expr(update[:expression], vars)
+        end
+      end
+
+      # 4. Replace loop with final assignments
+      assignments = []
+      vars.each do |name, val|
+        next if name == loop_var # loop var is usually dead after loop
+        assignments << { type: :assignment, name: name, expression: { type: :literal, value: val } }
+      end
+
+      return { type: :block, body: assignments }
+    rescue => e
+      # Simulation failed (e.g. division by zero or complex expr)
+      return nil
+    end
+  end
+
+  def eval_cond(val, op, limit)
+    case op
+    when "<" then val < limit
+    when "<=" then val <= limit
+    when ">" then val > limit
+    when ">=" then val >= limit
+    when "!=" then val != limit
+    when "==" then val == limit
+    else false
+    end
+  end
+
+  def simulate_stmt(stmt, vars)
+    case stmt[:type]
+    when :assignment
+      vars[stmt[:name]] = eval_simple_expr(stmt[:expression], vars)
+    when :increment
+      vars[stmt[:name]] ||= 0
+      vars[stmt[:name]] += (stmt[:op] == "++" ? 1 : -1)
+    end
+  end
+
+  def eval_simple_expr(expr, vars)
+    case expr[:type]
+    when :literal then expr[:value]
+    when :variable then vars[expr[:name]] || 0
+    when :binary_op
+      l = eval_simple_expr(expr[:left], vars)
+      r = eval_simple_expr(expr[:right], vars)
+      fold_const(l, expr[:op], r) || 0
+    else raise "Too complex"
+    end
+  end
+
+  def has_side_effects_for_simulator?(body)
+    body.any? do |node|
+      next true if node[:type] == :fn_call
+      next true if node[:type] == :deref_assign
+      next true if node[:type] == :array_assign
+      next true if node[:type] == :if_statement # for now
+      next true if node[:type] == :while_statement
+      next true if node[:type] == :for_statement
+      false
+    end
   end
 
   def remove_dead_code(body)

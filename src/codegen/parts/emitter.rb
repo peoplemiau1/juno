@@ -316,6 +316,12 @@ class CodeEmitter
 
   def call_rel32; emit([0xe8, 0, 0, 0, 0]); end
   def call_ind_rel32; emit([0xff, 0x15, 0, 0, 0, 0]); end
+  def call_reg(reg)
+    rex = 0x40
+    rex |= 0x01 if reg >= 8
+    modrm = 0xd0 | (reg & 7)
+    emit([rex, 0xff, modrm])
+  end
 
   def jmp_rel32; pos = current_pos; emit([0xe9, 0, 0, 0, 0]); pos; end
   def je_rel32; pos = current_pos; emit([0x0f, 0x84, 0, 0, 0, 0]); pos; end

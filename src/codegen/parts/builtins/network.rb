@@ -149,4 +149,38 @@ module BuiltinNetwork
        @emitter.shl_reg_imm(3, 24); @emitter.or_rax_reg(3)
     end
   end
+
+  # --- Epoll Support ---
+
+  def gen_epoll_create(node)
+    eval_expression(node[:args][0] || {type: :literal, value: 0})
+    @emitter.mov_reg_reg(@arch == :aarch64 ? 0 : 7, 0)
+    emit_syscall(:epoll_create)
+  end
+
+  def gen_epoll_ctl(node)
+    # epoll_ctl(epfd, op, fd, event_ptr)
+    eval_expression(node[:args][3]); @emitter.push_reg(0)
+    eval_expression(node[:args][2]); @emitter.push_reg(0)
+    eval_expression(node[:args][1]); @emitter.push_reg(0)
+    eval_expression(node[:args][0])
+    @emitter.pop_reg(@arch == :aarch64 ? 1 : 6) # op
+    @emitter.pop_reg(@arch == :aarch64 ? 2 : 2) # fd
+    @emitter.pop_reg(@arch == :aarch64 ? 3 : 10) # event_ptr
+    @emitter.mov_reg_reg(@arch == :aarch64 ? 0 : 7, 0) # epfd
+    emit_syscall(:epoll_ctl)
+  end
+
+  def gen_epoll_wait(node)
+    # epoll_wait(epfd, events_ptr, maxevents, timeout)
+    eval_expression(node[:args][3]); @emitter.push_reg(0)
+    eval_expression(node[:args][2]); @emitter.push_reg(0)
+    eval_expression(node[:args][1]); @emitter.push_reg(0)
+    eval_expression(node[:args][0])
+    @emitter.pop_reg(@arch == :aarch64 ? 1 : 6) # events_ptr
+    @emitter.pop_reg(@arch == :aarch64 ? 2 : 2) # maxevents
+    @emitter.pop_reg(@arch == :aarch64 ? 3 : 10) # timeout
+    @emitter.mov_reg_reg(@arch == :aarch64 ? 0 : 7, 0) # epfd
+    emit_syscall(:epoll_wait)
+  end
 end

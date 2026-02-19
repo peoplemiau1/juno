@@ -1,0 +1,45 @@
+// Epoll Demo - Async I/O in Juno
+
+import "../stdlib/std.juno"
+
+fn main() {
+    prints("Testing Epoll support...\n")
+
+    let l_obj[1] # allocate space for EpollLoop struct (1 field = 8 bytes)
+    let loop: EpollLoop = &l_obj[0]
+    loop.init()
+
+    if loop.epfd < 0 {
+        prints("Failed to create epoll instance\n")
+        return 1
+    }
+
+    prints("Epoll FD: ")
+    print(loop.epfd)
+    prints("\n")
+
+    // Add stdin to loop
+    let res = loop.add(0, epoll_in())
+    if res < 0 {
+        prints("Failed to add stdin to epoll\n")
+    } else {
+        prints("Successfully added stdin to epoll loop\n")
+    }
+
+    prints("Wait for event (timeout 1s)... ")
+    let events[10] # room for 5 events (16 bytes each)
+    res = loop.wait(&events[0], 5, 1000)
+
+    if res == 0 {
+        prints("Timeout (as expected if you didn't type anything)\n")
+    } else {
+        if res > 0 {
+            prints("Got event!\n")
+        } else {
+            prints("Error in epoll_wait\n")
+        }
+    }
+
+    prints("Demo finished.\n")
+    return 0
+}

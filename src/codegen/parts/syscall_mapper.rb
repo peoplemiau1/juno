@@ -43,7 +43,10 @@ module SyscallMapper
     getppid:  { x86_64: 110, aarch64: 173 },
     getcwd:   { x86_64: 79,  aarch64: 17  },
     time:     { x86_64: 201, aarch64: 169 }, # 169 is gettimeofday on arm
-    memfd_create: { x86_64: 319, aarch64: 279 }
+    memfd_create: { x86_64: 319, aarch64: 279 },
+    epoll_create: { x86_64: 213, aarch64: 20 }, # epoll_create1
+    epoll_ctl:    { x86_64: 233, aarch64: 21 },
+    epoll_wait:   { x86_64: 232, aarch64: 22 }
   }
 
   def sys_id(name)

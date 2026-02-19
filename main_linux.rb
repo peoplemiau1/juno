@@ -83,5 +83,24 @@ else
   end
 
   output = (arch == :aarch64) ? "build/output_aarch64" : "build/output_linux"
-  compile_linux(ARGV[0], arch, output)
+  begin
+    compile_linux(ARGV[0], arch, output)
+  rescue Interrupt
+    puts "\nCompilation interrupted by user."
+    exit 1
+  rescue => e
+    puts "\e[31m\e[1mInternal Compiler Error:\e[0m"
+    puts "An unexpected error occurred during compilation. This is likely a bug in the Juno compiler."
+    puts ""
+    puts "\e[1mError Details:\e[0m"
+    puts "  Type:    #{e.class}"
+    puts "  Message: #{e.message}"
+    puts "  Source:  #{ARGV[0]}"
+    puts ""
+    puts "\e[1mBacktrace (first 10 lines):\e[0m"
+    puts e.backtrace[0..9].map { |line| "  #{line}" }.join("\n")
+    puts ""
+    puts "Please report this issue at: https://github.com/peoplemiau1/juno/issues"
+    exit 1
+  end
 end
