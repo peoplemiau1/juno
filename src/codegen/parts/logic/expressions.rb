@@ -34,7 +34,8 @@ module GeneratorExpressions
       elsif expr[:op] == "!"
         @emitter.test_rax_rax
         @emitter.mov_rax(0)
-        if @arch == :aarch64 then @emitter.emit32(0x1a9f07e0) else @emitter.emit([0x0f, 0x94, 0xc0]) end
+        # On AArch64, CSET X0, EQ (to get 1 if X0 was 0) is CSINC X0, XZR, XZR, NE
+        if @arch == :aarch64 then @emitter.emit32(0x1a9f17e0) else @emitter.emit([0x0f, 0x94, 0xc0]) end
       end
     when :member_access then load_member_rax("#{expr[:receiver]}.#{expr[:member]}")
     when :array_access then gen_array_access(expr)

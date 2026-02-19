@@ -62,7 +62,9 @@ module GeneratorCalls
            else [1,2,8,9] end
 
     num_stack = [0, args.length - regs.length].max
-    padding = (@arch == :aarch64 && num_stack > 0) ? (num_stack % 2 == 1 ? 8 : 0) : ((num_stack % 2 == 1) ? 8 : 0)
+    # On AArch64, push_reg(16) already maintains 16-byte alignment.
+    # No extra padding is needed for AArch64 stack arguments.
+    padding = (@arch == :aarch64) ? 0 : ((num_stack % 2 == 1) ? 8 : 0)
 
     @emitter.emit_sub_rsp(padding) if padding > 0
     args.reverse_each { |a| eval_expression(a); @emitter.push_reg(0) }
@@ -89,7 +91,7 @@ module GeneratorCalls
            else [1,2,8,9] end
 
     num_stack = [0, (args.length + 1) - regs.length].max
-    padding = (@arch == :aarch64 && num_stack > 0) ? (num_stack % 2 == 1 ? 8 : 0) : ((num_stack % 2 == 1) ? 8 : 0)
+    padding = (@arch == :aarch64) ? 0 : ((num_stack % 2 == 1) ? 8 : 0)
 
     @emitter.emit_sub_rsp(padding) if padding > 0
 

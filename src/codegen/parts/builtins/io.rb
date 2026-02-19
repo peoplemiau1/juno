@@ -21,7 +21,7 @@ module BuiltinIO
 
     if @arch == :aarch64
       @emitter.mov_reg_reg(1, 0) # X1 = pathname
-      @emitter.mov_reg_imm(0, 0xffffff9c) # X0 = AT_FDCWD (-100)
+      @emitter.mov_reg_imm(0, 0xffffffffffffff9c) # X0 = AT_FDCWD (-100)
       @emitter.mov_reg_imm(2, 0) # X2 = flags (O_RDONLY)
       @emitter.mov_reg_imm(3, 0) # X3 = mode
       emit_syscall(:openat)

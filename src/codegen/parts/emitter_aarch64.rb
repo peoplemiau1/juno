@@ -88,18 +88,23 @@ class AArch64Emitter
   end
 
   def mov_stack_reg_val(offset, src)
-    imm = (-offset)
-    emit32(0xf90003a0 | src | ((imm / 8) << 10))
+    # Use X16 as scratch to handle large negative offsets from X29
+    mov_reg_imm(16, offset)
+    emit32(0xcb1003b0) # sub x16, x29, x16
+    emit32(0xf9000200 | src | (16 << 5)) # str src, [x16]
   end
 
   def mov_reg_stack_val(dst, offset)
-    imm = (-offset)
-    emit32(0xf94003a0 | dst | ((imm / 8) << 10))
+    # Use X16 as scratch
+    mov_reg_imm(16, offset)
+    emit32(0xcb1003b0) # sub x16, x29, x16
+    emit32(0xf9400200 | dst | (16 << 5)) # ldr dst, [x16]
   end
 
   def lea_reg_stack(dst, offset)
-    imm = -offset
-    emit32(0x910003a0 | dst | (imm << 10))
+    # dst = x29 - offset
+    mov_reg_imm(16, offset)
+    emit32(0xcb1003b0 | dst) # sub dst, x29, x16
   end
 
   def mov_mem_r11(disp)
@@ -115,7 +120,9 @@ class AArch64Emitter
     if size == 8
       emit32(0xf9400000 | ((offset / 8) << 10) | (base << 5) | dst)
     elsif size == 4
-      emit32(0xb9400000 | (offset << 10) | (base << 5) | dst)
+      emit32(0xb9400000 | ((offset / 4) << 10) | (base << 5) | dst)
+    elsif size == 2
+      emit32(0x79400000 | ((offset / 2) << 10) | (base << 5) | dst)
     elsif size == 1
       emit32(0x39400000 | (offset << 10) | (base << 5) | dst)
     end
@@ -217,9 +224,15 @@ class AArch64Emitter
 
   def cmp_rax_rdx(op)
     emit32(0xeb02001f)
+    # We use CSET which is CSINC Rd, XZR, XZR, !cond
+    # So we must provide the INVERSE condition.
     cond = case op
-           when "==" then 0 when "!=" then 1 when "<"  then 11
-           when ">"  then 12 when "<=" then 13 when ">=" then 10
+           when "==" then 1 # NE -> (NE ? 0 : 1) = EQ
+           when "!=" then 0 # EQ -> (EQ ? 0 : 1) = NE
+           when "<"  then 10 # GE -> (GE ? 0 : 1) = LT
+           when ">"  then 13 # LE -> (LE ? 0 : 1) = GT
+           when "<=" then 12 # GT -> (GT ? 0 : 1) = LE
+           when ">=" then 11 # LT -> (LT ? 0 : 1) = GE
            end
     emit32(0x1a9f07e0 | (cond << 12))
   end
@@ -345,7 +358,7 @@ class AArch64Emitter
     if size == 8
       emit32(0xf9000000 | ((offset / 8) << 10) | (base << 5) | src)
     elsif size == 4
-      emit32(0xb9000000 | (offset << 10) | (base << 5) | src)
+      emit32(0xb9000000 | ((offset / 4) << 10) | (base << 5) | src)
     elsif size == 2
       emit32(0x79000000 | ((offset / 2) << 10) | (base << 5) | src)
     elsif size == 1

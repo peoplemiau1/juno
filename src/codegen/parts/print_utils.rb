@@ -12,10 +12,11 @@ module PrintUtils
        @emitter.emit_add_imm(4, 4, 62) # X4 = buf + 62
 
        @emitter.mov_reg_imm(1, 10) # X1 = 10
-       @emitter.emit32(0x39000081) # strb w1, [x4] (store '\n' -> wait, 10 is '\n')
+       @emitter.emit32(0x39000081) # strb w1, [x4] (store '\n')
 
-       # Original value was in X0, but we pushed it. It's at [sp, #32]
-       @emitter.emit32(0xf94013e0) # ldr x0, [sp, #32]
+       # Original value was in X0, but we pushed X0, X1, X2, X3, X4. Each 16 bytes.
+       # X4 at [sp], X3 at [sp+16], X2 at [sp+32], X1 at [sp+48], X0 at [sp+64]
+       @emitter.emit32(0xf94023e0) # ldr x0, [sp, #64]
 
        l = @emitter.current_pos
        @emitter.emit32(0x9ac10802) # sdiv x2, x0, x1
