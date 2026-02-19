@@ -155,6 +155,17 @@ class AArch64Emitter
   def add_rax_reg(src); add_reg_reg(0, src); end
   def sub_rax_reg(src); sub_reg_reg(0, src); end
 
+  def add_reg_imm(reg, imm)
+    emit32(0x91000000 | ((imm & 0xFFF) << 10) | (reg << 5) | reg)
+  end
+
+  def sub_reg_imm(reg, imm)
+    emit32(0xd1000000 | ((imm & 0xFFF) << 10) | (reg << 5) | reg)
+  end
+
+  def emit_add_rax(imm); add_reg_imm(0, imm); end
+  def emit_sub_rax(imm); sub_reg_imm(0, imm); end
+
   def or_reg_reg(dst, src)
     emit32(0xaa000000 | (src << 16) | (dst << 5) | dst)
   end

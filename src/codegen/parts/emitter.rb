@@ -175,6 +175,29 @@ class CodeEmitter
   def add_rax_reg(src); add_reg_reg(0, src); end
   def sub_rax_reg(src); sub_reg_reg(0, src); end
 
+  def add_reg_imm(reg, imm)
+    rex = 0x48
+    rex |= 0x01 if reg >= 8
+    if imm >= -128 && imm <= 127
+      emit([rex, 0x83, 0xc0 | (reg % 8), imm & 0xFF])
+    else
+      emit([rex, 0x81, 0xc0 | (reg % 8)] + [imm].pack("l<").bytes)
+    end
+  end
+
+  def sub_reg_imm(reg, imm)
+    rex = 0x48
+    rex |= 0x01 if reg >= 8
+    if imm >= -128 && imm <= 127
+      emit([rex, 0x83, 0xe8 | (reg % 8), imm & 0xFF])
+    else
+      emit([rex, 0x81, 0xe8 | (reg % 8)] + [imm].pack("l<").bytes)
+    end
+  end
+
+  def emit_add_rax(imm); add_reg_imm(0, imm); end
+  def emit_sub_rax(imm); sub_reg_imm(0, imm); end
+
   def or_reg_reg(dst, src)
     rex = 0x48
     rex |= 0x04 if src >= 8

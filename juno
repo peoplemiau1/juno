@@ -192,7 +192,7 @@ begin
   optimizer = TurboOptimizer.new(ast)
   ast = optimizer.optimize
 
-  generator = NativeGenerator.new(ast, options[:os], options[:arch], code, input_file)
+  generator = NativeGenerator.new(ast, target_os: options[:os], arch: options[:arch], source: code, filename: input_file)
   generator.hell_mode = $hell_mode if $hell_mode
   FileUtils.mkdir_p("build")
   generator.generate(output_path)

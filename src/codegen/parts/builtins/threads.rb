@@ -117,6 +117,26 @@ module BuiltinThreads
 
   def gen_atomic_load(node); eval_expression(node[:args][0]); @emitter.mov_rax_mem(0); end
 
+  def gen_atomic_add(node)
+    eval_expression(node[:args][1]); @emitter.push_reg(0) # val
+    eval_expression(node[:args][0]) # ptr (RAX)
+    @emitter.mov_reg_reg(@arch == :aarch64 ? 2 : 7, 0) # RDI or X2 = ptr
+    @emitter.pop_reg(0) # RAX = val
+
+    if @arch == :aarch64
+       l = @emitter.current_pos
+       @emitter.emit32(0xc85f7c41) # ldxr x1, [x2]
+       @emitter.add_reg_reg(1, 0) # x1 = x1 + x0
+       @emitter.emit32(0xc8037c41) # stxr w3, x1, [x2]
+       @emitter.mov_rax_from_reg(3)
+       @emitter.test_rax_rax
+       p = @emitter.jne_rel32; @emitter.patch_jne(p, l)
+       @emitter.emit32(0xd1000420) # sub x0, x1, x0 (return old value)
+    else
+       @emitter.emit([0xf0, 0x48, 0x0f, 0xc1, 0x07]) # lock xadd [rdi], rax
+    end
+  end
+
   def gen_atomic_store(node)
     eval_expression(node[:args][1]); @emitter.push_reg(0)
     eval_expression(node[:args][0]); @emitter.pop_reg(1)

@@ -102,4 +102,15 @@ module BuiltinLibLinux
       @emitter.mov_rax(102); @emitter.syscall
     end
   end
+
+  # Constants as functions
+  def gen_PROT_READ(node); @emitter.mov_rax(1); end
+  def gen_PROT_WRITE(node); @emitter.mov_rax(2); end
+  def gen_PROT_EXEC(node); @emitter.mov_rax(4); end
+  def gen_MAP_PRIVATE(node); @emitter.mov_rax(0x02); end
+  def gen_MAP_ANONYMOUS(node); @emitter.mov_rax(0x20); end
+  def gen_MFD_CLOEXEC(node); @emitter.mov_rax(1); end
+  def gen_SEEK_SET(node); @emitter.mov_rax(0); end
+  def gen_SEEK_CUR(node); @emitter.mov_rax(1); end
+  def gen_SEEK_END(node); @emitter.mov_rax(2); end
 end

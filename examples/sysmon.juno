@@ -5,7 +5,12 @@
 #define REFRESH_DELAY 1000000
 
 #ifdef LINUX
+#ifdef __x86_64__
 #define PLATFORM "Linux x86_64"
+#endif
+#ifdef __aarch64__
+#define PLATFORM "Linux AArch64"
+#endif
 #endif
 
 // Process info structure
@@ -264,7 +269,7 @@ fn print_summary(): int {
     print(g_sample_count)
     print("  Platform: " )
     print(PLATFORM)
-    print("  Juno version: 1.5")
+    print("  Juno version: 2.1")
     return 0
 }
 

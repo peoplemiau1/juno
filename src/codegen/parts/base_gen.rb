@@ -20,23 +20,34 @@ module BaseGenerator
 
     # Register allocation for top-level code
     res = @allocator.allocate(nodes)
-    res[:allocations].each { |var, reg| @ctx.assign_register(var, reg) }
+    res[:allocations].each do |var, reg|
+      @ctx.assign_register(var, reg) unless @ctx.globals.key?(var)
+    end
 
     @emitter.emit_prologue(@stack_size)
 
     callee_saved = @emitter.callee_saved_regs
     @emitter.push_callee_saved(callee_saved)
-    if @arch == :x86_64 && (1 + callee_saved.length) % 2 == 1
+    if @arch == :x86_64 && callee_saved.length % 2 == 1
       @emitter.emit_sub_rsp(8)
     end
 
-    nodes.each { |c| process_node(c) }
-
-    if @arch == :x86_64 && (1 + @emitter.callee_saved_regs.length) % 2 == 1
-      @emitter.emit_add_rsp(8)
+    has_ret = false
+    nodes.each do |c|
+      process_node(c)
+      if c[:type] == :return
+        has_ret = true
+        break
+      end
     end
-    @emitter.pop_callee_saved(@emitter.callee_saved_regs)
-    @emitter.emit_epilogue(@stack_size)
+
+    unless has_ret
+      if @arch == :x86_64 && @emitter.callee_saved_regs.length % 2 == 1
+        @emitter.emit_add_rsp(8)
+      end
+      @emitter.pop_callee_saved(@emitter.callee_saved_regs)
+      @emitter.emit_epilogue(@stack_size)
+    end
   end
 
   def gen_struct_def(node)

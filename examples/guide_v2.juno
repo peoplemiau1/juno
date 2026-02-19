@@ -1,0 +1,77 @@
+// Juno v2.1 "Architectural Integrity" - Official Guide
+// Этот файл демонстрирует новые возможности компилятора.
+
+import "../stdlib/std.juno"
+
+// 1. Глобальные переменные (секция .data)
+let GLOBAL_COUNTER = 0
+let VERSION_STR = "Juno v2.1-stable"
+let BUFFER[1024]
+
+// 2. Структуры
+struct Point {
+    x: int
+    y: int
+}
+
+// 3. Forward references (функции можно вызывать до объявления)
+fn main() {
+    prints("--- Juno v2.1 Demo ---\n")
+    prints("Version: ")
+    prints(VERSION_STR)
+    prints("\n")
+
+    test_registers()
+    test_globals()
+    test_complex_logic()
+
+    prints("\nDemo finished successfully!\n")
+    return 0
+}
+
+fn test_registers() {
+    prints("Testing Register Allocator... ")
+
+    // Локальные переменные будут размещены в RBX, R12, R13...
+    a = 10
+    b = 20
+    c = 30
+    d = 40
+    e = 50
+
+    sum = a + b + c + d + e
+
+    if sum == 150 {
+        prints("OK (Registers used)\n")
+    } else {
+        prints("FAILED\n")
+    }
+}
+
+fn test_globals() {
+    prints("Testing Globals... ")
+
+    GLOBAL_COUNTER = 100
+    GLOBAL_COUNTER = GLOBAL_COUNTER + 50
+
+    if GLOBAL_COUNTER == 150 {
+        prints("OK (.data section writeable)\n")
+    } else {
+        prints("FAILED\n")
+    }
+}
+
+fn test_complex_logic() {
+    prints("Testing Complex Logic... ")
+
+    // Вложенные выражения проверяют ScratchManager
+    x = (10 * 2) + (30 / 3) - (5 % 2)
+
+    if x == 29 {
+        prints("OK (Expression evaluation stable)\n")
+    } else {
+        prints("FAILED (Result: ")
+        print(x)
+        prints(")\n")
+    }
+}

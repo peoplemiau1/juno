@@ -37,9 +37,11 @@ module SyscallMapper
     unlink:   { x86_64: 87,  aarch64: 35  }, # unlinkat on arm
     unlinkat: { x86_64: 263, aarch64: 35  },
     wait4:    { x86_64: 61,  aarch64: 260 },
+    wait:     { x86_64: 61,  aarch64: 260 },
     getuid:   { x86_64: 102, aarch64: 174 },
     getgid:   { x86_64: 104, aarch64: 176 },
     getppid:  { x86_64: 110, aarch64: 173 },
+    getcwd:   { x86_64: 79,  aarch64: 17  },
     time:     { x86_64: 201, aarch64: 169 }, # 169 is gettimeofday on arm
     memfd_create: { x86_64: 319, aarch64: 279 }
   }

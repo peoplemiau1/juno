@@ -22,7 +22,7 @@ class NativeGenerator
   include BaseGenerator
   include PrintUtils
 
-  def initialize(ast, target_os, arch = :x86_64, source = "", filename = "main.juno")
+  def initialize(ast, target_os: :linux, arch: :x86_64, source: "", filename: "main.juno")
     @ast = ast
     @source = source
     @filename = filename
@@ -177,24 +177,47 @@ class NativeGenerator
     # push rbp (8) + sub rsp, stack_size (even) + push N regs (N*8)
     # Total must be multiple of 16. Total pushed = 1 (RBP) + N (callee_saved).
     # If 1 + N is odd, we need 8 bytes padding.
-    if @arch == :x86_64 && (1 + callee_saved.length) % 2 == 1
+    if @arch == :x86_64 && callee_saved.length % 2 == 1
       @emitter.emit_sub_rsp(8)
     end
 
     regs = (@arch == :aarch64) ? [0,1,2,3,4,5,6,7] : [7,6,2,1,8,9]
     params.each_with_index do |p, i|
-      off = @ctx.declare_variable(p)
-      if i < regs.length then @emitter.mov_stack_reg_val(off, regs[i])
-      else @emitter.mov_rax_rbp_disp32(16 + 8 * (i - regs.length)); @emitter.mov_stack_reg_val(off, 0) end
+      if @ctx.in_register?(p)
+        reg = @emitter.class.reg_code(@ctx.get_register(p))
+        if i < regs.length
+          @emitter.mov_reg_reg(reg, regs[i])
+        else
+          @emitter.mov_rax_rbp_disp32(16 + 8 * (i - regs.length))
+          @emitter.mov_reg_from_rax(reg)
+        end
+      else
+        off = @ctx.declare_variable(p)
+        if i < regs.length
+          @emitter.mov_stack_reg_val(off, regs[i])
+        else
+          @emitter.mov_rax_rbp_disp32(16 + 8 * (i - regs.length))
+          @emitter.mov_stack_reg_val(off, 0) # RAX
+        end
+      end
     end
 
-    node[:body].each { |c| process_node(c) }
-
-    if @arch == :x86_64 && (1 + @emitter.callee_saved_regs.length) % 2 == 1
-      @emitter.emit_add_rsp(8)
+    has_ret = false
+    node[:body].each do |c|
+      process_node(c)
+      if c[:type] == :return
+        has_ret = true
+        break
+      end
     end
-    @emitter.pop_callee_saved(@emitter.callee_saved_regs)
-    @emitter.emit_epilogue(@stack_size)
+
+    unless has_ret
+      if @arch == :x86_64 && @emitter.callee_saved_regs.length % 2 == 1
+        @emitter.emit_add_rsp(8)
+      end
+      @emitter.pop_callee_saved(@emitter.callee_saved_regs)
+      @emitter.emit_epilogue(@stack_size)
+    end
   end
 
 

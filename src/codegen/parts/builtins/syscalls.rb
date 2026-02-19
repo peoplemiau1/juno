@@ -35,7 +35,7 @@ module BuiltinSyscalls
     @emitter.push_reg(0)
     @emitter.pop_reg(@arch == :aarch64 ? 0 : 7)
     @emitter.pop_reg(@arch == :aarch64 ? 1 : 6)
-    @emitter.pop_reg(@arch == :aarch64 ? 2 : 2)
+    @emitter.pop_reg(@arch == :aarch64 ? 2 : 1) # RCX on x86, X2 on arm
     @emitter.memcpy
     @emitter.pop_reg(0)
   end
@@ -47,7 +47,7 @@ module BuiltinSyscalls
     @emitter.push_reg(0)
     @emitter.pop_reg(@arch == :aarch64 ? 0 : 7)
     @emitter.pop_reg(@arch == :aarch64 ? 1 : 0)
-    @emitter.pop_reg(@arch == :aarch64 ? 2 : 2)
+    @emitter.pop_reg(@arch == :aarch64 ? 2 : 1) # RCX on x86, X2 on arm
     @emitter.memset
     @emitter.pop_reg(0)
   end
