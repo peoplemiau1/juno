@@ -15,8 +15,8 @@ for test_file in tests/test_*.juno; do
 
     echo "Testing $test_file..."
     
-    if ruby main_linux.rb "$test_file" > /dev/null 2>&1; then
-        if ./build/output_linux > /dev/null 2>&1; then
+    if ./juno "$test_file" > /dev/null 2>&1; then
+        if ./build/output_x86_64 > /dev/null 2>&1; then
             echo "[OK] $test_file"
             PASSED=$((PASSED + 1))
         else
