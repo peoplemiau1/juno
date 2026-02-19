@@ -19,7 +19,7 @@ LOGO = <<-'EOF'
  /\__|    |  |  /   |  (  <_> )
  \________|____/|___|  /\____/
                      \/
-    Juno Compiler v1.2 - "Hell Edition"
+    Juno Compiler v2.0 - "Hell Edition"
 EOF
 
 options = {
