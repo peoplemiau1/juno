@@ -1,0 +1,9 @@
+// stdlib/std/thread.juno - Juno Threading Support
+
+fn thread_start(func, stack, arg) {
+    return thread_create(func, stack, arg)
+}
+
+fn thread_exit_code(code) {
+    exit(code)
+}

@@ -21,7 +21,7 @@ module GeneratorLogic
          @emitter.emit_add_rsp(8)
        end
        @emitter.pop_callee_saved(@emitter.callee_saved_regs)
-       @emitter.emit_epilogue(@stack_size || 256)
+       @emitter.emit_epilogue(@ctx.current_fn_stack_size || @stack_size || 256)
     when :if_statement then gen_if(node)
     when :while_statement then gen_while(node)
     when :for_statement then gen_for(node)

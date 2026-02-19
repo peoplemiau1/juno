@@ -175,6 +175,7 @@ class NativeGenerator
       end
     end
     @ctx.stack_ptr = 64 # Reset ptr but track for prologue
+    @ctx.current_fn_stack_size = needed_stack
 
     @emitter.emit_prologue(needed_stack)
 

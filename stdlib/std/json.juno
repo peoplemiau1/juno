@@ -1,0 +1,18 @@
+// stdlib/std/json.juno - Simple JSON Library for Juno
+
+struct JsonValue {
+    let type
+    let value
+}
+
+fn json_parse(s) {
+    let j: JsonValue = malloc(16)
+    j.type = 2
+    j.value = s
+    return j
+}
+
+fn json_as_string(j) {
+    let v: JsonValue = j
+    return v.value
+}

@@ -1,7 +1,7 @@
 class CodegenContext
   attr_reader :variables, :globals, :var_types, :var_is_ptr, :structs, :arrays
   attr_reader :var_registers, :used_callee_saved, :unions
-  attr_accessor :stack_ptr, :current_fn
+  attr_accessor :stack_ptr, :current_fn, :current_fn_stack_size
 
   # Sized types: name -> { size: bytes, signed: bool }
   SIZED_TYPES = {

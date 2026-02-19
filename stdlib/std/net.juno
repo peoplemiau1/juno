@@ -1,0 +1,28 @@
+// stdlib/std/net.juno - Juno Networking & Epoll
+
+fn epoll_in()  { return 1 }
+fn epoll_out() { return 4 }
+
+struct EpollLoop {
+    let epfd
+}
+
+fn EpollLoop.init() {
+    self.epfd = epoll_create(1)
+}
+
+fn EpollLoop.add(fd, events) {
+    let ev[2]
+    ev[0] = events
+    ev[1] = fd
+    return epoll_ctl(self.epfd, 1, fd, &ev[0])
+}
+
+fn EpollLoop.wait(events_buf, max_events, timeout) {
+    return epoll_wait(self.epfd, events_buf, max_events, timeout)
+}
+
+fn os_socket(domain, type, protocol) { return socket(domain, type, protocol) }
+fn os_bind(sockfd, ip_addr, port) { return bind(sockfd, ip_addr, port) }
+fn os_listen(sockfd, backlog) { return listen(sockfd, backlog) }
+fn os_accept(sockfd) { return accept(sockfd) }
