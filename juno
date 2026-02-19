@@ -31,6 +31,42 @@ options = {
   run: false
 }
 
+def levenshtein_distance(s, t)
+  m = s.length
+  n = t.length
+  return m if n == 0
+  return n if m == 0
+  d = Array.new(m + 1) { Array.new(n + 1) }
+
+  (0..m).each { |i| d[i][0] = i }
+  (0..n).each { |j| d[0][j] = j }
+
+  (1..n).each do |j|
+    (1..m).each do |i|
+      d[i][j] = if s[i - 1] == t[j - 1]
+                  d[i - 1][j - 1]
+                else
+                  [d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + 1].min
+                end
+    end
+  end
+  d[m][n]
+end
+
+def did_you_mean(word, possibilities)
+  best_match = possibilities.min_by { |p| levenshtein_distance(word, p) }
+  if best_match && levenshtein_distance(word, best_match) <= 2
+    best_match
+  else
+    nil
+  end
+end
+
+VALID_OPTIONS = ["--arch", "--output", "--target", "--hell", "--run", "--version", "--help", "-a", "-o", "-t", "-r", "-v", "-h"]
+VALID_ARCHS = ["x86_64", "aarch64"]
+VALID_TARGETS = ["linux", "windows", "flat"]
+VALID_LEVELS = ["easy", "medium", "hard", "nightmare", "hell"]
+
 parser = OptionParser.new do |opts|
   opts.banner = "Usage: juno [options] <input_file>"
   opts.separator ""
@@ -71,9 +107,30 @@ end
 
 begin
   parser.parse!
-rescue OptionParser::InvalidOption, OptionParser::MissingArgument => e
+rescue OptionParser::InvalidArgument => e
   puts "\e[31mError:\e[0m #{e.message}"
+  # Extract the last word which is usually the offending argument
+  arg = e.message.split.last
+  if arg
+    possibilities = case e.message
+                    when /arch/ then VALID_ARCHS
+                    when /target/ then VALID_TARGETS
+                    when /hell/ then VALID_LEVELS
+                    else []
+                    end
+    suggestion = did_you_mean(arg, possibilities)
+    puts "Did you mean? \e[36m#{suggestion}\e[0m" if suggestion
+  end
+  exit 1
+rescue OptionParser::InvalidOption => e
+  puts "\e[31mError:\e[0m #{e.message}"
+  opt = e.message.match(/--?\w+/).to_s
+  suggestion = did_you_mean(opt, VALID_OPTIONS)
+  puts "Did you mean? \e[36m#{suggestion}\e[0m" if suggestion
   puts "Use --help for usage information."
+  exit 1
+rescue OptionParser::MissingArgument => e
+  puts "\e[31mError:\e[0m #{e.message}"
   exit 1
 end
 
