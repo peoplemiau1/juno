@@ -37,10 +37,10 @@ module BuiltinNetwork
 
     # Build sockaddr_in on stack (16 bytes)
     @emitter.emit_sub_rsp(16)
-    @emitter.mov_reg_imm(0, 2); @emitter.mov_mem_idx(@arch == :aarch64 ? 31 : 4, 0, 0, 2) # family
-    @emitter.mov_reg_reg(0, @arch == :aarch64 ? 6 : 14); @emitter.mov_mem_idx(@arch == :aarch64 ? 31 : 4, 2, 0, 2) # port
-    @emitter.mov_reg_reg(0, @arch == :aarch64 ? 5 : 13); @emitter.mov_mem_idx(@arch == :aarch64 ? 31 : 4, 4, 0, 4) # ip
-    @emitter.mov_reg_imm(0, 0); @emitter.mov_mem_idx(@arch == :aarch64 ? 31 : 4, 8, 0, 8) # zero
+    @emitter.mov_reg_imm(0, 2); @emitter.mov_mem_reg_idx(@arch == :aarch64 ? 31 : 4, 0, 0, 2) # family
+    @emitter.mov_reg_reg(0, @arch == :aarch64 ? 6 : 14); @emitter.mov_mem_reg_idx(@arch == :aarch64 ? 31 : 4, 2, 0, 2) # port
+    @emitter.mov_reg_reg(0, @arch == :aarch64 ? 5 : 13); @emitter.mov_mem_reg_idx(@arch == :aarch64 ? 31 : 4, 4, 0, 4) # ip
+    @emitter.mov_reg_imm(0, 0); @emitter.mov_mem_reg_idx(@arch == :aarch64 ? 31 : 4, 8, 0, 8) # zero
 
     @emitter.mov_reg_reg(@arch == :aarch64 ? 0 : 7, @arch == :aarch64 ? 4 : 12)
     @emitter.mov_reg_sp(@arch == :aarch64 ? 1 : 6)
@@ -98,10 +98,10 @@ module BuiltinNetwork
     @emitter.mov_reg_reg(@arch == :aarch64 ? 6 : 14, 0)
 
     @emitter.emit_sub_rsp(16)
-    @emitter.mov_reg_imm(0, 2); @emitter.mov_mem_idx(@arch == :aarch64 ? 31 : 4, 0, 0, 2)
-    @emitter.mov_reg_reg(0, @arch == :aarch64 ? 6 : 14); @emitter.mov_mem_idx(@arch == :aarch64 ? 31 : 4, 2, 0, 2)
-    @emitter.mov_reg_reg(0, @arch == :aarch64 ? 5 : 13); @emitter.mov_mem_idx(@arch == :aarch64 ? 31 : 4, 4, 0, 4)
-    @emitter.mov_reg_imm(0, 0); @emitter.mov_mem_idx(@arch == :aarch64 ? 31 : 4, 8, 0, 8)
+    @emitter.mov_reg_imm(0, 2); @emitter.mov_mem_reg_idx(@arch == :aarch64 ? 31 : 4, 0, 0, 2)
+    @emitter.mov_reg_reg(0, @arch == :aarch64 ? 6 : 14); @emitter.mov_mem_reg_idx(@arch == :aarch64 ? 31 : 4, 2, 0, 2)
+    @emitter.mov_reg_reg(0, @arch == :aarch64 ? 5 : 13); @emitter.mov_mem_reg_idx(@arch == :aarch64 ? 31 : 4, 4, 0, 4)
+    @emitter.mov_reg_imm(0, 0); @emitter.mov_mem_reg_idx(@arch == :aarch64 ? 31 : 4, 8, 0, 8)
 
     @emitter.mov_reg_reg(@arch == :aarch64 ? 0 : 7, @arch == :aarch64 ? 4 : 12)
     @emitter.mov_reg_sp(@arch == :aarch64 ? 1 : 6)

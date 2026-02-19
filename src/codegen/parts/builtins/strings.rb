@@ -13,7 +13,7 @@ module BuiltinStrings
        @emitter.mov_rax_mem_idx(10, 0) # X0 = idx
        @emitter.mov_reg_reg(9, 0)      # X9 = old idx
        @emitter.emit_add_imm(0, 0, 1)  # X0 = idx + 1
-       @emitter.mov_mem_idx(10, 0, 0, 8) # save new idx
+       @emitter.mov_mem_reg_idx(10, 0, 0, 8) # save new idx
 
        @emitter.mov_reg_reg(0, 9)
        @emitter.mov_reg_imm(1, 15); @emitter.and_rax_rdx # X0 = idx & 15

@@ -1,5 +1,5 @@
 class CodegenContext
-  attr_reader :variables, :var_types, :var_is_ptr, :structs, :arrays
+  attr_reader :variables, :globals, :var_types, :var_is_ptr, :structs, :arrays
   attr_reader :var_registers, :used_callee_saved, :unions
   attr_accessor :stack_ptr, :current_fn
 
@@ -18,8 +18,10 @@ class CodegenContext
     "bool" => { size: 1, signed: false },
   }
 
-  def initialize
+  def initialize(arch = :x86_64)
+    @arch = arch
     @variables = {}   # name -> stack_offset
+    @globals = {}     # name -> label_id
     @var_types = {}   # name -> type name (string)
     @var_is_ptr = {}  # name -> bool
     @structs = {}     # name -> { size: int, fields: {name: offset}, packed: bool }
@@ -29,6 +31,20 @@ class CodegenContext
     @used_callee_saved = [] # list of callee-saved regs used in current function
     @stack_ptr = 64   # Start after shadow space + internal usage
     @current_fn = nil
+    @available_scratch = (arch == :aarch64) ? (9..15).to_a : [10, 11]
+    @used_scratch = []
+  end
+
+  def acquire_scratch
+    reg = @available_scratch.shift
+    return nil unless reg
+    @used_scratch << reg
+    reg
+  end
+
+  def release_scratch(reg)
+    @used_scratch.delete(reg)
+    @available_scratch.unshift(reg) unless @available_scratch.include?(reg)
   end
 
   def type_size(type_name)
@@ -96,6 +112,10 @@ class CodegenContext
 
   def register_struct(name, size, fields)
     @structs[name] = { size: size, fields: fields }
+  end
+
+  def register_global(name, label_id)
+    @globals[name] = label_id
   end
 
   # Declare array: allocates N * 8 bytes on stack

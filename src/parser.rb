@@ -36,6 +36,13 @@ class Parser
   def match_symbol?(val); peek && peek[:type] == :symbol && peek[:value] == val; end
   def match_keyword?(val); peek && peek[:type] == :keyword && peek[:value] == val; end
 
+  def with_loc(node, token)
+    return node unless node.is_a?(Hash)
+    node[:line] = token[:line]
+    node[:column] = token[:column]
+    node
+  end
+
   def consume_symbol(val = nil)
     t = @tokens.shift
     if t.nil?

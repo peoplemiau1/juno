@@ -48,7 +48,7 @@ def compile_linux(input_file, arch = :x86_64, output_path = "build/output_linux"
     ast = optimizer.optimize
 
     puts "Step 7: Native Code Generation (Linux ELF, Arch: #{arch})..."
-    generator = NativeGenerator.new(ast, :linux, arch)
+    generator = NativeGenerator.new(ast, :linux, arch, code, input_file)
     generator.hell_mode = $hell_mode if $hell_mode
     FileUtils.mkdir_p("build")
     generator.generate(output_path)

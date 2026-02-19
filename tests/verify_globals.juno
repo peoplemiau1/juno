@@ -1,0 +1,25 @@
+let counter = 0
+
+fn increment() {
+    counter = counter + 1
+}
+
+fn main() {
+    print("Initial counter: ")
+    print(counter)
+    print("\n")
+
+    increment()
+    increment()
+    increment()
+
+    print("Counter after 3 increments: ")
+    print(counter)
+    print("\n")
+
+    if counter == 3 {
+        print("Global variables are WORKING!\n")
+    } else {
+        print("Global variables BUG detected!\n")
+    }
+}

@@ -22,11 +22,13 @@ class NativeGenerator
   include BaseGenerator
   include PrintUtils
 
-  def initialize(ast, target_os, arch = :x86_64)
+  def initialize(ast, target_os, arch = :x86_64, source = "", filename = "main.juno")
     @ast = ast
+    @source = source
+    @filename = filename
     @target_os = target_os
     @arch = arch
-    @ctx = CodegenContext.new
+    @ctx = CodegenContext.new(arch)
     @emitter = (arch == :aarch64) ? AArch64Emitter.new : CodeEmitter.new
     @allocator = RegisterAllocator.new
     @stack_size = STACK_SIZE
@@ -42,35 +44,53 @@ class NativeGenerator
   end
 
   def setup_data
-    @linker.add_data("int_buffer", "\0" * 64)
-    @linker.add_data("file_buffer", "\0" * 4096)
+    @linker.add_bss("int_buffer", 64)
+    @linker.add_bss("file_buffer", 4096)
     @linker.add_data("concat_buffer_idx", [0].pack("Q<"))
-    @linker.add_data("concat_buffer_pool", "\0" * 32768) # 16 * 2048
-    @linker.add_data("substr_buffer", "\0" * 1024)
-    @linker.add_data("chr_buffer", "\0" * 4)
-    @linker.add_data("input_buffer", "\0" * 1024)
+    @linker.add_bss("concat_buffer_pool", 32768) # 16 * 2048
+    @linker.add_bss("substr_buffer", 1024)
+    @linker.add_bss("chr_buffer", 4)
+    @linker.add_bss("input_buffer", 1024)
     @linker.add_data("rand_seed", [12345].pack("Q<"))
     @linker.add_data("newline_char", "\n")
   end
 
   def generate(output_path)
-    top_level = []
+    # FIRST PASS: SYMBOL TABLE & TYPE REGISTRATION
+    # Ensure all functions, structs and unions are known before generation starts
     @ast.each do |n|
       case n[:type]
+      when :function_definition
+        @linker.declare_function(n[:name])
       when :struct_definition
         gen_struct_def(n)
       when :union_definition
         gen_union_def(n)
-      when :function_definition
-        nil
+      when :assignment
+        # Register top-level let as global
+        if n[:let] && n[:name]
+           name = n[:name]
+           label = "global_#{name}"
+           @linker.add_data(label, "\0" * 8)
+           @ctx.register_global(name, label)
+        end
+      end
+    end
+
+    top_level = []
+    @ast.each do |n|
+      case n[:type]
+      when :struct_definition, :union_definition, :function_definition
+        next
       else
         top_level << n
       end
     end
 
     has_main = @ast.any? { |n| n[:type] == :function_definition && n[:name] == "main" }
-    gen_entry_point
-    gen_synthetic_main(top_level) if !has_main || !top_level.empty?
+    has_top_level = !top_level.empty?
+    gen_entry_point(has_top_level, has_main)
+    gen_synthetic_main(top_level) if has_top_level
 
     @ast.each do |n|
       gen_function(n) if n[:type] == :function_definition
@@ -105,11 +125,12 @@ class NativeGenerator
       end
     end
 
-    final_bytes = @linker.finalize(@emitter.bytes)
+    result = @linker.finalize(@emitter.bytes)
+    final_bytes = result[:combined]
 
     builder = case @target_os
               when :linux
-                ELFBuilder.new(final_bytes, @arch)
+                ELFBuilder.new(final_bytes, @arch, result[:code].length, result[:data].length, result[:bss_len])
               when :flat
                 FlatBuilder.new(final_bytes)
               when :windows
@@ -125,8 +146,24 @@ class NativeGenerator
 
   private
 
+  def error_undefined(name, node)
+    error = JunoUndefinedError.new(
+      "Undefined variable or symbol: '#{name}'",
+      filename: @filename,
+      line_num: node[:line],
+      column: node[:column],
+      source: @source
+    )
+    JunoErrorReporter.report(error)
+  end
+
   def gen_function(node)
     @linker.register_function(node[:name], @emitter.current_pos); @ctx.reset_for_function(node[:name])
+
+    # Run register allocator for function body
+    res = @allocator.allocate(node[:body])
+    res[:allocations].each { |var, reg| @ctx.assign_register(var, reg) }
+
     params = node[:params].map { |p| p.is_a?(Hash) ? p[:name] : p }
     if node[:name].include?('.') then @ctx.var_types["self"] = node[:name].split('.')[0]; @ctx.var_is_ptr["self"] = true end
 
@@ -138,8 +175,9 @@ class NativeGenerator
 
     # Stack alignment for x86_64 (16 bytes)
     # push rbp (8) + sub rsp, stack_size (even) + push N regs (N*8)
-    # Total must be multiple of 16. If N is odd, we need 8 bytes padding.
-    if @arch == :x86_64 && callee_saved.length % 2 == 1
+    # Total must be multiple of 16. Total pushed = 1 (RBP) + N (callee_saved).
+    # If 1 + N is odd, we need 8 bytes padding.
+    if @arch == :x86_64 && (1 + callee_saved.length) % 2 == 1
       @emitter.emit_sub_rsp(8)
     end
 
@@ -152,7 +190,7 @@ class NativeGenerator
 
     node[:body].each { |c| process_node(c) }
 
-    if @arch == :x86_64 && @emitter.callee_saved_regs.length % 2 == 1
+    if @arch == :x86_64 && (1 + @emitter.callee_saved_regs.length) % 2 == 1
       @emitter.emit_add_rsp(8)
     end
     @emitter.pop_callee_saved(@emitter.callee_saved_regs)

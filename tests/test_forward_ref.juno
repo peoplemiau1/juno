@@ -1,0 +1,12 @@
+fn caller() {
+    print("Calling callee...\n")
+    callee()
+}
+
+fn callee() {
+    print("I am callee\n")
+}
+
+fn main() {
+    caller()
+}

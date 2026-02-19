@@ -183,10 +183,13 @@ module ParserExpressions
     end
     
     if match?(:number)
-      { type: :literal, value: consume(:number)[:value] }
+      token = peek
+      with_loc({ type: :literal, value: consume(:number)[:value] }, token)
     elsif match?(:string)
-      { type: :string_literal, value: consume(:string)[:value] }
+      token = peek
+      with_loc({ type: :string_literal, value: consume(:string)[:value] }, token)
     elsif match?(:ident)
+      token = peek
       name = consume_ident
       
       # Check for generic type arguments: name<T, U>
@@ -215,17 +218,17 @@ module ParserExpressions
       end
       
       if match_symbol?('(')
-        parse_fn_call_at_ident(name, type_args)
+        with_loc(parse_fn_call_at_ident(name, type_args), token)
       elsif match?(:lbracket)
         # Array access: arr[i]
         consume(:lbracket)
         index = parse_expression
         consume(:rbracket)
-        { type: :array_access, name: name, index: index }
+        with_loc({ type: :array_access, name: name, index: index }, token)
       else
         node = { type: :variable, name: name }
         node[:type_args] = type_args unless type_args.empty?
-        node
+        with_loc(node, token)
       end
     elsif match_symbol?('(')
       consume_symbol('(')

@@ -137,31 +137,102 @@ class CodeEmitter
     emit([0x48, 0x8b, 0x85] + [disp].pack("l<").bytes)
   end
 
-  def add_rax_reg(src)
+  def add_reg_reg(dst, src)
     rex = 0x48
     rex |= 0x04 if src >= 8
-    modrm = 0xc0 | ((src & 7) << 3) | 0
+    rex |= 0x01 if dst >= 8
+    modrm = 0xc0 | ((src & 7) << 3) | (dst & 7)
     emit([rex, 0x01, modrm])
   end
-  def add_rax_rdx; add_rax_reg(2); end
+  def add_rax_rdx; add_reg_reg(0, 2); end
 
-  def sub_rax_reg(src)
+  def sub_reg_reg(dst, src)
     rex = 0x48
     rex |= 0x04 if src >= 8
-    modrm = 0xc0 | ((src & 7) << 3) | 0
+    rex |= 0x01 if dst >= 8
+    modrm = 0xc0 | ((src & 7) << 3) | (dst & 7)
     emit([rex, 0x29, modrm])
   end
-  def sub_rax_rdx; sub_rax_reg(2); end
-  def imul_rax_rdx; emit([0x48, 0x0f, 0xaf, 0xc2]); end
-  def and_rax_rdx; emit([0x48, 0x21, 0xd0]); end
-  def or_rax_rdx; emit([0x48, 0x09, 0xd0]); end
-  def xor_rax_rdx; emit([0x48, 0x31, 0xd0]); end
-  def not_rax; emit([0x48, 0xf7, 0xd0]); end
+  def sub_rax_rdx; sub_reg_reg(0, 2); end
 
-  def shl_rax_cl; emit([0x48, 0x89, 0xd1, 0x48, 0xd3, 0xe0]); end
-  def shr_rax_cl; emit([0x48, 0x89, 0xd1, 0x48, 0xd3, 0xe8]); end
-  def shl_rax_imm(c); emit([0x48, 0xc1, 0xe0, c & 0x3f]); end
-  def shr_rax_imm(c); emit([0x48, 0xc1, 0xe8, c & 0x3f]); end
+  def mul_reg_reg(dst, src)
+    rex = 0x48
+    rex |= 0x04 if dst >= 8
+    rex |= 0x01 if src >= 8
+    emit([rex, 0x0f, 0xaf, 0xc0 | ((dst & 7) << 3) | (src & 7)])
+  end
+  def imul_rax_rdx; mul_reg_reg(0, 2); end
+
+  def and_reg_reg(dst, src)
+    rex = 0x48
+    rex |= 0x04 if src >= 8
+    rex |= 0x01 if dst >= 8
+    modrm = 0xc0 | ((src & 7) << 3) | (dst & 7)
+    emit([rex, 0x21, modrm])
+  end
+  def and_rax_rdx; and_reg_reg(0, 2); end
+  def and_rax_reg(src); and_reg_reg(0, src); end
+  def add_rax_reg(src); add_reg_reg(0, src); end
+  def sub_rax_reg(src); sub_reg_reg(0, src); end
+
+  def or_reg_reg(dst, src)
+    rex = 0x48
+    rex |= 0x04 if src >= 8
+    rex |= 0x01 if dst >= 8
+    modrm = 0xc0 | ((src & 7) << 3) | (dst & 7)
+    emit([rex, 0x09, modrm])
+  end
+  def or_rax_rdx; or_reg_reg(0, 2); end
+  def or_rax_reg(src); or_reg_reg(0, src); end
+
+  def xor_reg_reg(dst, src)
+    rex = 0x48
+    rex |= 0x04 if src >= 8
+    rex |= 0x01 if dst >= 8
+    modrm = 0xc0 | ((src & 7) << 3) | (dst & 7)
+    emit([rex, 0x31, modrm])
+  end
+  def xor_rax_rdx; xor_reg_reg(0, 2); end
+  def xor_rax_reg(src); xor_reg_reg(0, src); end
+
+  def not_reg(reg)
+    rex = 0x48
+    rex |= 0x01 if reg >= 8
+    emit([rex, 0xf7, 0xd0 | (reg & 7)])
+  end
+  def not_rax; not_reg(0); end
+
+  def shl_reg_cl(reg)
+    mov_reg_reg(1, 2) # RCX = RDX (if value was in RDX)
+    # Actually Juno uses RDX for second operand.
+    emit([0x48, 0x89, 0xd1]) if reg == 0 # mov rcx, rdx
+    rex = 0x48
+    rex |= 0x01 if reg >= 8
+    emit([rex, 0xd3, 0xe0 | (reg & 7)])
+  end
+  def shl_rax_cl; shl_reg_cl(0); end
+
+  def shr_reg_cl(reg)
+    emit([0x48, 0x89, 0xd1]) if reg == 0
+    rex = 0x48
+    rex |= 0x01 if reg >= 8
+    emit([rex, 0xd3, 0xe8 | (reg & 7)])
+  end
+  def shr_rax_cl; shr_reg_cl(0); end
+
+  def shl_reg_imm(reg, c)
+    rex = 0x48
+    rex |= 0x01 if reg >= 8
+    emit([rex, 0xc1, 0xe0 | (reg & 7), c & 0x3f])
+  end
+  def shl_rax_imm(c); shl_reg_imm(0, c); end
+
+  def shr_reg_imm(reg, c)
+    rex = 0x48
+    rex |= 0x01 if reg >= 8
+    emit([rex, 0xc1, 0xe8 | (reg & 7), c & 0x3f])
+  end
+  def shr_rax_imm(c); shr_reg_imm(0, c); end
 
   def div_rax_by_rdx
     emit([0x48, 0x89, 0xd1, 0x48, 0x99, 0x48, 0xf7, 0xf9])
@@ -197,7 +268,20 @@ class CodeEmitter
     emit([rex, 0x0f, op, 0xc0 + (dst % 8) * 8 + (src % 8)])
   end
 
-  def test_rax_rax; emit([0x48, 0x85, 0xc0]); end
+  def test_reg_reg(r1, r2)
+    rex = 0x48
+    rex |= 0x04 if r2 >= 8
+    rex |= 0x01 if r1 >= 8
+    emit([rex, 0x85, 0xc0 | ((r2 & 7) << 3) | (r1 & 7)]) # test r1, r2
+  end
+  def test_rax_rax; test_reg_reg(0, 0); end
+
+  def cmp_reg_reg(r1, r2)
+    rex = 0x48
+    rex |= 0x04 if r2 >= 8
+    rex |= 0x01 if r1 >= 8
+    emit([rex, 0x39, 0xc0 | ((r2 & 7) << 3) | (r1 & 7)])
+  end
 
   def cmp_reg_imm(reg, imm)
     if reg == 0 # rax
@@ -291,7 +375,7 @@ class CodeEmitter
       rex |= 0x01 if base >= 8
     end
 
-    opcode = 0x89
+    opcode = (size == 1) ? 0x88 : 0x89
 
     if offset == 0 && (base % 8) != 5 && (base % 8) != 4
       modrm = 0x00 | ((src & 7) << 3) | (base & 7)

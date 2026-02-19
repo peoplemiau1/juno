@@ -66,7 +66,7 @@ module PrintUtils
       @emitter.emit_load_address("int_buffer", @linker)
       # rax += 63; sub rax, r11; rdx = rax; rsi = r11
       @emitter.emit([0x48, 0x83, 0xc0, 63])
-      @emitter.sub_rax_reg(11) # rax = buf+63 - start
+      @emitter.sub_reg_reg(0, 11) # rax = buf+63 - start
       @emitter.mov_reg_reg(2, 0) # RDX = len
       @emitter.mov_reg_reg(6, 11) # RSI = start
 

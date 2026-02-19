@@ -1,5 +1,5 @@
 class Linker
-  attr_reader :strings
+  attr_reader :strings, :functions, :data_pool, :bss_pool
 
   def initialize(base_rva, arch = :x86_64)
     @base_rva = base_rva
@@ -10,8 +10,13 @@ class Linker
     @functions = {}
     @imports = {}
     @data_pool = []
+    @bss_pool = []
     @strings = {}
     @string_counter = 0
+  end
+
+  def declare_function(name)
+    @functions[name] ||= nil
   end
 
   def register_function(name, offset_in_code)
@@ -24,6 +29,10 @@ class Linker
 
   def add_data(id, data)
     @data_pool << { id: id, data: data }
+  end
+
+  def add_bss(id, size)
+    @bss_pool << { id: id, size: size }
   end
 
   def add_string(content)
@@ -65,17 +74,36 @@ class Linker
   end
 
   def finalize(code_bytes)
+    data_bytes = []
+    data_offset = code_bytes.length
+    # Align data section to 4096 bytes (page boundary) for proper ELF segment permissions
+    padding = (4096 - (data_offset % 4096)) % 4096
+    code_bytes += [0] * padding
+    data_offset += padding
+
     @data_pool.each do |item|
-      item[:rva] = @base_rva + code_bytes.length
-      code_bytes += item[:data].bytes
+      item[:rva] = @base_rva + data_offset + data_bytes.length
+      data_bytes += item[:data].bytes
     end
-    @fn_patches.each { |p| patch_value(code_bytes, p, @functions[p[:name]]) }
+
+    bss_len = 0
+    @bss_pool.each do |item|
+      item[:rva] = @base_rva + data_offset + data_bytes.length + bss_len
+      bss_len += item[:size]
+    end
+
+    full_binary = code_bytes + data_bytes
+
+    @fn_patches.each { |p| patch_value(full_binary, p, @functions[p[:name]]) }
     @data_patches.each do |p|
-       target = @data_pool.find { |d| d[:id] == p[:id] }&.[](:rva) || @functions[p[:id]]
-       patch_value(code_bytes, p, target)
+       target = @data_pool.find { |d| d[:id] == p[:id] }&.[](:rva) ||
+                @bss_pool.find { |b| b[:id] == p[:id] }&.[](:rva) ||
+                @functions[p[:id]]
+       patch_value(full_binary, p, target)
     end
-    @import_patches.each { |p| patch_value(code_bytes, p, @imports[p[:name]]) }
-    code_bytes
+    @import_patches.each { |p| patch_value(full_binary, p, @imports[p[:name]]) }
+
+    { code: code_bytes, data: data_bytes, bss_len: bss_len, combined: full_binary }
   end
 
   def patch_value(code, patch, target_rva)

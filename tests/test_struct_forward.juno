@@ -1,0 +1,20 @@
+struct Point {
+    let x: int
+    let y: int
+}
+
+fn main() {
+    let p = malloc(16)
+    *p = 10
+    *(p + 8) = 20
+
+    print_point(p)
+}
+
+fn print_point(p: ptr) {
+    print("Point: ")
+    print(*p)
+    print(",")
+    print(*(p + 8))
+    print("\n")
+}

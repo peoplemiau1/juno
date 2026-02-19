@@ -11,7 +11,7 @@ module GeneratorAccess
     else
       @emitter.mov_reg_stack_val(0, @ctx.variables[v])
     end
-    @emitter.mov_rax_mem(f_off)
+    @emitter.mov_reg_mem_idx(0, 0, f_off)
   end
 
   def save_member_rax(full)
@@ -19,24 +19,35 @@ module GeneratorAccess
      st = @ctx.var_types[v]
      return unless st && @ctx.structs[st]
      f_off = @ctx.structs[st][:fields][f]
-     @emitter.mov_r11_rax
+     @emitter.mov_reg_reg(11, 0) # R11 = value (RAX)
      if @ctx.in_register?(v)
        @emitter.mov_rax_from_reg(@emitter.class.reg_code(@ctx.get_register(v)))
      else
        @emitter.mov_reg_stack_val(0, @ctx.variables[v])
      end
-     @emitter.mov_mem_r11(f_off)
+     @emitter.mov_mem_reg_idx(0, f_off, 11) # [RAX + f_off] = R11
   end
 
   def gen_array_access(node)
     eval_expression(node[:index])
     @emitter.shl_rax_imm(3)
-    @emitter.push_reg(0)
-    arr_info = @ctx.get_array(node[:name])
-    if arr_info then @emitter.mov_reg_stack_val(0, arr_info[:ptr_offset])
-    else @emitter.mov_reg_stack_val(0, @ctx.get_variable_offset(node[:name])) end
-    @emitter.mov_reg_reg(2, 0)
-    @emitter.pop_reg(0)
+    scratch = @ctx.acquire_scratch
+    if scratch
+      @emitter.mov_reg_reg(scratch, 0) # RAX (index) to scratch
+      arr_info = @ctx.get_array(node[:name])
+      if arr_info then @emitter.mov_reg_stack_val(0, arr_info[:ptr_offset])
+      else @emitter.mov_reg_stack_val(0, @ctx.get_variable_offset(node[:name])) end
+      @emitter.mov_reg_reg(2, 0) # RDX = base
+      @emitter.mov_reg_reg(0, scratch) # RAX = index
+      @ctx.release_scratch(scratch)
+    else
+      @emitter.push_reg(0)
+      arr_info = @ctx.get_array(node[:name])
+      if arr_info then @emitter.mov_reg_stack_val(0, arr_info[:ptr_offset])
+      else @emitter.mov_reg_stack_val(0, @ctx.get_variable_offset(node[:name])) end
+      @emitter.mov_reg_reg(2, 0)
+      @emitter.pop_reg(0)
+    end
     @emitter.add_rax_rdx
     @emitter.mov_rax_mem(0)
   end

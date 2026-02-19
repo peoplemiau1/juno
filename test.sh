@@ -1,41 +1,40 @@
 #!/bin/bash
-# Run all Juno tests (Linux)
-
 echo "Running Juno tests..."
-echo ""
-
 FAILED=0
 PASSED=0
 
 for test_file in tests/test_*.juno; do
-    # Skip tests that are not for Linux
-    if [[ "$test_file" == *"test_flat_binary.juno"* ]]; then
-        continue
+    if [[ "$test_file" == *"test_flat_binary.juno"* ]]; then continue; fi
+
+    # Expected failure tests
+    EXPECT_FAIL=0
+    if [[ "$test_file" == *"test_error.juno"* || "$test_file" == *"test_syntax_error.juno"* ]]; then
+        EXPECT_FAIL=1
     fi
 
-    echo "Testing $test_file..."
-    
+    echo -n "Testing $test_file... "
     if ./juno "$test_file" > /dev/null 2>&1; then
-        if ./build/output_x86_64 > /dev/null 2>&1; then
-            echo "[OK] $test_file"
+        if [ "$EXPECT_FAIL" -eq 1 ]; then
+            echo "[FAIL] Expected compilation error but it passed"
+            FAILED=$((FAILED + 1))
+        elif ./build/output_x86_64 > /dev/null 2>&1; then
+            echo "[OK]"
             PASSED=$((PASSED + 1))
         else
-            echo "[FAIL] $test_file - Runtime error"
+            echo "[FAIL] Runtime error (Exit code: $?)"
             FAILED=$((FAILED + 1))
         fi
     else
-        echo "[FAIL] $test_file - Compilation error"
-        FAILED=$((FAILED + 1))
+        if [ "$EXPECT_FAIL" -eq 1 ]; then
+            echo "[OK] (Expected failure)"
+            PASSED=$((PASSED + 1))
+        else
+            echo "[FAIL] Compilation error"
+            FAILED=$((FAILED + 1))
+        fi
     fi
 done
 
 echo ""
 echo "Results: $PASSED passed, $FAILED failed"
-
-if [ $FAILED -eq 0 ]; then
-    echo "All tests passed!"
-    exit 0
-else
-    echo "Some tests failed!"
-    exit 1
-fi
+if [ $FAILED -eq 0 ]; then exit 0; else exit 1; fi

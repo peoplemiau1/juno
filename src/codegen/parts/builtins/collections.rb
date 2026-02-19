@@ -76,7 +76,7 @@ module BuiltinCollections
     # Store at 16 + len*8
     @emitter.shl_rax_imm(3)
     @emitter.emit([0x48, 0x83, 0xc0, 0x10]) # add rax, 16
-    @emitter.add_rax_reg(12) # add rax, r12
+    @emitter.add_reg_reg(0, 12) # add rax, r12
     @emitter.mov_mem_reg_idx(0, 0, 13) # [rax] = r13
     @emitter.emit([0x49, 0xff, 0x44, 0x24, 0x08]) # inc [r12+8] (len)
 

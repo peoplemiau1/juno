@@ -44,6 +44,17 @@ module BuiltinIO
     emit_syscall(:read)
   end
 
+  def gen_write(node)
+    eval_expression(node[:args][0]); @emitter.push_reg(0) # fd
+    eval_expression(node[:args][1]); @emitter.push_reg(0) # buf
+    eval_expression(node[:args][2]); @emitter.push_reg(0) # count
+
+    @emitter.pop_reg(2) # count
+    @emitter.pop_reg(@arch == :aarch64 ? 1 : 6) # buf
+    @emitter.pop_reg(@arch == :aarch64 ? 0 : 7) # fd
+    emit_syscall(:write)
+  end
+
   def gen_close(node)
     eval_expression(node[:args][0])
     @emitter.mov_reg_reg(@arch == :aarch64 ? 0 : 7, 0)

@@ -61,8 +61,8 @@ module ParserStatements
         parse_expression
       end
     else
-      @tokens.shift
-      { type: :unknown }
+      token = peek
+      error_unexpected(token, "Expected statement")
     end
   end
 
@@ -269,6 +269,7 @@ module ParserStatements
     end
     consume_symbol('=')
     node = { type: :assignment, name: name, expression: (match_symbol?(";") ? {type: :literal, value: 0} : parse_expression) }
+    node[:let] = true
     node[:var_type] = var_type if var_type
     node
   end

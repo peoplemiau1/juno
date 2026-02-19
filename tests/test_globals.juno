@@ -1,0 +1,13 @@
+let global_val = 1337
+
+fn print_global() {
+    print("Global val is: ")
+    print(global_val)
+    print("\n")
+}
+
+fn main() {
+    print_global()
+    global_val = 42
+    print_global()
+}

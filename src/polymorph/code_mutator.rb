@@ -2,6 +2,7 @@
 # Превращает обычный код в кошмар для реверсера
 
 require_relative 'polymorph_engine'
+require_relative 'x86_decoder'
 
 class CodeMutator
   attr_reader :stats
@@ -99,7 +100,10 @@ class CodeMutator
     
     while i < bytes.length
       # Запоминаем маппинг для каждого байта текущей инструкции
-      instr_len = (@arch == :aarch64) ? 4 : estimate_instruction_length(bytes, i)
+      instr_len = (@arch == :aarch64) ? 4 : X86Decoder.estimate_length(bytes, i)
+      # Fallback if decoder failed (should not happen for valid code)
+      instr_len = 1 if instr_len == 0
+
       instr_len.times { |j| mapping[i + j] = result.length + j }
 
       result += bytes[i, instr_len]
@@ -188,7 +192,7 @@ class CodeMutator
       offset += 1 # ModRM
       return offset - start
     end
-    
+
     # One-byte opcodes with immediate
     return offset - start + 4 if opcode == 0xe8 || opcode == 0xe9 # call/jmp rel32
     return offset - start + 1 if opcode == 0xeb || (opcode >= 0x70 && opcode <= 0x7f) # short jmp/jcc

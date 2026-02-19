@@ -106,8 +106,8 @@ module BuiltinThreads
     @emitter.push_reg(0) # tv_nsec
 
     @emitter.emit_sub_rsp(16)
-    @emitter.pop_reg(0); @emitter.mov_mem_idx(@arch == :aarch64 ? 31 : 4, 8, 0, 8)
-    @emitter.pop_reg(0); @emitter.mov_mem_idx(@arch == :aarch64 ? 31 : 4, 0, 0, 8)
+    @emitter.pop_reg(0); @emitter.mov_mem_reg_idx(@arch == :aarch64 ? 31 : 4, 8, 0, 8)
+    @emitter.pop_reg(0); @emitter.mov_mem_reg_idx(@arch == :aarch64 ? 31 : 4, 0, 0, 8)
 
     @emitter.mov_reg_sp(@arch == :aarch64 ? 0 : 7)
     @emitter.mov_reg_imm(@arch == :aarch64 ? 1 : 6, 0)
@@ -120,7 +120,7 @@ module BuiltinThreads
   def gen_atomic_store(node)
     eval_expression(node[:args][1]); @emitter.push_reg(0)
     eval_expression(node[:args][0]); @emitter.pop_reg(1)
-    @emitter.mov_mem_idx(0, 0, 1, 8)
+    @emitter.mov_mem_reg_idx(0, 0, 1, 8)
   end
 
   def gen_spin_lock(node)
@@ -147,7 +147,7 @@ module BuiltinThreads
   def gen_spin_unlock(node)
     eval_expression(node[:args][0]); @emitter.mov_reg_reg(@arch == :aarch64 ? 2 : 7, 0)
     @emitter.mov_reg_imm(0, 0)
-    @emitter.mov_mem_idx(@arch == :aarch64 ? 2 : 7, 0, 0, 8)
+    @emitter.mov_mem_reg_idx(@arch == :aarch64 ? 2 : 7, 0, 0, 8)
   end
 
   def gen_CLONE_VM(node); @emitter.mov_rax(0x100); end

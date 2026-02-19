@@ -27,8 +27,8 @@ module BuiltinUtils
     @emitter.push_reg(0) # nsec
 
     @emitter.emit_sub_rsp(16)
-    @emitter.pop_reg(0); @emitter.mov_mem_idx(@arch == :aarch64 ? 31 : 4, 8, 0, 8) # nsec
-    @emitter.pop_reg(0); @emitter.mov_mem_idx(@arch == :aarch64 ? 31 : 4, 0, 0, 8) # sec
+    @emitter.pop_reg(0); @emitter.mov_mem_reg_idx(@arch == :aarch64 ? 31 : 4, 8, 0, 8) # nsec
+    @emitter.pop_reg(0); @emitter.mov_mem_reg_idx(@arch == :aarch64 ? 31 : 4, 0, 0, 8) # sec
 
     @emitter.mov_reg_sp(@arch == :aarch64 ? 0 : 7) # req
     @emitter.mov_reg_imm(@arch == :aarch64 ? 1 : 6, 0) # rem=NULL
@@ -50,7 +50,7 @@ module BuiltinUtils
     @emitter.push_reg(0)
     @emitter.emit_load_address("rand_seed", @linker)
     @emitter.pop_reg(2)
-    @emitter.mov_mem_idx(@arch == :aarch64 ? 2 : 2, 0, 0, 8)
+    @emitter.mov_mem_reg_idx(@arch == :aarch64 ? 2 : 2, 0, 0, 8)
     @emitter.mov_rax_from_reg(0)
     @emitter.shr_rax_imm(1)
   end
@@ -60,7 +60,7 @@ module BuiltinUtils
     @emitter.push_reg(0)
     @emitter.emit_load_address("rand_seed", @linker)
     @emitter.pop_reg(2)
-    @emitter.mov_mem_idx(@arch == :aarch64 ? 2 : 2, 0, 0, 8)
+    @emitter.mov_mem_reg_idx(@arch == :aarch64 ? 2 : 2, 0, 0, 8)
   end
 
   def gen_input(node)

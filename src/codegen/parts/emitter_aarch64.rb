@@ -110,17 +110,19 @@ class AArch64Emitter
     emit32(0xf9400000 | ((disp / 8) << 10))
   end
 
-  def mov_rax_mem_idx(reg, offset, size = 8)
-    # ldr x0, [reg, #offset]
-    # reg 31 is SP
+  def mov_reg_mem_idx(dst, base, offset, size = 8)
+    # ldr dst, [base, #offset]
     if size == 8
-      emit32(0xf9400000 | ((offset / 8) << 10) | (reg << 5))
+      emit32(0xf9400000 | ((offset / 8) << 10) | (base << 5) | dst)
     elsif size == 4
-      emit32(0xb9400000 | (offset << 10) | (reg << 5))
+      emit32(0xb9400000 | (offset << 10) | (base << 5) | dst)
     elsif size == 1
-      emit32(0x39400000 | (offset << 10) | (reg << 5))
+      emit32(0x39400000 | (offset << 10) | (base << 5) | dst)
     end
   end
+
+  def mov_rax_mem_idx(reg, offset, size = 8); mov_reg_mem_idx(0, reg, offset, size); end
+  def mov_rcx_mem_idx(reg, offset, size = 8); mov_reg_mem_idx(1, reg, offset, size); end
 
   def mov_r11_rax; mov_reg_reg(11, 0); end
 
@@ -128,18 +130,72 @@ class AArch64Emitter
     emit32(0xf94003a0 | 0 | ((disp / 8) << 10))
   end
 
+  def add_reg_reg(dst, src)
+    emit32(0x8b000000 | (src << 16) | (dst << 5) | dst) # actually Rn, Rm, Rd. Rn=dst, Rm=src, Rd=dst
+    # wait, add rd, rn, rm is 0x8b000000 | (rm << 16) | (rn << 5) | rd
+  end
   def add_rax_rdx; emit32(0x8b020000); end
+
+  def sub_reg_reg(dst, src)
+    emit32(0xcb000000 | (src << 16) | (dst << 5) | dst)
+  end
   def sub_rax_rdx; emit32(0xcb020000); end
+
+  def mul_reg_reg(dst, src)
+    # madd rd, rn, rm, xzr -> rd = rn * rm + 0
+    emit32(0x9b007c00 | (src << 16) | (dst << 5) | dst)
+  end
   def imul_rax_rdx; emit32(0x9b027c00); end
+
+  def and_reg_reg(dst, src)
+    emit32(0x8a000000 | (src << 16) | (dst << 5) | dst)
+  end
   def and_rax_rdx; emit32(0x8a020000); end
+  def and_rax_reg(src); and_reg_reg(0, src); end
+  def add_rax_reg(src); add_reg_reg(0, src); end
+  def sub_rax_reg(src); sub_reg_reg(0, src); end
+
+  def or_reg_reg(dst, src)
+    emit32(0xaa000000 | (src << 16) | (dst << 5) | dst)
+  end
   def or_rax_rdx; emit32(0xaa020000); end
+  def or_rax_reg(src); or_reg_reg(0, src); end
+
+  def xor_reg_reg(dst, src)
+    emit32(0xca000000 | (src << 16) | (dst << 5) | dst)
+  end
   def xor_rax_rdx; emit32(0xca020000); end
+  def xor_rax_reg(src); xor_reg_reg(0, src); end
+
+  def not_reg(reg)
+    # orn rd, xzr, rm -> rd = ~rm
+    emit32(0xaa2003e0 | (reg << 16) | reg)
+  end
   def not_rax; emit32(0xaa2003e0); end
 
-  def shl_rax_cl; emit32(0x9ac12000); end
-  def shr_rax_cl; emit32(0x9ac12400); end
-  def shl_rax_imm(c); c &= 63; emit32(0xd3400000 | (((64 - c) & 63) << 16) | ((63 - c) << 10)); end
-  def shr_rax_imm(c); c &= 63; emit32(0xd3400000 | (c << 16) | (63 << 10)); end
+  def shl_reg_cl(reg)
+    # asrv rd, rn, rm -> x0, x0, x1
+    emit32(0x9ac12000 | (reg << 5) | reg)
+  end
+  def shl_rax_cl; shl_reg_cl(0); end
+
+  def shr_reg_cl(reg)
+    # lsrv rd, rn, rm
+    emit32(0x9ac12400 | (reg << 5) | reg)
+  end
+  def shr_rax_cl; shr_reg_cl(0); end
+
+  def shl_reg_imm(reg, c)
+    c &= 63
+    emit32(0xd3400000 | (reg << 5) | reg | (((64 - c) & 63) << 16) | ((63 - c) << 10))
+  end
+  def shl_rax_imm(c); shl_reg_imm(0, c); end
+
+  def shr_reg_imm(reg, c)
+    c &= 63
+    emit32(0xd3400000 | (reg << 5) | reg | (c << 16) | (63 << 10))
+  end
+  def shr_rax_imm(c); shr_reg_imm(0, c); end
 
   def div_rax_by_rdx; emit32(0x9ac20c00); end
 
@@ -159,6 +215,11 @@ class AArch64Emitter
 
   def test_rax_rax; emit32(0xf100001f); end # cmp x0, #0
   def test_reg_reg(r1, r2); emit32(0xeb00001f | (r2 << 16) | (r1 << 5)); end # cmp r1, r2
+
+  def cmp_reg_reg(r1, r2)
+    # subs xzr, r1, r2
+    emit32(0xeb00001f | (r2 << 16) | (r1 << 5))
+  end
 
   def cmp_reg_imm(reg, imm)
     # subs xzr, reg, #imm
@@ -267,7 +328,9 @@ class AArch64Emitter
     # end:
   end
 
-  def mov_mem_idx(base, offset, src, size = 8)
+  def mov_mem_idx(base, offset, src, size = 8); mov_mem_reg_idx(base, offset, src, size); end
+
+  def mov_mem_reg_idx(base, offset, src, size = 8)
     if size == 8
       emit32(0xf9000000 | ((offset / 8) << 10) | (base << 5) | src)
     elsif size == 4

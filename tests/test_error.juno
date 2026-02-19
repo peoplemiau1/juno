@@ -1,6 +1,4 @@
-// Test error reporting - Fixed to allow compilation
 fn main() {
-    let x = 42
-    let y = x + 0
-    return y
+    let x = 10
+    print(y)
 }
