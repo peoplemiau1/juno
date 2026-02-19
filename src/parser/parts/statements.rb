@@ -320,8 +320,28 @@ module ParserStatements
 
   def parse_import
     consume_keyword('import')
-    path = consume(:string)[:value]
-    { type: :import, path: path }
+    if match?(:string)
+      path = consume(:string)[:value]
+      { type: :import, path: path, system: false }
+    else
+      # System import like std/net
+      path = ""
+      while match?(:ident) || match_symbol?('/') || match_symbol?('.')
+        if match?(:ident)
+          path += consume_ident
+        elsif match_symbol?('/')
+          path += consume_symbol('/')[:value]
+        elsif match_symbol?('.')
+          path += consume_symbol('.')[:value]
+        end
+      end
+
+      if path.empty?
+        error_unexpected(peek, "Expected string or system path for import")
+      end
+
+      { type: :import, path: path + ".juno", system: true }
+    end
   end
 
   def parse_deref_assign

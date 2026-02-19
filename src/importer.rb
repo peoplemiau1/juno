@@ -4,8 +4,9 @@ require_relative "parser"
 require_relative "errors"
 
 class Importer
-  def initialize(base_path = ".")
+  def initialize(base_path = ".", system_path: nil)
     @base_path = base_path
+    @system_path = system_path
     @imported = {}  # path -> ast (cache to avoid circular imports)
     @import_stack = []  # for detecting circular imports
   end
@@ -17,7 +18,7 @@ class Importer
     
     ast.each do |node|
       if node[:type] == :import
-        imported_ast = process_import(node[:path], current_file)
+        imported_ast = process_import(node[:path], current_file, node[:system])
         result.concat(imported_ast)
       else
         result << node
@@ -29,9 +30,11 @@ class Importer
 
   private
 
-  def process_import(path, current_file)
-    # Resolve relative path
-    if current_file
+  def process_import(path, current_file, is_system = false)
+    # Resolve path
+    if is_system && @system_path
+      full_path = File.join(@system_path, path)
+    elsif current_file
       base_dir = File.dirname(current_file)
       full_path = File.join(base_dir, path)
     else

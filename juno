@@ -183,7 +183,7 @@ begin
   parser = Parser.new(tokens, input_file, code)
   ast = parser.parse
 
-  importer = Importer.new(File.dirname(input_file))
+  importer = Importer.new(File.dirname(input_file), system_path: File.join(__dir__, "stdlib"))
   ast = importer.resolve(ast, input_file)
 
   monomorphizer = Monomorphizer.new(ast)

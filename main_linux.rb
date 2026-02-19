@@ -36,7 +36,7 @@ def compile_linux(input_file, arch = :x86_64, output_path = "build/output_linux"
     ast = parser.parse
 
     puts "Step 4: Resolving imports..."
-    importer = Importer.new(File.dirname(input_file))
+    importer = Importer.new(File.dirname(input_file), system_path: File.join(__dir__, "stdlib"))
     ast = importer.resolve(ast, input_file)
 
     puts "Step 5: Monomorphizing generics..."
