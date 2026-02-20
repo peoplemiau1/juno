@@ -91,19 +91,19 @@ module BuiltinStringsV2
 
     # Compare loop
     @emitter.emit([0x8a, 0x07])  # mov al, [rdi]
-    @emitter.emit([0x8a, 0x1e])  # mov bl, [rsi]
-    @emitter.emit([0x38, 0xd8])  # cmp al, bl
+    @emitter.emit([0x44, 0x8a, 0x16])  # mov r10b, [rsi]
+    @emitter.emit([0x44, 0x38, 0xd0])  # cmp al, r10b
     @emitter.emit([0x75, 0x0c])  # jne not_equal
     @emitter.emit([0x84, 0xc0])  # test al, al
     @emitter.emit([0x74, 0x0c])  # je equal (both 0)
     @emitter.emit([0x48, 0xff, 0xc7])  # inc rdi
     @emitter.emit([0x48, 0xff, 0xc6])  # inc rsi
-    @emitter.emit([0xeb, 0xed])  # jmp loop
+    @emitter.emit([0xeb, 0xeb])  # jmp loop (offset adjusted -2)
 
     # not_equal:
     @emitter.emit([0x0f, 0xb6, 0xc0])  # movzx eax, al
-    @emitter.emit([0x0f, 0xb6, 0xdb])  # movzx ebx, bl
-    @emitter.emit([0x29, 0xd8])  # sub eax, ebx
+    @emitter.emit([0x45, 0x0f, 0xb6, 0xd2])  # movzx r10d, r10b
+    @emitter.emit([0x44, 0x29, 0xd0])  # sub eax, r10d
     @emitter.emit([0xeb, 0x02])  # jmp done
 
     # equal:
@@ -132,10 +132,10 @@ module BuiltinStringsV2
     @emitter.emit([0x48, 0x31, 0xff])  # xor rdi, rdi (index)
 
     # loop:
-    @emitter.emit([0x0f, 0xb6, 0x1c, 0x3e])  # movzx ebx, byte [rsi+rdi]
-    @emitter.emit([0x85, 0xdb])  # test ebx, ebx
+    @emitter.emit([0x44, 0x0f, 0xb6, 0x14, 0x3e])  # movzx r10d, byte [rsi+rdi]
+    @emitter.emit([0x45, 0x85, 0xd2])  # test r10d, r10d
     @emitter.emit([0x74, 0x0b])  # je end
-    @emitter.emit([0x39, 0xcb])  # cmp ebx, ecx
+    @emitter.emit([0x44, 0x39, 0xca])  # cmp r10d, ecx
     @emitter.emit([0x74, 0x05])  # je found
     @emitter.emit([0x48, 0xff, 0xc7])  # inc rdi
     @emitter.emit([0xeb, 0xef])  # jmp loop
@@ -163,14 +163,14 @@ module BuiltinStringsV2
     @emitter.emit([0x48, 0xff, 0xc6])  # inc rsi
 
     # Parse digits
-    @emitter.emit([0x0f, 0xb6, 0x1e])  # movzx ebx, byte [rsi]
-    @emitter.emit([0x80, 0xfb, 0x30])  # cmp bl, '0'
+    @emitter.emit([0x44, 0x0f, 0xb6, 0x16])  # movzx r10d, byte [rsi]
+    @emitter.emit([0x41, 0x80, 0xfa, 0x30])  # cmp r10b, '0'
     @emitter.emit([0x72, 0x12])  # jb done
-    @emitter.emit([0x80, 0xfb, 0x39])  # cmp bl, '9'
+    @emitter.emit([0x41, 0x80, 0xfa, 0x39])  # cmp r10b, '9'
     @emitter.emit([0x77, 0x0d])  # ja done
-    @emitter.emit([0x80, 0xeb, 0x30])  # sub bl, '0'
+    @emitter.emit([0x41, 0x80, 0xea, 0x30])  # sub r10b, '0'
     @emitter.emit([0x48, 0x6b, 0xc0, 0x0a])  # imul rax, 10
-    @emitter.emit([0x48, 0x01, 0xd8])  # add rax, rbx
+    @emitter.emit([0x4c, 0x01, 0xd0])  # add rax, r10
     @emitter.emit([0x48, 0xff, 0xc6])  # inc rsi
     @emitter.emit([0xeb, 0xe7])  # jmp parse_loop
 
@@ -196,19 +196,19 @@ module BuiltinStringsV2
     # rax = number to convert
 
     # Get buffer address using lea (like concat does)
-    @emitter.emit([0x48, 0x8d, 0x1d])  # lea rbx, [rip+offset]
+    @emitter.emit([0x4c, 0x8d, 0x15])  # lea r10, [rip+offset]
     @linker.add_data_patch(@emitter.current_pos, "itoa_buffer")
     @emitter.emit([0x00, 0x00, 0x00, 0x00])
-    @emitter.emit([0x48, 0x83, 0xc3, 0x1f])  # add rbx, 31
-    @emitter.emit([0xc6, 0x03, 0x00])  # mov byte [rbx], 0 (null term)
-    @emitter.emit([0x49, 0x89, 0xd8])  # mov r8, rbx (save end pos)
+    @emitter.emit([0x49, 0x83, 0xc2, 0x1f])  # add r10, 31
+    @emitter.emit([0x41, 0xc6, 0x02, 0x00])  # mov byte [r10], 0 (null term)
+    @emitter.emit([0x4d, 0x89, 0xd0])  # mov r8, r10 (save end pos)
 
     # Handle zero case
     @emitter.emit([0x48, 0x85, 0xc0])  # test rax, rax
     @emitter.emit([0x75, 0x08])  # jnz not_zero
-    @emitter.emit([0x48, 0xff, 0xcb])  # dec rbx
-    @emitter.emit([0xc6, 0x03, 0x30])  # mov byte [rbx], '0'
-    @emitter.emit([0xeb, 0x17])  # jmp done
+    @emitter.emit([0x49, 0xff, 0xca])  # dec r10
+    @emitter.emit([0x41, 0xc6, 0x02, 0x30])  # mov byte [r10], '0'
+    @emitter.emit([0xeb, 0x18])  # jmp done
 
     # not_zero: convert loop
     @emitter.emit([0xb9, 0x0a, 0x00, 0x00, 0x00])  # mov ecx, 10
@@ -216,13 +216,13 @@ module BuiltinStringsV2
     @emitter.emit([0x48, 0x31, 0xd2])  # xor rdx, rdx
     @emitter.emit([0x48, 0xf7, 0xf1])  # div rcx
     @emitter.emit([0x80, 0xc2, 0x30])  # add dl, '0'
-    @emitter.emit([0x48, 0xff, 0xcb])  # dec rbx
-    @emitter.emit([0x88, 0x13])  # mov [rbx], dl
+    @emitter.emit([0x49, 0xff, 0xca])  # dec r10
+    @emitter.emit([0x41, 0x88, 0x12])  # mov [r10], dl
     @emitter.emit([0x48, 0x85, 0xc0])  # test rax, rax
-    @emitter.emit([0x75, 0xee])  # jnz loop
+    @emitter.emit([0x75, 0xed])  # jnz loop
 
     # done:
-    @emitter.emit([0x48, 0x89, 0xd8])  # mov rax, rbx
+    @emitter.emit([0x4c, 0x89, 0xd0])  # mov rax, r10
   end
 
   # str_upper(s) - Convert to uppercase in-place
@@ -231,7 +231,7 @@ module BuiltinStringsV2
 
     eval_expression(node[:args][0])
     @emitter.emit([0x48, 0x89, 0xc7])  # mov rdi, rax
-    @emitter.emit([0x49, 0x89, 0xfc])  # mov r12, rdi (save start)
+    @emitter.emit([0x49, 0x89, 0xfb])  # mov r11, rdi (save start)
 
     @emitter.emit([0x8a, 0x07])  # mov al, [rdi]
     @emitter.emit([0x84, 0xc0])  # test al, al
@@ -245,7 +245,7 @@ module BuiltinStringsV2
     @emitter.emit([0x48, 0xff, 0xc7])  # inc rdi
     @emitter.emit([0xeb, 0xe9])  # jmp loop
 
-    @emitter.emit([0x4c, 0x89, 0xe0])  # mov rax, r12
+    @emitter.emit([0x4c, 0x89, 0xd8])  # mov rax, r11
   end
 
   # str_lower(s) - Convert to lowercase in-place
@@ -254,7 +254,7 @@ module BuiltinStringsV2
 
     eval_expression(node[:args][0])
     @emitter.emit([0x48, 0x89, 0xc7])  # mov rdi, rax
-    @emitter.emit([0x49, 0x89, 0xfc])  # mov r12, rdi
+    @emitter.emit([0x49, 0x89, 0xfb])  # mov r11, rdi
 
     @emitter.emit([0x8a, 0x07])  # mov al, [rdi]
     @emitter.emit([0x84, 0xc0])  # test al, al
@@ -268,7 +268,7 @@ module BuiltinStringsV2
     @emitter.emit([0x48, 0xff, 0xc7])  # inc rdi
     @emitter.emit([0xeb, 0xe9])  # jmp loop
 
-    @emitter.emit([0x4c, 0x89, 0xe0])  # mov rax, r12
+    @emitter.emit([0x4c, 0x89, 0xd8])  # mov rax, r11
   end
 
   # str_trim(s) - Trim whitespace (returns new ptr)
@@ -290,5 +290,23 @@ module BuiltinStringsV2
 
     # Return pointer to first non-space
     @emitter.emit([0x48, 0x89, 0xf8])  # mov rax, rdi
+  end
+
+  # byte_at(ptr, idx)
+  def gen_byte_at(node)
+    eval_expression(node[:args][0]); @emitter.push_reg(0)
+    eval_expression(node[:args][1])
+    @emitter.pop_reg(2) # rdx = ptr
+    @emitter.emit([0x0f, 0xb6, 0x04, 0x02]) # movzx rax, byte [rdx + rax]
+  end
+
+  # byte_set(ptr, idx, val)
+  def gen_byte_set(node)
+    eval_expression(node[:args][0]); @emitter.push_reg(0)
+    eval_expression(node[:args][1]); @emitter.push_reg(0)
+    eval_expression(node[:args][2]) # rax = val
+    @emitter.pop_reg(1) # rcx = idx
+    @emitter.pop_reg(2) # rdx = ptr
+    @emitter.emit([0x88, 0x04, 0x0a]) # mov [rdx + rcx], al
   end
 end

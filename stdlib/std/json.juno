@@ -1,18 +1,425 @@
-// stdlib/std/json.juno - Simple JSON Library for Juno
+// stdlib/std/json.juno - Professional JSON Library for Juno
+// Ported and optimized for Juno v2.1
 
-struct JsonValue {
-    let type
-    let value
+let J_NULL = 0
+let J_BOOL = 1
+let J_NUM  = 2
+let J_STR  = 3
+let J_ARR  = 4
+let J_OBJ  = 5
+
+struct JsonNode {
+    let type: int
+    let key: ptr
+    let value: ptr
+    let next: ptr
 }
 
-fn json_parse(s) {
-    let j: JsonValue = malloc(16)
-    j.type = 2
-    j.value = s
-    return j
+// Internal utility functions
+
+fn json_char_at(s: ptr, idx: int): int {
+    return byte_at(s, idx)
 }
 
-fn json_as_string(j) {
-    let v: JsonValue = j
-    return v.value
+fn json_strcmp(s1: ptr, s2: ptr): int {
+    if s1 == 0 { return 0 }
+    if s2 == 0 { return 0 }
+    let i = 0
+    let run = 1
+    let res = 0
+    while run {
+        let c1 = json_char_at(s1, i)
+        let c2 = json_char_at(s2, i)
+        if c1 != c2 {
+            res = 0
+            run = 0
+        } else {
+            if c1 == 0 {
+                res = 1
+                run = 0
+            }
+        }
+        i = i + 1
+    }
+    return res
+}
+
+fn json_strlen(s: ptr): int {
+    if s == 0 { return 0 }
+    let len = 0
+    while json_char_at(s, len) != 0 {
+        len = len + 1
+    }
+    return len
+}
+
+fn json_skip_ws(s: ptr, pos_ptr: ptr) {
+    let pos = *pos_ptr
+    let run = 1
+    while run {
+        let c = json_char_at(s, pos)
+        let is_ws = 0
+        if c == 32 { is_ws = 1 }
+        if c == 10 { is_ws = 1 }
+        if c == 13 { is_ws = 1 }
+        if c == 9  { is_ws = 1 }
+
+        if is_ws {
+            pos = pos + 1
+        } else {
+            run = 0
+        }
+    }
+    *pos_ptr = pos
+}
+
+fn json_substr(s: ptr, start: int, len: int): ptr {
+    let buf = malloc(len + 1)
+    let src = byte_add(s, start)
+    let i = 0
+    while i < len {
+        let b = byte_at(src, i)
+        byte_set(buf, i, b)
+        i = i + 1
+    }
+    byte_set(buf, len, 0)
+    return buf
+}
+
+// Parser core
+
+fn parse_str(s: ptr, pos_ptr: ptr): ptr {
+    let pos = *pos_ptr
+    pos = pos + 1
+    let start = pos
+    let c = json_char_at(s, pos)
+
+    while c != 34 {
+        if c == 0 {
+            *pos_ptr = pos
+            return 0
+        }
+        pos = pos + 1
+        c = json_char_at(s, pos)
+    }
+
+    let len = pos - start
+    let str_ptr = json_substr(s, start, len)
+
+    pos = pos + 1
+    *pos_ptr = pos
+    return str_ptr
+}
+
+fn parse_num(s: ptr, pos_ptr: ptr): int {
+    let pos = *pos_ptr
+    let num = 0
+    let sign = 1
+    let c = json_char_at(s, pos)
+
+    if c == 45 {
+        sign = 0 - 1
+        pos = pos + 1
+        c = json_char_at(s, pos)
+    }
+
+    let run = 1
+    while run {
+        let is_digit = 0
+        if c >= 48 {
+            if c <= 57 {
+                is_digit = 1
+            }
+        }
+
+        if is_digit {
+            num = (num * 10) + (c - 48)
+            pos = pos + 1
+            c = json_char_at(s, pos)
+        } else {
+            run = 0
+        }
+    }
+
+    *pos_ptr = pos
+    return num * sign
+}
+
+fn parse_arr(s: ptr, pos_ptr: ptr): ptr {
+    let pos = *pos_ptr
+    pos = pos + 1
+    *pos_ptr = pos
+    let head = 0
+    let tail = 0
+
+    let run = 1
+    while run {
+        json_skip_ws(s, pos_ptr)
+        pos = *pos_ptr
+        let c = json_char_at(s, pos)
+
+        if c == 0 { run = 0 }
+        else {
+            if c == 93 {
+                *pos_ptr = pos + 1
+                run = 0
+            } else {
+                let val_node_ptr = parse_val(s, pos_ptr)
+                if head == 0 {
+                    head = val_node_ptr
+                    tail = val_node_ptr
+                } else {
+                    let t_node: JsonNode = tail
+                    t_node.next = val_node_ptr
+                    tail = val_node_ptr
+                }
+
+                json_skip_ws(s, pos_ptr)
+                pos = *pos_ptr
+                c = json_char_at(s, pos)
+                if c == 44 {
+                    pos = pos + 1
+                    *pos_ptr = pos
+                }
+            }
+        }
+    }
+    return head
+}
+
+fn parse_obj(s: ptr, pos_ptr: ptr): ptr {
+    let pos = *pos_ptr
+    pos = pos + 1
+    *pos_ptr = pos
+    let head = 0
+    let tail = 0
+
+    let run = 1
+    while run {
+        json_skip_ws(s, pos_ptr)
+        pos = *pos_ptr
+        let c = json_char_at(s, pos)
+
+        if c == 0 { run = 0 }
+        else {
+            if c == 125 {
+                *pos_ptr = pos + 1
+                run = 0
+            } else {
+                let key_ptr = parse_str(s, pos_ptr)
+                json_skip_ws(s, pos_ptr)
+                pos = *pos_ptr
+                if json_char_at(s, pos) == 58 {
+                    pos = pos + 1
+                    *pos_ptr = pos
+                }
+
+                let val_node_ptr = parse_val(s, pos_ptr)
+                if val_node_ptr == 0 {
+                    if key_ptr != 0 { free(key_ptr) }
+                } else {
+                    let v_node: JsonNode = val_node_ptr
+                    v_node.key = key_ptr
+
+                    if head == 0 {
+                        head = val_node_ptr
+                        tail = val_node_ptr
+                    } else {
+                        let t_node: JsonNode = tail
+                        t_node.next = val_node_ptr
+                        tail = val_node_ptr
+                    }
+                }
+
+                json_skip_ws(s, pos_ptr)
+                pos = *pos_ptr
+                if json_char_at(s, pos) == 44 {
+                    pos = pos + 1
+                    *pos_ptr = pos
+                }
+            }
+        }
+    }
+    return head
+}
+
+fn parse_val(s: ptr, pos_ptr: ptr): ptr {
+    json_skip_ws(s, pos_ptr)
+    let pos = *pos_ptr
+    let c = json_char_at(s, pos)
+
+    if c == 0 { return 0 }
+
+    let node_ptr = malloc(32)
+    let node: JsonNode = node_ptr
+    node.key = 0
+    node.next = 0
+
+    if c == 34 {
+        node.type = J_STR
+        node.value = parse_str(s, pos_ptr)
+    }
+    if c == 123 {
+        node.type = J_OBJ
+        node.value = parse_obj(s, pos_ptr)
+    }
+    if c == 91 {
+        node.type = J_ARR
+        node.value = parse_arr(s, pos_ptr)
+    }
+    if c == 45 {
+        node.type = J_NUM
+        node.value = parse_num(s, pos_ptr)
+    }
+    if c >= 48 {
+        if c <= 57 {
+            node.type = J_NUM
+            node.value = parse_num(s, pos_ptr)
+        }
+    }
+    if c == 116 { // true
+        node.type = J_BOOL
+        node.value = 1
+        *pos_ptr = pos + 4
+    }
+    if c == 102 { // false
+        node.type = J_BOOL
+        node.value = 0
+        *pos_ptr = pos + 5
+    }
+    if c == 110 { // null
+        node.type = J_NULL
+        node.value = 0
+        *pos_ptr = pos + 4
+    }
+
+    return node_ptr
+}
+
+// Public API
+
+fn json_loads(raw_json: ptr): ptr {
+    if raw_json == 0 { return 0 }
+    let pos_val = 0
+    return parse_val(raw_json, &pos_val)
+}
+
+fn json_free(node_ptr: ptr) {
+    if node_ptr == 0 { return 0 }
+    let node: JsonNode = node_ptr
+
+    if node.key != 0 { free(node.key) }
+
+    if node.type == J_STR {
+        if node.value != 0 { free(node.value) }
+    }
+    if node.type == J_OBJ {
+        let child_ptr = node.value
+        while child_ptr != 0 {
+            let child: JsonNode = child_ptr
+            let nxt = child.next
+            json_free(child_ptr)
+            child_ptr = nxt
+        }
+    }
+    if node.type == J_ARR {
+        let child_ptr = node.value
+        while child_ptr != 0 {
+            let child: JsonNode = child_ptr
+            let nxt = child.next
+            json_free(child_ptr)
+            child_ptr = nxt
+        }
+    }
+    free(node_ptr)
+}
+
+fn json_get(node_ptr: ptr, key: ptr): ptr {
+    if node_ptr == 0 { return 0 }
+    let parent: JsonNode = node_ptr
+    if parent.type != J_OBJ { return 0 }
+
+    let current = parent.value
+    while current != 0 {
+        let node: JsonNode = current
+        if json_strcmp(node.key, key) == 1 { return current }
+        current = node.next
+    }
+    return 0
+}
+
+fn json_at(node_ptr: ptr, index: int): ptr {
+    if node_ptr == 0 { return 0 }
+    let parent: JsonNode = node_ptr
+    if parent.type != J_ARR { return 0 }
+
+    let current = parent.value
+    let i = 0
+    while current != 0 {
+        if i == index { return current }
+        let node: JsonNode = current
+        current = node.next
+        i = i + 1
+    }
+    return 0
+}
+
+fn json_len(node_ptr: ptr): int {
+    if node_ptr == 0 { return 0 }
+    let parent: JsonNode = node_ptr
+    let count = 0
+    if parent.type == J_OBJ {
+        let current = parent.value
+        while current != 0 {
+            count = count + 1
+            let node: JsonNode = current
+            current = node.next
+        }
+    }
+    if parent.type == J_ARR {
+        let current = parent.value
+        while current != 0 {
+            count = count + 1
+            let node: JsonNode = current
+            current = node.next
+        }
+    }
+    return count
+}
+
+fn json_has(node_ptr: ptr, key: ptr): int {
+    let child = json_get(node_ptr, key)
+    if child == 0 { return 0 }
+    return 1
+}
+
+fn json_get_str(node_ptr: ptr, key: ptr): ptr {
+    let child = json_get(node_ptr, key)
+    if child == 0 { return 0 }
+    let node: JsonNode = child
+    if node.type == J_STR { return node.value }
+    return 0
+}
+
+fn json_get_int(node_ptr: ptr, key: ptr): int {
+    let child = json_get(node_ptr, key)
+    if child == 0 { return 0 }
+    let node: JsonNode = child
+    if node.type == J_NUM { return node.value }
+    return 0
+}
+
+fn json_get_bool(node_ptr: ptr, key: ptr): int {
+    let child = json_get(node_ptr, key)
+    if child == 0 { return 0 }
+    let node: JsonNode = child
+    if node.type == J_BOOL { return node.value }
+    return 0
+}
+
+fn json_is_null(node_ptr: ptr): int {
+    if node_ptr == 0 { return 1 }
+    let node: JsonNode = node_ptr
+    if node.type == J_NULL { return 1 }
+    return 0
 }

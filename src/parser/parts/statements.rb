@@ -254,7 +254,7 @@ module ParserStatements
   end
 
   def parse_let
-    consume_keyword('let')
+    token = consume_keyword('let')
     name = consume_ident
     if match?(:lbracket)
       consume(:lbracket)
@@ -271,7 +271,7 @@ module ParserStatements
     node = { type: :assignment, name: name, expression: (match_symbol?(";") ? {type: :literal, value: 0} : parse_expression) }
     node[:let] = true
     node[:var_type] = var_type if var_type
-    node
+    with_loc(node, token)
   end
 
   def parse_increment

@@ -1,0 +1,14 @@
+fn main() {
+    let p = malloc(1024)
+    if p == 0 { prints("Malloc failed\n") }
+    else {
+        prints("Malloc success: ")
+        output_int(p)
+        prints("\n")
+        *p = 12345
+        output_int(*p)
+        prints("\n")
+        free(p)
+    }
+    return 0
+}

@@ -5,6 +5,7 @@ require_relative "src/importer"
 require_relative "src/monomorphizer"
 require_relative "src/optimizer/optimizer"
 require_relative "src/optimizer/turbo"
+require_relative "src/analyzer/resource_auditor"
 require_relative "src/codegen/native_generator"
 require_relative "src/preprocessor"
 require_relative "src/errors"
@@ -43,7 +44,18 @@ def compile_linux(input_file, arch = :x86_64, output_path = "build/output_linux"
     monomorphizer = Monomorphizer.new(ast)
     ast = monomorphizer.monomorphize
 
-    puts "Step 6: Optimizing (Turbo)..."
+    puts "Step 6: Resource Auditing..."
+    # Collect function signatures for the auditor
+    func_signatures = {}
+    ast.each do |node|
+      if node[:type] == :function_definition
+        func_signatures[node[:name]] = node[:return_type]
+      end
+    end
+    auditor = ResourceAuditor.new(ast, func_signatures, code, input_file)
+    auditor.audit
+
+    puts "Step 6.5: Optimizing (Turbo)..."
     optimizer = TurboOptimizer.new(ast)
     ast = optimizer.optimize
 
@@ -59,9 +71,8 @@ def compile_linux(input_file, arch = :x86_64, output_path = "build/output_linux"
     e.display
     exit 1
   rescue => e
-    puts "\e[31mInternal Compiler Error:\e[0m"
-    puts e.message
-    puts e.backtrace[0..5].join("\n")
+    ice = JunoInternalError.new(e.message, e, filename: input_file)
+    ice.display
     exit 1
   end
 end
@@ -89,18 +100,8 @@ else
     puts "\nCompilation interrupted by user."
     exit 1
   rescue => e
-    puts "\e[31m\e[1mInternal Compiler Error:\e[0m"
-    puts "An unexpected error occurred during compilation. This is likely a bug in the Juno compiler."
-    puts ""
-    puts "\e[1mError Details:\e[0m"
-    puts "  Type:    #{e.class}"
-    puts "  Message: #{e.message}"
-    puts "  Source:  #{ARGV[0]}"
-    puts ""
-    puts "\e[1mBacktrace (first 10 lines):\e[0m"
-    puts e.backtrace[0..9].map { |line| "  #{line}" }.join("\n")
-    puts ""
-    puts "Please report this issue at: https://github.com/peoplemiau1/juno/issues"
+    ice = JunoInternalError.new(e.message, e, filename: ARGV[0])
+    ice.display
     exit 1
   end
 end

@@ -74,7 +74,7 @@ class CodeMutator
     
     while i < bytes.length
       # PRECISE INSTRUCTION DECODING
-      instr_len = (@arch == :aarch64) ? 4 : X86Decoder.estimate_length(bytes, i)
+      instr_len = (@arch == :aarch64) ? 4 : X86Decoder.decode_length(bytes, i)
 
       # Safety fallback - should not happen with proper decoder
       if instr_len <= 0

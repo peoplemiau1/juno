@@ -33,9 +33,10 @@ module BuiltinSyscalls
     eval_expression(node[:args][1]); @emitter.push_reg(0)
     eval_expression(node[:args][0])
     @emitter.push_reg(0)
-    @emitter.pop_reg(@arch == :aarch64 ? 0 : 7)
-    @emitter.pop_reg(@arch == :aarch64 ? 1 : 6)
-    @emitter.pop_reg(@arch == :aarch64 ? 2 : 1) # RCX on x86, X2 on arm
+    @emitter.pop_reg(@arch == :aarch64 ? 0 : 7) # RDI or X0
+    @emitter.pop_reg(@arch == :aarch64 ? 1 : 6) # RSI or X1
+    @emitter.pop_reg(@arch == :aarch64 ? 2 : 1) # RCX or X2
+    if @arch == :x86_64 then @emitter.emit([0xfc]) end # cld
     @emitter.memcpy
     @emitter.pop_reg(0)
   end

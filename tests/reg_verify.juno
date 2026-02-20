@@ -1,0 +1,49 @@
+// Test to verify register allocation and callee-saved preservation
+
+fn clobber_registers() {
+    // This function will likely use some callee-saved registers if it was larger,
+    // but builtins like prints also use many registers.
+    prints("  (Inside clobber_registers)\n")
+}
+
+fn main() {
+    let a = 100
+    let b = 200
+    let c = 300
+    let d = 400
+    let e = 500
+
+    prints("Before call: a=")
+    output_int(a)
+    prints("\n")
+
+    clobber_registers()
+
+    prints("After call: a=")
+    output_int(a)
+    prints(" b=")
+    output_int(b)
+    prints(" c=")
+    output_int(c)
+    prints(" d=")
+    output_int(d)
+    prints(" e=")
+    output_int(e)
+    prints("\n")
+
+    if a == 100 {
+        if b == 200 {
+            if c == 300 {
+                if d == 400 {
+                    if e == 500 {
+                        prints("Register verification PASSED\n")
+                        return 0
+                    }
+                }
+            }
+        }
+    }
+
+    prints("Register verification FAILED\n")
+    return 1
+}

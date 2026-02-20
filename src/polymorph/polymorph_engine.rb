@@ -146,11 +146,10 @@ class PolymorphEngine
       [0x0f, 0x1f, 0x00],              # nop dword [rax]
       [0x0f, 0x1f, 0x40, 0x00],        # nop dword [rax+0]
       [0x0f, 0x1f, 0x44, 0x00, 0x00],  # nop dword [rax+rax+0]
-      [0x87, 0xc0],                     # xchg eax, eax
-      [0x87, 0xdb],                     # xchg ebx, ebx
       [0x48, 0x87, 0xc0],              # xchg rax, rax
-      [0x8d, 0x40, 0x00],              # lea eax, [rax+0]
-      [0x8d, 0x49, 0x00],              # lea ecx, [rcx+0]
+      [0x48, 0x8d, 0x00],              # lea rax, [rax]
+      [0x48, 0x8d, 0x09],              # lea rcx, [rcx]
+      [0x48, 0x8d, 0x12],              # lea rdx, [rdx]
     ]
 
     result = []
@@ -297,11 +296,11 @@ class PolymorphEngine
       [0x50, 0x58],                        # push rax; pop rax
       [0x51, 0x59],                        # push rcx; pop rcx
       [0x9c, 0x9d],                        # pushf; popf
+      [0x48, 0x87, 0xc0],                 # xchg rax, rax
       [0x48, 0x87, 0xc9],                 # xchg rcx, rcx
       [0xf8],                              # clc
       [0xf9],                              # stc
-      [0xf5],                              # cmc
-      [0xf5],                              # cmc (double = restore)
+      [0xf5, 0xf5],                        # cmc; cmc
     ]
     instructions[@rng.rand(instructions.length)]
   end

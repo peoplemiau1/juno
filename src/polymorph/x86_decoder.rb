@@ -2,7 +2,7 @@
 # Precise enough for the opcodes Juno actually generates.
 
 class X86Decoder
-  def self.estimate_length(bytes, offset)
+  def self.decode_length(bytes, offset)
     return 0 if offset >= bytes.length
     start = offset
 
@@ -34,7 +34,10 @@ class X86Decoder
 
       # Opcodes with ModRM
       # cmovcc (0F 40 - 0F 4F), imul (0F AF), setcc (0F 90 - 0F 9F)
-      if (opcode >= 0x40 && opcode <= 0x4f) || (opcode >= 0x90 && opcode <= 0x9f) || opcode == 0xaf
+      # movzx (0F B6, 0F B7), movsx (0F BE, 0F BF)
+      if (opcode >= 0x40 && opcode <= 0x4f) || (opcode >= 0x90 && opcode <= 0x9f) ||
+         (opcode >= 0xb6 && opcode <= 0xb7) || (opcode >= 0xbe && opcode <= 0xbf) ||
+         opcode == 0xaf
         return decode_modrm(bytes, offset, start)
       end
 
@@ -65,6 +68,10 @@ class X86Decoder
       return decode_modrm(bytes, offset, start)
     when 0x90..0x97, 0x50..0x5f, 0xc3, 0x5d, 0x55, 0x99, 0xa4, 0xaa # 1-byte instructions
       return offset - start
+    when 0x6a # push imm8
+      return offset - start + 1
+    when 0x68 # push imm32
+      return offset - start + 4
     when 0xff # call/jmp/push mem/reg
       return decode_modrm(bytes, offset, start)
     else

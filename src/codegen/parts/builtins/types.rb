@@ -8,6 +8,13 @@ module BuiltinTypes
     @emitter.add_rax_rdx
   end
 
+  def gen_byte_add(node)
+    eval_expression(node[:args][0]); @emitter.push_reg(0)
+    eval_expression(node[:args][1])
+    @emitter.mov_reg_reg(2, 0); @emitter.pop_reg(0)
+    @emitter.add_rax_rdx
+  end
+
   def gen_ptr_sub(node)
     eval_expression(node[:args][0]); @emitter.push_reg(0)
     eval_expression(node[:args][1]); @emitter.shl_rax_imm(3)

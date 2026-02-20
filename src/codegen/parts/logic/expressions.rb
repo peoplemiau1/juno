@@ -42,6 +42,8 @@ module GeneratorExpressions
     when :string_literal then gen_string_literal(expr)
     when :address_of then gen_address_of(expr)
     when :dereference then gen_dereference(expr)
+    else
+      raise "Unknown expression type in eval_expression: #{expr[:type].inspect}"
     end
   end
 

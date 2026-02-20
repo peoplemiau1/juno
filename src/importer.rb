@@ -84,6 +84,8 @@ class Importer
           true
         when :function_definition
           node[:name] != "main"  # Don't import main()
+        when :assignment
+          node[:let] == true     # Import top-level let globals
         else
           false
         end

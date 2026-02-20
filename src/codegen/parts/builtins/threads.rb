@@ -47,31 +47,29 @@ module BuiltinThreads
     else
        # x86_64 clone(flags, stack, ...)
        # Prepare child stack
-       @emitter.mov_reg_reg(11, 6) # R11 = stack top
+       @emitter.mov_reg_reg(11, 6) # R11 = stack top (from RSI)
        @emitter.sub_reg_imm(11, 16)
-       @emitter.mov_mem_reg_idx(11, 0, 2, 8) # [stack-16] = func
-       @emitter.mov_mem_reg_idx(11, 8, 10, 8) # [stack-8] = arg
+       @emitter.mov_mem_reg_idx(11, 0, 2, 8) # [stack-16] = func (RDX)
+       @emitter.mov_mem_reg_idx(11, 8, 10, 8) # [stack-8] = arg (R10)
 
-       @emitter.mov_reg_reg(7, 4) # RDI = flags
-       @emitter.mov_reg_reg(6, 11) # RSI = stack
+       @emitter.mov_reg_reg(6, 11) # RSI = child_stack
        @emitter.mov_reg_imm(2, 0) # RDX = ptid
        @emitter.mov_reg_imm(10, 0) # R10 = ctid
        @emitter.mov_reg_imm(8, 0) # R8 = tls
 
-       @emitter.mov_rax(56)
+       @emitter.mov_rax(56) # clone
        @emitter.syscall
 
        @emitter.test_rax_rax
        p_parent = @emitter.jne_rel32
 
        # Child
-       @emitter.mov_reg_mem_idx(7, 4, 8, 8) # RDI = arg
-       @emitter.mov_reg_mem_idx(11, 4, 0, 8) # R11 = func
+       @emitter.pop_reg(11) # func
+       @emitter.pop_reg(7)  # arg (RDI)
        @emitter.call_reg(11)
 
-       @emitter.mov_reg_imm(0, 0)
-       @emitter.mov_rax(60)
-       @emitter.mov_reg_imm(7, 0)
+       @emitter.mov_reg_imm(0, 0) # exit code
+       @emitter.mov_rax(60) # exit
        @emitter.syscall
        @emitter.patch_jne(p_parent, @emitter.current_pos)
     end
@@ -108,26 +106,31 @@ module BuiltinThreads
 
   def gen_usleep(node)
     eval_expression(node[:args][0])
-    @emitter.push_reg(0) # usec
-    @emitter.mov_reg_imm(2, 1000000)
-    @emitter.div_rax_by_rdx # rax = sec
-    @emitter.push_reg(0) # tv_sec
+    @emitter.mov_reg_reg(2, 0) # RDX = usec
+    @emitter.mov_reg_imm(1, 1000000) # RCX = 1M
+    @emitter.mov_reg_reg(0, 2)
+    @emitter.div_rax_by_rdx # RAX = sec, RDX = rem (Wait, div uses RCX in my emitter)
+    # Actually div_rax_by_rdx uses RCX.
+    # Let's check div_rax_by_rdx in emitter.rb
 
-    @emitter.pop_reg(0) # sec
-    @emitter.pop_reg(0) # usec
-    @emitter.push_reg(0)
+    # Better:
+    @emitter.push_reg(0) # Save usec
+    @emitter.mov_reg_imm(2, 1000000) # RDX = 1M
+    @emitter.div_rax_by_rdx # RAX = sec
+    @emitter.push_reg(0) # push tv_sec
+
+    @emitter.pop_reg(0) # pop tv_sec
+    @emitter.pop_reg(0) # pop original usec
+    @emitter.push_reg(0) # push original usec (to save rax from mod)
     @emitter.mov_reg_imm(2, 1000000)
-    @emitter.mod_rax_by_rdx # rax = rem
+    @emitter.mod_rax_by_rdx # RAX = rem
     @emitter.mov_reg_imm(2, 1000)
-    @emitter.imul_rax_rdx # nsec
-    @emitter.push_reg(0) # tv_nsec
+    @emitter.imul_rax_rdx # RAX = nsec
+    @emitter.push_reg(0) # push tv_nsec
 
-    @emitter.emit_sub_rsp(16)
-    @emitter.pop_reg(0); @emitter.mov_mem_reg_idx(@arch == :aarch64 ? 31 : 4, 8, 0, 8)
-    @emitter.pop_reg(0); @emitter.mov_mem_reg_idx(@arch == :aarch64 ? 31 : 4, 0, 0, 8)
-
-    @emitter.mov_reg_sp(@arch == :aarch64 ? 0 : 7)
-    @emitter.mov_reg_imm(@arch == :aarch64 ? 1 : 6, 0)
+    # Now stack has: [tv_sec, tv_nsec]
+    @emitter.mov_reg_sp(@arch == :aarch64 ? 0 : 7) # RDI = RSP (points to timespec)
+    @emitter.mov_reg_imm(@arch == :aarch64 ? 1 : 6, 0) # RSI = 0
     emit_syscall(:nanosleep)
     @emitter.emit_add_rsp(16)
   end

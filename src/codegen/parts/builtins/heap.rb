@@ -31,6 +31,7 @@ module BuiltinHeap
 
       @emitter.pop_reg(2) # restore total size to rdx
       @emitter.emit([0x48, 0x89, 0x10]) # mov [rax], rdx
+      @emitter.mov_reg_reg(0, 0) # rax = rax (to be sure)
       @emitter.emit([0x48, 0x83, 0xc0, 0x08]) # return rax+8
     end
   end

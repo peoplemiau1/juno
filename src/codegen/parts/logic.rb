@@ -11,6 +11,7 @@ module GeneratorLogic
   include GeneratorAccess
 
   def process_node(node)
+    return if node.nil?
     case node[:type]
     when :assignment then process_assignment(node)
     when :deref_assign then process_deref_assign(node)
@@ -29,6 +30,8 @@ module GeneratorLogic
     when :insertC then gen_insertC(node)
     when :array_decl then gen_array_decl(node)
     when :array_assign then gen_array_assign(node)
+    else
+      raise "Unknown node type in process_node: #{node[:type].inspect}"
     end
   end
 

@@ -8,6 +8,7 @@ require_relative "src/parser"
 require_relative "src/importer"
 require_relative "src/monomorphizer"
 require_relative "src/optimizer/turbo"
+require_relative "src/analyzer/resource_auditor"
 require_relative "src/codegen/native_generator"
 require_relative "src/preprocessor"
 require_relative "src/errors"
@@ -192,6 +193,16 @@ begin
   optimizer = TurboOptimizer.new(ast)
   ast = optimizer.optimize
 
+  # Step 6.5: Resource Auditing
+  func_signatures = {}
+  ast.each do |node|
+    if node[:type] == :function_definition
+      func_signatures[node[:name]] = node[:return_type]
+    end
+  end
+  auditor = ResourceAuditor.new(ast, func_signatures, code, input_file)
+  auditor.audit
+
   generator = NativeGenerator.new(ast, target_os: options[:os], arch: options[:arch], source: code, filename: input_file)
   generator.hell_mode = $hell_mode if $hell_mode
   FileUtils.mkdir_p("build")
@@ -211,9 +222,11 @@ begin
 rescue JunoError => e
   e.display
   exit 1
+rescue Interrupt
+  puts "\nCompilation interrupted by user."
+  exit 1
 rescue => e
-  puts "\e[31mInternal Compiler Error:\e[0m"
-  puts e.message
-  puts e.backtrace[0..10].join("\n")
+  ice = JunoInternalError.new(e.message, e, filename: input_file)
+  ice.display
   exit 1
 end

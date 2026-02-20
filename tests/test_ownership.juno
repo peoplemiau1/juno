@@ -1,0 +1,21 @@
+// Test for Resource Ownership Auditor
+
+fn create_data(): ptr {
+    return malloc(16)
+}
+
+fn consume_data(p: ptr) {
+    free(p)
+}
+
+fn main() {
+    // 1. Correct use: produce and consume
+    let p = create_data()
+    consume_data(p)
+
+    // 2. Error case: leak (commented)
+    // let q = create_data()
+    // free(q)
+
+    prints("Ownership test passed compilation!\n")
+}

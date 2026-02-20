@@ -174,6 +174,8 @@ class NativeGenerator
         needed_stack += (stmt[:size] * 8 + 16)
       end
     end
+    # Ensure 16-byte alignment
+    needed_stack = (needed_stack + 15) & ~15
     @ctx.stack_ptr = 64 # Reset ptr but track for prologue
     @ctx.current_fn_stack_size = needed_stack
 

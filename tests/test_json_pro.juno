@@ -1,0 +1,58 @@
+// tests/test_json_pro.juno
+import std/json
+
+fn main() {
+    prints("Testing Professional JSON Library...\n")
+
+    let raw = "{\"name\": \"Juno\", \"version\": 2, \"active\": true, \"tags\": [\"compiler\", \"native\"]}"
+    let root = json_loads(raw)
+
+    if root == 0 {
+        prints("Failed to load JSON\n")
+        return 1
+    }
+
+    prints("JSON loaded successfully.\n")
+
+    // Test string access
+    let name = json_get_str(root, "name")
+    prints("Name: ")
+    prints(name)
+    prints("\n")
+
+    // Test int access
+    let version = json_get_int(root, "version")
+    prints("Version: ")
+    print(version)
+    prints("\n")
+
+    // Test bool access
+    let active = json_get_bool(root, "active")
+    prints("Active: ")
+    print(active)
+    prints("\n")
+
+    // Test array access
+    let tags_node = json_get(root, "tags")
+    if tags_node != 0 {
+        let node: JsonNode = tags_node
+        if node.type == J_ARR {
+            let len = json_len(tags_node)
+            prints("Tags length: ")
+            print(len)
+            prints("\n")
+
+            let tag0 = json_at(tags_node, 0)
+            if tag0 != 0 {
+                let t0: JsonNode = tag0
+                prints("Tag 0: ")
+                prints(t0.value)
+                prints("\n")
+            }
+        }
+    }
+
+    json_free(root)
+    prints("Test finished successfully.\n")
+    return 0
+}

@@ -110,6 +110,35 @@ class JunoCodegenError < JunoError
   end
 end
 
+class JunoInternalError < JunoError
+  attr_reader :original
+  def initialize(message, original = nil, **opts)
+    super("ICE", message, **opts)
+    @original = original
+  end
+
+  def display
+    puts ""
+    puts "#{RED}#{BOLD}Internal Compiler Error [ICE]#{RESET}: #{BOLD}#{@message}#{RESET}"
+    puts "  #{CYAN}-->#{RESET} #{@filename}:#{@line_num || '?'}:#{@column || '?'}"
+
+    if @source && @line_num
+      display_source_context
+    end
+
+    puts ""
+    puts "#{YELLOW}This is likely a bug in the Juno compiler.#{RESET}"
+    puts "Please report it with the following details:"
+    puts ""
+    if @original
+      puts "#{BOLD}Original Exception:#{RESET} #{@original.class}: #{@original.message}"
+      puts "#{BOLD}Backtrace:#{RESET}"
+      puts @original.backtrace[0..10].map { |l| "  #{l}" }.join("\n")
+    end
+    puts ""
+  end
+end
+
 # Helper module for error reporting
 module JunoErrorReporter
   include JunoColors
