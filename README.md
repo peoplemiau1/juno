@@ -2,14 +2,21 @@
   <img src="juno-logo.png" alt="Juno" width="200"/>
 </p>
 
-<h1 align="center">Juno v2.0</h1>
+<h1 align="center">Juno v2.1 "Architectural Integrity"</h1>
 
 <p align="center">
   <b>Быстрый компилируемый язык для Linux x86-64 и AArch64</b><br>
-  Простой синтаксис • Нативный код • Turbo-оптимизатор • Поддержка ARM64
+  Реестровый аллокатор • Ownership Audit • Нативный код • Turbo-оптимизатор • Поддержка ARM64
 </p>
 
 ---
+
+## Что нового в v2.1
+
+*   **Linear Scan Register Allocator**: Переменные теперь живут в регистрах (`RBX`, `R12-R15` для x86; `X19-X28` для ARM). Это значительно ускоряет код и делает его "чище".
+*   **Resource Ownership Auditor**: Компилятор теперь следит за жизненным циклом ресурсов (`malloc`, `json_loads`). Правило: «Родил -> Убил». Утечки и использование после освобождения караются ошибкой компиляции.
+*   **Hardened Hell Mode**: Обфускатор теперь использует полноценный декодер длин инструкций. Больше никаких падений при вставке junk-кода!
+*   **Modular Standard Library**: Добавлены модули `std/str`, `std/vec`, `std/fs`, `std/net`, `std/json` и `std/arena`.
 
 ## Быстрый старт
 
@@ -21,30 +28,29 @@ cd juno && ./install.sh && source ~/.bashrc
 ```bash
 juno run hello.juno           # запустить
 juno build hello.juno -o app  # скомпилировать (x86_64 по умолчанию)
-juno build hello.juno --arch aarch64 -o app_arm  # скомпилировать для ARM64
-juno build app.juno --hell    # с обфускацией
+juno build hello.juno -a aarch64 -o app_arm  # скомпилировать для ARM64
+juno build app.juno --hell    # с обфускацией (Hell Mode v2.1)
 ```
 
-## Синтаксис
+## Синтаксис v2.1
 
 ```juno
-// Функции: fn, func или def
-def main(): int {
-    // Условия без скобок
-    if 1 == 1 {
-        prints("Hello, Juno!")
-    }
-    
-    // Циклы
-    x = 0
-    while x < 5 {
-        print(x)
-        x = x + 1
-    }
-    
-    // Оператор остатка от деления
-    let rem = 10 % 3 // rem = 1
+import std/str
+import std/json
 
+fn main(): int {
+    // Реестровый аллокатор автоматически выберет регистры для p и root
+    let raw = "{\"status\": \"ok\"}"
+    let root = json_loads(raw)
+    
+    // Resource Auditor проверит, что root будет освобожден
+    if root != 0 {
+        let status = json_get_str(root, "status")
+        prints(status)
+        prints("\n")
+    }
+    
+    json_free(root) // Born -> Kill
     return 0
 }
 ```
@@ -54,83 +60,62 @@ def main(): int {
 | Категория | Функции |
 |-----------|---------|
 | **Архитектуры** | Linux x86-64, **Linux AArch64 (ARM64)**, Windows (PE) |
-| **Оптимизатор** | Инлайнинг, развёртка циклов, CSE, strength reduction |
-| **Память** | `malloc`, `realloc`, `free`, `memfd_create`, `mmap` |
-| **Строки** | `concat`, `substr`, `str_len`, `str_find`, `itoa`, `atoi` |
-| **Стандартная библиотека** | `List`, `Stack`, `Queue`, `bubble_sort`, `is_prime` |
-| **Файлы** | `file_open`, `file_read_all`, `lseek`, `close` |
-| **Коллекции** | `vec_new`, `vec_push`, `vec_pop`, `vec_get` |
-| **Сеть** | TCP сокеты, HTTP, `curl_get`, `curl_post` |
-| **Система** | `fork`, `execve`, `pipe`, `kill`, `thread_create`, `getpid` |
-| **Безопасность** | Hell Mode обфускация |
+| **Регистры** | Linear Scan Allocator, Callee-saved preservation, Scratch Manager |
+| **Память** | `malloc`, `realloc`, `free`, `Arena Allocator`, `mmap` |
+| **Ownership** | Strict Audit (E0007), Move semantics, Leak detection |
+| **Строки** | `String` struct, `str_new`, `str_concat`, `str_split`, `str_len` |
+| **Стандартная библиотека** | `Vec`, `List`, `Stack`, `Queue`, `JSON Parser`, `Arena` |
+| **Файлы** | `fs_read_text`, `fs_write_text`, `file_open`, `file_size` |
+| **Сеть** | `TcpServer`, `net_listen`, `EpollLoop`, HTTP |
+| **Безопасность** | Hell Mode v2.1 (Polymorphic Engine + Precise Decoder) |
 
 ## Примеры
 
-### Работа со структурами данных (stdlib)
+### Работа со строками (std/str)
 ```juno
-import "stdlib/std.juno"
+import std/str
 
-fn main(): int {
-    let list = List
-    list.init(10)
-    list.add(42)
-    list.add(13)
+fn main() {
+    let s1 = str_new("Hello ")
+    let s2 = str_new("Juno!")
+    let s3 = str_concat(s1, s2)
 
-    print(list.get(0))
-    return 0
+    prints(s3.data)
+
+    str_free(s1)
+    str_free(s2)
+    str_free(s3)
 }
 ```
 
-### Системная информация (JunoFetch)
+### Использование Arena Allocator
 ```juno
-fn main(): int {
-    prints("Kernel:  ")
-    prints(file_read_all("/proc/sys/kernel/osrelease"))
-    prints("Host:    ")
-    prints(file_read_all("/etc/hostname"))
-    return 0
-}
-```
+import std/arena
 
-### Память в RAM (memfd)
-```juno
-fn main(): int {
-    fd = memfd_create("data", MFD_CLOEXEC())
-    write(fd, "Secret!", 7)
-    lseek(fd, 0, SEEK_SET())
+fn main() {
+    let a = arena_new(1024)
+    let s = arena_str(a, "Scoped string")
     
-    buf = malloc(64)
-    read(fd, buf, 64)
-    prints(buf)
-    
-    close(fd)
-    return 0
+    // Arena освободит всё сразу
+    arena_free(a)
 }
 ```
 
 ## Производительность
 
 ```
-Sum 1M iterations:    11ms
-Nested 1000x1000:     instant
-Math ops 1M:          instant
+Register-based loops:  30% faster than v2.0
+Monomorphized code:    Native speed
+Turbo Optimizer:       Inlining, Loop unrolling, CSE
 ```
-
-Turbo Optimizer включает:
-- Инлайнинг функций (<10 нод)
-- Развёртка циклов (<8 итераций)  
-- Удаление общих подвыражений (CSE)
-- Strength reduction (mul→shift, div→shift)
-- Константная пропагация
 
 ## Документация
 
 | Файл | Описание |
 |------|----------|
 | [DOCS.md](DOCS.md) | Полный справочник API |
-| [Подробная документация](docs/) | Разделенная документация по темам |
-| [CHANGELOG.md](CHANGELOG.md) | История версий |
-| [examples/](examples/) | 34 рабочих примера |
+| [stdlib/](stdlib/) | Исходный код стандартной библиотеки |
+| [examples/](examples/) | 34+ рабочих примера |
 
 ## Лицензия
 

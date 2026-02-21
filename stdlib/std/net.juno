@@ -1,4 +1,5 @@
 // stdlib/std/net.juno - Juno Networking & Epoll
+import std/str
 
 fn epoll_in()  { return 1 }
 fn epoll_out() { return 4 }
@@ -22,7 +23,30 @@ fn EpollLoop.wait(events_buf, max_events, timeout) {
     return epoll_wait(self.epfd, events_buf, max_events, timeout)
 }
 
-fn os_socket(domain, type, protocol) { return socket(domain, type, protocol) }
-fn os_bind(sockfd, ip_addr, port) { return bind(sockfd, ip_addr, port) }
-fn os_listen(sockfd, backlog) { return listen(sockfd, backlog) }
-fn os_accept(sockfd) { return accept(sockfd) }
+struct TcpServer {
+    let fd: int
+}
+
+fn net_listen(ip_val: int, port: int) -> ptr {
+    let srv: TcpServer = malloc(sizeof(TcpServer))
+    let s = socket(2, 1, 0)
+    bind(s, ip_val, port)
+    listen(s, 10)
+    srv.fd = s
+    return srv
+}
+
+fn net_accept_client(srv: TcpServer) -> int {
+    return accept(srv.fd)
+}
+
+fn net_recv_str(client_fd: int) -> ptr {
+    let buf = malloc(4096)
+    let bytes = recv(client_fd, buf, 4096)
+    let s: String = malloc(sizeof(String))
+    s.len = bytes
+    s.capacity = bytes + 1
+    s.data = buf
+    byte_set(s.data, bytes, 0)
+    return s
+}

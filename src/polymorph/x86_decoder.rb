@@ -7,11 +7,13 @@ class X86Decoder
     start = offset
 
     # Prefixes (including REX)
-    has_rex = false
+    prefixes = []
     while offset < bytes.length && is_prefix?(bytes[offset])
-      has_rex = true if bytes[offset] >= 0x40 && bytes[offset] <= 0x4f
+      prefixes << bytes[offset]
       offset += 1
     end
+    rex_val = prefixes.find { |p| p >= 0x40 && p <= 0x4f }
+    has_66 = prefixes.include?(0x66)
 
     return offset - start if offset >= bytes.length
 
@@ -47,7 +49,8 @@ class X86Decoder
     # Common opcodes
     case opcode
     when 0xb8..0xbf # mov reg, imm
-      return offset - start + (has_rex ? 8 : 4)
+      is_64 = rex_val && (rex_val & 0x08 != 0)
+      return offset - start + (is_64 ? 8 : (has_66 ? 2 : 4))
     when 0x05, 0x0d, 0x15, 0x1d, 0x25, 0x2d, 0x35, 0x3d # add/or/adc/sbb/and/sub/xor/cmp rax, imm32
       return offset - start + 4
     when 0xc6 # mov mem, imm8

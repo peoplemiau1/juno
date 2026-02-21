@@ -165,6 +165,14 @@ class NativeGenerator
     res[:allocations].each { |var, reg| @ctx.assign_register(var, reg) }
 
     params = node[:params].map { |p| p.is_a?(Hash) ? p[:name] : p }
+    param_types = node[:param_types] || {}
+    params.each do |p|
+      if param_types[p]
+        @ctx.var_types[p] = param_types[p]
+        @ctx.var_is_ptr[p] = true if param_types[p] == "ptr" || @ctx.structs.key?(param_types[p])
+      end
+    end
+
     if node[:name].include?('.') then @ctx.var_types["self"] = node[:name].split('.')[0]; @ctx.var_is_ptr["self"] = true end
 
     # Calculate needed stack size
@@ -189,7 +197,7 @@ class NativeGenerator
     # push rbp (8) + sub rsp, stack_size (even) + push N regs (N*8)
     # Total must be multiple of 16. Total pushed = 1 (RBP) + N (callee_saved).
     # If 1 + N is odd, we need 8 bytes padding.
-    if @arch == :x86_64 && callee_saved.length % 2 == 1
+    if @arch == :x86_64 && (callee_saved.length + 1) % 2 == 1
       @emitter.emit_sub_rsp(8)
     end
 
@@ -224,7 +232,7 @@ class NativeGenerator
     end
 
     unless has_ret
-      if @arch == :x86_64 && @emitter.callee_saved_regs.length % 2 == 1
+      if @arch == :x86_64 && (@emitter.callee_saved_regs.length + 1) % 2 == 1
         @emitter.emit_add_rsp(8)
       end
       @emitter.pop_callee_saved(@emitter.callee_saved_regs)

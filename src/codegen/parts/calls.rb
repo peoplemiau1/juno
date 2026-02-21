@@ -47,7 +47,8 @@ module GeneratorCalls
       "i32" => :gen_cast_i32, "u32" => :gen_cast_u32,
       "i64" => :gen_cast_i64, "u64" => :gen_cast_u64,
       "malloc" => :gen_malloc, "realloc" => :gen_realloc, "free" => :gen_free,
-      "ptr_add" => :gen_ptr_add, "ptr_sub" => :gen_ptr_sub
+      "ptr_add" => :gen_ptr_add, "ptr_sub" => :gen_ptr_sub,
+      "len" => :gen_str_len, "sizeof" => :gen_sizeof
     }
     return send(aliases[name], node) if aliases.key?(name)
     return gen_method_call(node) if name.include?('.')

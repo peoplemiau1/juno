@@ -1,0 +1,4 @@
+fn main() {
+    malloc(100) // Immediate leak
+    return 0
+}

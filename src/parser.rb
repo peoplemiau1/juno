@@ -26,6 +26,9 @@ class Parser
   
   def consume(type = nil)
     t = @tokens.shift
+    if t.nil?
+      error_eof("Expected #{type || 'token'}")
+    end
     if type && t[:type] != type
       error_unexpected(t, "Expected #{type}")
     end
@@ -37,7 +40,7 @@ class Parser
   def match_keyword?(val); peek && peek[:type] == :keyword && peek[:value] == val; end
 
   def with_loc(node, token)
-    return node unless node.is_a?(Hash)
+    return node unless node.is_a?(Hash) && token
     node[:line] = token[:line]
     node[:column] = token[:column]
     node
@@ -80,6 +83,9 @@ class Parser
   private
 
   def error_unexpected(token, message)
+    if token.nil?
+      error_eof(message)
+    end
     error = JunoParseError.new(
       "#{message}, got #{token[:type]} '#{token[:value]}'",
       filename: @filename,

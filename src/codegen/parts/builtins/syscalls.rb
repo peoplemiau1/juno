@@ -29,28 +29,25 @@ module BuiltinSyscalls
   end
 
   def gen_memcpy(node)
-    eval_expression(node[:args][2]); @emitter.push_reg(0)
-    eval_expression(node[:args][1]); @emitter.push_reg(0)
-    eval_expression(node[:args][0])
-    @emitter.push_reg(0)
-    @emitter.pop_reg(@arch == :aarch64 ? 0 : 7) # RDI or X0
-    @emitter.pop_reg(@arch == :aarch64 ? 1 : 6) # RSI or X1
-    @emitter.pop_reg(@arch == :aarch64 ? 2 : 1) # RCX or X2
-    if @arch == :x86_64 then @emitter.emit([0xfc]) end # cld
+    eval_expression(node[:args][0]); @emitter.push_reg(0) # dst
+    eval_expression(node[:args][1]); @emitter.push_reg(0) # src
+    eval_expression(node[:args][2]) # n in RAX
+
+    @emitter.mov_reg_reg(@arch == :aarch64 ? 2 : 1, 0) # n (X2 or RCX)
+    @emitter.pop_reg(@arch == :aarch64 ? 1 : 6) # src (X1 or RSI)
+    @emitter.pop_reg(@arch == :aarch64 ? 0 : 7) # dst (X0 or RDI)
     @emitter.memcpy
-    @emitter.pop_reg(0)
   end
 
   def gen_memset(node)
-    eval_expression(node[:args][2]); @emitter.push_reg(0)
-    eval_expression(node[:args][1]); @emitter.push_reg(0)
-    eval_expression(node[:args][0])
-    @emitter.push_reg(0)
-    @emitter.pop_reg(@arch == :aarch64 ? 0 : 7)
-    @emitter.pop_reg(@arch == :aarch64 ? 1 : 0)
-    @emitter.pop_reg(@arch == :aarch64 ? 2 : 1) # RCX on x86, X2 on arm
+    eval_expression(node[:args][0]); @emitter.push_reg(0) # dst
+    eval_expression(node[:args][1]); @emitter.push_reg(0) # val
+    eval_expression(node[:args][2]) # n in RAX
+
+    @emitter.mov_reg_reg(@arch == :aarch64 ? 2 : 1, 0) # n (X2 or RCX)
+    @emitter.pop_reg(@arch == :aarch64 ? 1 : 0) # val (X1 or RAX/AL)
+    @emitter.pop_reg(@arch == :aarch64 ? 0 : 7) # dst (X0 or RDI)
     @emitter.memset
-    @emitter.pop_reg(0)
   end
 
   def gen_lseek(node)

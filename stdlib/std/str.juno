@@ -1,0 +1,72 @@
+// std/str.juno - String handling module
+import std/vec
+
+struct String {
+    let data: ptr
+    let len: int
+    let capacity: int
+}
+
+fn str_new(text: ptr) -> ptr {
+    let s: String = malloc(sizeof(String))
+    let l = len(text)
+    s.len = l
+    s.capacity = l + 1
+    s.data = malloc(s.capacity)
+    memcpy(s.data, text, l)
+    byte_set(s.data, l, 0)
+    return s
+}
+
+fn str_concat(s1: String, s2: String) -> ptr {
+    let s: String = malloc(sizeof(String))
+    s.len = s1.len + s2.len
+    s.capacity = s.len + 1
+    s.data = malloc(s.capacity)
+    memcpy(s.data, s1.data, s1.len)
+    let dest = byte_add(s.data, s1.len)
+    memcpy(dest, s2.data, s2.len)
+    byte_set(s.data, s.len, 0)
+    return s
+}
+
+fn str_contains(s: String, sub: ptr) -> int {
+    let idx = str_find(s.data, sub)
+    if idx != 0 - 1 {
+        return 1
+    }
+    return 0
+}
+
+fn str_split(s: String, delim: ptr) -> ptr {
+    let v = vec_new()
+    let current = s.data
+    let d_len = len(delim)
+    let running = 1
+
+    while running == 1 {
+        let pos = str_find(current, delim)
+        if pos == 0 - 1 {
+            let part = str_new(current)
+            vec_push(v, part)
+            running = 0
+        } else {
+            let part: String = malloc(sizeof(String))
+            part.len = pos
+            part.capacity = pos + 1
+            part.data = malloc(part.capacity)
+            memcpy(part.data, current, pos)
+            byte_set(part.data, pos, 0)
+
+            vec_push(v, part)
+            current = byte_add(current, pos + d_len)
+        }
+    }
+    return v
+}
+
+fn str_free(s: String): int {
+    free(s.data)
+    free(s)
+    return 0
+}

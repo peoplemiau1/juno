@@ -430,11 +430,11 @@ class CodeEmitter
 
   def memcpy
     # dest=RDI, src=RSI, n=RCX
-    emit([0xf3, 0xa4]) # rep movsb
+    emit([0xfc, 0xf3, 0xa4]) # cld; rep movsb
   end
 
   def memset
     # dest=RDI, val=AL, n=RCX
-    emit([0xf3, 0xaa]) # rep stosb
+    emit([0xfc, 0xf3, 0xaa]) # cld; rep stosb
   end
 end

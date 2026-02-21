@@ -33,10 +33,12 @@ class ResourceAuditor
     @res_status.each do |res_id, status|
       if status == :born
         node = @res_origin[res_id]
-        JunoErrorReporter.warn(
+        @errors << JunoResourceError.new(
           "Resource leaked: resource allocated here was never consumed",
           filename: @filename,
-          line_num: node[:line]
+          line_num: node[:line],
+          column: node[:column] || 0,
+          source: @source
         )
       end
     end
@@ -44,11 +46,11 @@ class ResourceAuditor
 
   def process_statements(statements)
     statements.each do |node|
-      process_node(node)
+      process_node(node, false)
     end
   end
 
-  def process_node(node)
+  def process_node(node, consumed_by_parent = false)
     return unless node.is_a?(Hash)
     case node[:type]
     when :variable
@@ -84,6 +86,7 @@ class ResourceAuditor
     when :assignment
       # If RHS is a producing call, LHS becomes owner of a NEW resource
       if produces_resource?(node[:expression])
+        process_node(node[:expression], true) # it's consumed by the assignment
         if !node[:name].include?('.')
           res_id = @next_res_id
           @next_res_id += 1
@@ -120,8 +123,18 @@ class ResourceAuditor
             @res_status[res_id] = :consumed
           end
         else
-          process_node(arg)
+          process_node(arg, should_consume)
         end
+      end
+
+      if produces_resource?(node) && !consumed_by_parent
+        @errors << JunoResourceError.new(
+          "Unassigned resource: result of '#{node[:name]}' is never consumed",
+          filename: @filename,
+          line_num: node[:line] || 0,
+          column: node[:column] || 0,
+          source: @source
+        )
       end
 
     when :return
@@ -133,11 +146,11 @@ class ResourceAuditor
            @res_status[res_id] = :consumed
         end
       else
-        process_node(node[:expression])
+        process_node(node[:expression], true)
       end
 
     when :if_statement
-      process_node(node[:condition])
+      process_node(node[:condition], false)
 
       saved_status = @res_status.dup
       process_statements(node[:body])
@@ -155,16 +168,16 @@ class ResourceAuditor
       end
 
     when :while_statement
-      process_node(node[:condition])
+      process_node(node[:condition], false)
       process_statements(node[:body])
 
     when :binary_op
-      process_node(node[:left])
-      process_node(node[:right])
+      process_node(node[:left], false)
+      process_node(node[:right], false)
 
     when :deref_assign
-      process_node(node[:target])
-      process_node(node[:value])
+      process_node(node[:target], false)
+      process_node(node[:value], false)
     end
   end
 
@@ -187,6 +200,7 @@ class ResourceAuditor
 
     # Only specific naming patterns for user functions for now
     return true if name.start_with?('create_') || name.start_with?('new_') || name.start_with?('alloc_')
+    return true if ['parse_val', 'parse_str', 'parse_num', 'parse_arr', 'parse_obj'].include?(name)
 
     false
   end
@@ -196,7 +210,9 @@ class ResourceAuditor
       'byte_at', 'byte_set', 'byte_add', 'ptr_add',
       'prints', 'print', 'printi', 'output_int',
       'memcpy', 'memset', 'str_len', 'str_copy', 'str_cat', 'str_cmp',
-      'json_get', 'json_at', 'json_len', 'json_has', 'json_get_str', 'json_get_int', 'json_get_bool', 'json_is_null'
+      'json_get', 'json_at', 'json_len', 'json_has', 'json_get_str', 'json_get_int', 'json_get_bool', 'json_is_null',
+      'str_contains', 'vec_get', 'fs_write_text', 'net_accept_client', 'arena_alloc',
+      'parse_val', 'parse_str', 'parse_num', 'parse_arr', 'parse_obj', 'str_new', 'vec_new', 'arena_new'
     ]
     !exempt.include?(fn_name)
   end

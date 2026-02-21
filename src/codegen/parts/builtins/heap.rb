@@ -44,17 +44,16 @@ module BuiltinHeap
     if @arch == :aarch64
        @emitter.pop_reg(14) # x14 = new_size
        @emitter.pop_reg(15) # x15 = old_ptr
-       @emitter.push_reg(14); @emitter.push_reg(15) # preserve
 
        # malloc(new_size)
        @emitter.mov_reg_reg(0, 14)
        gen_malloc(nil)
-       # result in x0 (new_ptr)
+       @emitter.push_reg(0) # result (new_ptr) in stack
 
        @emitter.emit32(0xeb0001ff) # cmp x15, 0
        jz_pos = @emitter.current_pos; @emitter.emit32(0x54000000)
 
-       @emitter.push_reg(0) # save new_ptr
+       # Copy data
        @emitter.emit_sub_imm(15, 15, 8) # sub x15, x15, #8
        @emitter.emit32(0xf94001e1) # ldr x1, [x15] (old total size)
        @emitter.emit_add_imm(15, 15, 8) # add x15, x15, #8
@@ -71,38 +70,37 @@ module BuiltinHeap
        @emitter.emit32(0x38400542) # ldrb w2, [x10], #1
        @emitter.emit32(0x38000522) # strb w2, [x9], #1
        @emitter.emit_sub_imm(1, 1, 1) # sub x1, x1, #1
-       @emitter.patch_jmp(@emitter.current_pos, l)
+       @emitter.patch_jmp(@emitter.jmp_rel32, l)
 
-       @emitter.pop_reg(0) # restore new_ptr
        @emitter.patch_je(jz_pos, @emitter.current_pos)
-       @emitter.pop_reg(15); @emitter.pop_reg(14)
+       @emitter.pop_reg(0) # restore new_ptr
     else
-       @emitter.pop_reg(14); @emitter.pop_reg(15)
-       @emitter.push_reg(14); @emitter.push_reg(15)
-       @emitter.mov_reg_reg(0, 14); gen_malloc(nil)
+       @emitter.pop_reg(14) # new_size
+       @emitter.pop_reg(15) # old_ptr
+
+       # malloc(new_size)
+       @emitter.mov_reg_reg(0, 14)
+       gen_malloc(nil)
+       @emitter.push_reg(0) # save new_ptr
 
        # if (old_ptr == 0) return new_ptr
        @emitter.emit([0x4d, 0x85, 0xff]) # test r15, r15
        p_skip = @emitter.je_rel32
 
-       @emitter.push_reg(0) # save new_ptr
        # r9 = min(old_size, new_size)
-       # [r15-8] has old total size
-       @emitter.mov_reg_mem_idx(1, 15, -8) # rcx = [r15-8]
-       @emitter.emit([0x48, 0x83, 0xe9, 0x08]) # sub rcx, 8 (old user size)
+       @emitter.mov_reg_mem_idx(1, 15, -8) # rcx = old_total_size
+       @emitter.emit([0x48, 0x83, 0xe9, 0x08]) # sub rcx, 8 (old_user_size)
        @emitter.mov_reg_reg(9, 1) # r9 = old user size
        @emitter.emit([0x4d, 0x39, 0xf1]) # cmp r9, r14
        @emitter.cmov(">=", 9, 14) # R9 = min(old_size, new_size)
 
-       @emitter.pop_reg(7)        # rdi = new_ptr
-       @emitter.push_reg(7)       # save it again for return
+       @emitter.mov_reg_reg(7, 0) # rdi = new_ptr
        @emitter.mov_reg_reg(6, 15) # rsi = old_ptr
        @emitter.mov_reg_reg(1, 9) # rcx = min size
        @emitter.memcpy
 
-       @emitter.pop_reg(0) # restore new_ptr
        @emitter.patch_je(p_skip, @emitter.current_pos)
-       @emitter.pop_reg(15); @emitter.pop_reg(14)
+       @emitter.pop_reg(0) # restore new_ptr
     end
   end
 

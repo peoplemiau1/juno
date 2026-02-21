@@ -45,7 +45,6 @@ def compile_linux(input_file, arch = :x86_64, output_path = "build/output_linux"
     ast = monomorphizer.monomorphize
 
     puts "Step 6: Resource Auditing..."
-    # Collect function signatures for the auditor
     func_signatures = {}
     ast.each do |node|
       if node[:type] == :function_definition
@@ -94,14 +93,5 @@ else
   end
 
   output = (arch == :aarch64) ? "build/output_aarch64" : "build/output_linux"
-  begin
-    compile_linux(ARGV[0], arch, output)
-  rescue Interrupt
-    puts "\nCompilation interrupted by user."
-    exit 1
-  rescue => e
-    ice = JunoInternalError.new(e.message, e, filename: ARGV[0])
-    ice.display
-    exit 1
-  end
+  compile_linux(ARGV[0], arch, output)
 end

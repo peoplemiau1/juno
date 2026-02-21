@@ -150,9 +150,9 @@ module ParserStatements
     if match?(:colon)
       consume(:colon)
       return_type = consume_type
-    elsif match_symbol?('-') && peek_next && peek_next[:value] == '>'
+    elsif match_symbol?('-') && peek_next && (peek_next[:value] == '>' || peek_next[:type] == :rangle)
       consume_symbol('-')
-      consume_symbol('>')
+      if match_symbol?('>') then consume_symbol('>') else consume(:rangle) end
       return_type = consume_type
     end
 
