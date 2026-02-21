@@ -24,6 +24,7 @@ fn main() {
     test_registers()
     test_globals()
     test_complex_logic()
+    test_ownership()
 
     prints("\nDemo finished successfully!\n")
     return 0
@@ -74,4 +75,16 @@ fn test_complex_logic() {
         print(x)
         prints(")\n")
     }
+}
+
+fn test_ownership() {
+    prints("Testing Ownership Audit... ")
+
+    // Ресурс рождается (Born)
+    let p = malloc(16)
+
+    // Если мы закомментируем строку ниже, компилятор выдаст ошибку E0007 (Leak)
+    free(p) // Ресурс уничтожается (Kill)
+
+    prints("OK (Static analysis passed)\n")
 }
