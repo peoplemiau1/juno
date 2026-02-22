@@ -1,0 +1,21 @@
+// Juno FFI Demo
+// Calling C functions from libc
+
+extern fn abs(n: i32) -> i32 from "libc.so.6"
+extern fn strlen(s: ptr) -> i64 from "libc.so.6"
+
+fn main() -> i64 {
+    print("--- Juno FFI Demo ---")
+
+    let val = -123
+    let a = abs(val)
+    print("abs(-123) is:")
+    print(a)
+
+    let s = "FFI is working!"
+    let l = strlen(s)
+    print("strlen('FFI is working!') is:")
+    print(l)
+
+    return 0
+}

@@ -1,0 +1,12 @@
+extern fn strlen(s: ptr) -> int;
+
+fn main() {
+    let s = "FFI works!";
+    let l = strlen(s);
+    prints("strlen('");
+    prints(s);
+    prints("') = ");
+    print(l);
+    prints("\n");
+    return 0;
+}

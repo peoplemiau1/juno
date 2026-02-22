@@ -16,10 +16,10 @@ module GeneratorLogic
     when :assignment then process_assignment(node)
     when :deref_assign then process_deref_assign(node)
     when :fn_call then gen_fn_call(node)
-    when :variable, :binary_op, :literal, :unary_op, :string_literal, :member_access, :array_access, :dereference then eval_expression(node)
+    when :variable, :binary_op, :literal, :unary_op, :string_literal, :member_access, :array_access, :dereference, :match_expression, :panic, :todo, :cast, :anonymous_function then eval_expression(node)
     when :return
        eval_expression(node[:expression])
-       if @arch == :x86_64 && (@emitter.callee_saved_regs.length + 1) % 2 == 1
+       if @arch == :x86_64 && (@emitter.callee_saved_regs.length + 1) % 2 == 0
          @emitter.emit_add_rsp(8)
        end
        @emitter.pop_callee_saved(@emitter.callee_saved_regs)

@@ -23,13 +23,15 @@ class RegisterAllocator
     end
     addressed_vars.uniq!
 
-    # 2. Assign registers based on availability
+    # 2. Assign registers based on availability (Linear Scan with Spilling)
     allocations = {}
+    spilled = []
     free_regs = @allocatable_regs.dup
     active = [] # [{var: name, reg: sym, end: idx}]
 
     nodes.each_with_index do |node, idx|
       # Expire old intervals
+      active.sort_by! { |a| a[:end] }
       active.delete_if do |a|
         if a[:end] < idx
           free_regs.push(a[:reg])
@@ -43,16 +45,39 @@ class RegisterAllocator
       vars_defined = find_defined_vars(node)
       vars_defined.each do |v|
         next if globals.include?(v) # NEVER allocate registers for globals
-        next if allocations.key?(v) || free_regs.empty?
         next if addressed_vars.include?(v) # Skip variables with address taken
+        next if allocations.key?(v) || spilled.include?(v)
 
-        reg = free_regs.shift
-        allocations[v] = reg
-        active << { var: v, reg: reg, end: last_use[v] }
+        if free_regs.empty?
+          # Register pressure: spill the interval that ends farthest
+          spill_candidate = active.max_by { |a| a[:end] }
+
+          if spill_candidate && spill_candidate[:end] > last_use[v]
+            # Spill candidate ends later than current var v.
+            # Steal register from candidate.
+            reg = spill_candidate[:reg]
+            var_to_spill = spill_candidate[:var]
+
+            allocations.delete(var_to_spill)
+            spilled << var_to_spill
+            active.delete(spill_candidate)
+
+            allocations[v] = reg
+            active << { var: v, reg: reg, end: last_use[v] }
+          else
+            # Current var v ends farthest, spill v
+            spilled << v
+          end
+        else
+          # Register available
+          reg = free_regs.shift
+          allocations[v] = reg
+          active << { var: v, reg: reg, end: last_use[v] }
+        end
       end
     end
 
-    { allocations: allocations }
+    { allocations: allocations, spilled: spilled }
   end
 
   private
@@ -68,10 +93,23 @@ class RegisterAllocator
     when :if_statement
       vars += find_vars(node[:condition])
       (node[:body] || []).each { |n| vars += find_vars(n) }
+      (node[:elif_branches] || []).each { |elif|
+        vars += find_vars(elif[:condition])
+        (elif[:body] || []).each { |n| vars += find_vars(n) }
+      }
       (node[:else_body] || []).each { |n| vars += find_vars(n) }
     when :while_statement
       vars += find_vars(node[:condition])
       (node[:body] || []).each { |n| vars += find_vars(n) }
+    when :match_expression
+      vars += find_vars(node[:expression])
+      (node[:cases] || []).each { |c|
+        if c[:body].is_a?(Array)
+          c[:body].each { |s| vars += find_vars(s) }
+        else
+          vars += find_vars(c[:body])
+        end
+      }
     when :return
       vars += find_vars(node[:expression])
     when :increment

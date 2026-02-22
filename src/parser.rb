@@ -1,10 +1,12 @@
 require_relative "errors"
 require_relative "parser/parts/expressions"
 require_relative "parser/parts/statements"
+require_relative "parser/parts/watt"
 
 class Parser
   include ParserExpressions
   include ParserStatements
+  include WattParser
 
   def initialize(tokens, filename = "", source = "")
     @tokens = tokens
@@ -15,7 +17,11 @@ class Parser
   def parse
     ast = []
     until @tokens.empty?
-      ast << parse_statement
+      if match_symbol?('}')
+        error_unexpected(peek, "Unexpected '}' at top level")
+      end
+      stmt = parse_statement
+      ast << stmt if stmt
     end
     ast
   end
@@ -36,7 +42,7 @@ class Parser
   end
 
   def match?(type); peek && peek[:type] == type; end
-  def match_symbol?(val); peek && peek[:type] == :symbol && peek[:value] == val; end
+  def match_symbol?(val); peek && (peek[:type] == :symbol || peek[:type] == :operator) && peek[:value] == val; end
   def match_keyword?(val); peek && peek[:type] == :keyword && peek[:value] == val; end
 
   def with_loc(node, token)
@@ -50,7 +56,7 @@ class Parser
     t = @tokens.shift
     if t.nil?
       error_eof("Expected '#{val}'")
-    elsif t[:type] != :symbol
+    elsif t[:type] != :symbol && t[:type] != :operator
       error_unexpected(t, "Expected symbol '#{val}'")
     elsif val && t[:value] != val
       error_unexpected(t, "Expected '#{val}' but got '#{t[:value]}'")

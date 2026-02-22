@@ -1,0 +1,45 @@
+// Unified Juno & Watt Mix Test
+
+fn sum(a: int, b: int): int {
+    if a == 0 {
+        return b
+    } elif b == 0 {
+        return a
+    } else {
+        return a + b
+    }
+}
+
+pub fn main() -> int {
+    print("Mix Test Running...")
+
+    let x = 10
+    let y = 20
+    let z = sum(x, y)
+    print("Sum is:")
+    print(z)
+
+    let status = match z {
+        30 -> true,
+        _ -> false
+    }
+
+    if status {
+        print("Match Success")
+    } else {
+        print("Match Failed")
+        panic as "Match logic error"
+    }
+
+    print("Testing loop...")
+    let i = 0
+    loop {
+        i = i + 1
+        if i == 5 {
+            break
+        }
+    }
+    print("Loop finished")
+
+    return 0
+}

@@ -74,8 +74,19 @@ module GeneratorCalls
     num_pop.times { |i| @emitter.pop_reg(regs[i]) }
 
     @emitter.emit_sub_rsp(32) # if windows
-    @linker.add_fn_patch(@emitter.current_pos + (@arch == :aarch64 ? 0 : 1), node[:name], @arch == :aarch64 ? :aarch64_bl : :rel32)
-    @emitter.call_rel32
+    if @linker.instance_variable_get(:@got_slots).key?(node[:name])
+      if @arch == :aarch64
+         @emitter.emit_call_indirect(node[:name], @linker)
+      else
+         @emitter.xor_rax_rax if @arch == :x86_64
+         # FF 15 disp32 -> disp32 is at +2 from start of call_ind_rel32
+         @linker.add_import_patch(@emitter.current_pos + 2, node[:name], :rel32)
+         @emitter.call_ind_rel32
+      end
+    else
+      @linker.add_fn_patch(@emitter.current_pos + (@arch == :aarch64 ? 0 : 1), node[:name], @arch == :aarch64 ? :aarch64_bl : :rel32)
+      @emitter.call_rel32
+    end
     @emitter.emit_add_rsp(32) # if windows
 
     @emitter.emit_add_rsp(num_stack * (@arch == :aarch64 ? 16 : 8) + padding) if (num_stack * (@arch == :aarch64 ? 16 : 8) + padding) > 0

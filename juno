@@ -7,6 +7,7 @@ require_relative "src/lexer"
 require_relative "src/parser"
 require_relative "src/importer"
 require_relative "src/monomorphizer"
+require_relative "src/semantic"
 require_relative "src/optimizer/turbo"
 require_relative "src/analyzer/resource_auditor"
 require_relative "src/codegen/native_generator"
@@ -15,12 +16,13 @@ require_relative "src/errors"
 
 LOGO = <<-'EOF'
       ____.
-     |    |__ __  ____   ____
-     |    |  |  \/    \ /  _ \
- /\__|    |  |  /   |  (  <_> )
- \________|____/|___|  /\____/
-                     \/
-    Juno Compiler v2.0 - "Hell Edition"
+     |    |__ __  ____   ____    __      __         __    __
+     |    |  |  \/    \ /  _ \  /  \    /  \_____ _/  |__/  |_
+ /\__|    |  |  /   |  (  <_> ) \   \/\/   /\__  \\   __\   __\
+ \________|____/|___|  /\____/   \        /  / __ \|  |  |  |
+                     \/           \__/\  /  (____  /__|  |__|
+                                       \/        \/
+    Juno & Watt Compiler v2.1 - "Unified Architectural Integrity"
 EOF
 
 options = {
@@ -189,6 +191,9 @@ begin
 
   monomorphizer = Monomorphizer.new(ast)
   ast = monomorphizer.monomorphize
+
+  analyzer = SemanticAnalyzer.new(ast, input_file, code)
+  ast = analyzer.analyze
 
   optimizer = TurboOptimizer.new(ast)
   ast = optimizer.optimize

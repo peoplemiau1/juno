@@ -28,7 +28,7 @@ class Lexer
       when /\A(\/\/|#).*$/
         cursor += $&.length
         @column += $&.length
-      when /\A(struct|union|fn|func|def|if|else|return|while|break|continue|let|for|import|packed)\b/
+      when /\A(struct|union|fn|func|def|if|elif|else|return|while|loop|break|continue|let|for|import|use|packed|extern|from|pub|match|todo|panic|as|true|false)\b/
         # Normalize func/def -> fn
         kw = $1
         kw = "fn" if kw == "func" || kw == "def"
@@ -104,7 +104,7 @@ class Lexer
         add_token(:ident, $&)
         cursor += $&.length
         @column += $&.length
-      when /\A(==|!=|<=|>=|<<|>>|\+\+|\-\-)/
+      when /\A(==|!=|<=|>=|<<|>>|<>|->|\+\+|\-\-)/
         add_token(:operator, $&)
         cursor += $&.length
         @column += $&.length

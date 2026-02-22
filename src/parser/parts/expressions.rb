@@ -7,9 +7,9 @@ module ParserExpressions
   def parse_logical_or
     node = parse_logical_and
     while match?(:operator) && peek[:value] == '||'
-      consume(:operator)
+      token = consume(:operator)
       right = parse_logical_and
-      node = { type: :binary_op, op: '||', left: node, right: right }
+      node = with_loc({ type: :binary_op, op: '||', left: node, right: right }, token)
     end
     node
   end
@@ -17,9 +17,9 @@ module ParserExpressions
   def parse_logical_and
     node = parse_bit_or
     while match?(:operator) && peek[:value] == '&&'
-      consume(:operator)
+      token = consume(:operator)
       right = parse_bit_or
-      node = { type: :binary_op, op: '&&', left: node, right: right }
+      node = with_loc({ type: :binary_op, op: '&&', left: node, right: right }, token)
     end
     node
   end
@@ -27,9 +27,9 @@ module ParserExpressions
   def parse_bit_or
     node = parse_bit_xor
     while match?(:bitor)
-      consume(:bitor)
+      token = consume(:bitor)
       right = parse_bit_xor
-      node = { type: :binary_op, op: '|', left: node, right: right }
+      node = with_loc({ type: :binary_op, op: '|', left: node, right: right }, token)
     end
     node
   end
@@ -37,9 +37,9 @@ module ParserExpressions
   def parse_bit_xor
     node = parse_bit_and
     while match?(:bitxor)
-      consume(:bitxor)
+      token = consume(:bitxor)
       right = parse_bit_and
-      node = { type: :binary_op, op: '^', left: node, right: right }
+      node = with_loc({ type: :binary_op, op: '^', left: node, right: right }, token)
     end
     node
   end
@@ -47,9 +47,9 @@ module ParserExpressions
   def parse_bit_and
     node = parse_comparison
     while match?(:ampersand) && !is_address_of_context?
-      consume(:ampersand)
+      token = consume(:ampersand)
       right = parse_comparison
-      node = { type: :binary_op, op: '&', left: node, right: right }
+      node = with_loc({ type: :binary_op, op: '&', left: node, right: right }, token)
     end
     node
   end
@@ -63,6 +63,7 @@ module ParserExpressions
     node = parse_shift
     while (match?(:operator) && ['==', '!=', '<=', '>='].include?(peek[:value])) ||
           match?(:langle) || match?(:rangle)
+      token = peek
       if match?(:langle)
         consume(:langle)
         op = '<'
@@ -73,7 +74,7 @@ module ParserExpressions
         op = consume(:operator)[:value]
       end
       right = parse_shift
-      node = { type: :binary_op, op: op, left: node, right: right }
+      node = with_loc({ type: :binary_op, op: op, left: node, right: right }, token)
     end
     node
   end
@@ -81,9 +82,10 @@ module ParserExpressions
   def parse_shift
     node = parse_additive
     while match?(:operator) && ['<<', '>>'].include?(peek[:value])
-      op = consume(:operator)[:value]
+      token = consume(:operator)
+      op = token[:value]
       right = parse_additive
-      node = { type: :binary_op, op: op, left: node, right: right }
+      node = with_loc({ type: :binary_op, op: op, left: node, right: right }, token)
     end
     node
   end
@@ -91,9 +93,10 @@ module ParserExpressions
   def parse_additive
     node = parse_term
     while match_symbol?('+') || match_symbol?('-')
-      op = consume_symbol[:value]
+      token = consume_symbol
+      op = token[:value]
       right = parse_term
-      node = { type: :binary_op, op: op, left: node, right: right }
+      node = with_loc({ type: :binary_op, op: op, left: node, right: right }, token)
     end
     node
   end
@@ -101,6 +104,7 @@ module ParserExpressions
   def parse_term
     node = parse_unary
     while match?(:star) || match_symbol?('/') || match_symbol?('%')
+      token = peek
       if match?(:star)
         # Hack to avoid grabbing * in *ptr = expr as multiplication
         is_assign = false
@@ -129,7 +133,7 @@ module ParserExpressions
         op = consume_symbol[:value]
       end
       right = parse_unary
-      node = { type: :binary_op, op: op, left: node, right: right }
+      node = with_loc({ type: :binary_op, op: op, left: node, right: right }, token)
     end
     node
   end
@@ -147,6 +151,13 @@ module ParserExpressions
   def parse_factor
     # Primaries and unary or dots
     left = parse_primary
+
+    while match_keyword?('as')
+      consume_keyword('as')
+      type = consume_type
+      left = { type: :cast, expression: left, target_type: type }
+    end
+
     while match_symbol?('.')
       consume_symbol('.')
       member = consume_ident
@@ -185,6 +196,12 @@ module ParserExpressions
     if match?(:number)
       token = peek
       with_loc({ type: :literal, value: consume(:number)[:value] }, token)
+    elsif match_keyword?('true')
+      token = consume_keyword('true')
+      with_loc({ type: :literal, value: true }, token)
+    elsif match_keyword?('false')
+      token = consume_keyword('false')
+      with_loc({ type: :literal, value: false }, token)
     elsif match?(:string)
       token = peek
       with_loc({ type: :string_literal, value: consume(:string)[:value] }, token)
@@ -230,6 +247,14 @@ module ParserExpressions
         node[:type_args] = type_args unless type_args.empty?
         with_loc(node, token)
       end
+    elsif match_keyword?('match')
+      parse_match
+    elsif match_keyword?('panic')
+      parse_panic
+    elsif match_keyword?('todo')
+      parse_todo
+    elsif match_keyword?('fn')
+      parse_anonymous_fn
     elsif match_symbol?('(')
       consume_symbol('(')
       exp = parse_expression

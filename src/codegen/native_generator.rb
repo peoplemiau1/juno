@@ -63,6 +63,8 @@ class NativeGenerator
       case n[:type]
       when :function_definition
         @linker.declare_function(n[:name])
+      when :extern_definition
+        @linker.declare_import(n[:name], n[:lib])
       when :struct_definition
         gen_struct_def(n)
       when :union_definition
@@ -81,7 +83,7 @@ class NativeGenerator
     top_level = []
     @ast.each do |n|
       case n[:type]
-      when :struct_definition, :union_definition, :function_definition
+      when :struct_definition, :union_definition, :function_definition, :extern_definition
         next
       else
         top_level << n
@@ -131,7 +133,7 @@ class NativeGenerator
 
     builder = case @target_os
               when :linux
-                ELFBuilder.new(final_bytes, @arch, result[:code].length, result[:data].length, result[:bss_len])
+                ELFBuilder.new(final_bytes, @arch, result[:code].length, result[:data].length, result[:bss_len], external_symbols: result[:external_symbols], got_slots: result[:got_slots], label_rvas: result[:label_rvas])
               when :flat
                 FlatBuilder.new(final_bytes)
               when :windows
@@ -158,6 +160,27 @@ class NativeGenerator
     JunoErrorReporter.report(error)
   end
 
+  def find_all_decls(nodes)
+    decls = []
+    nodes.each do |n|
+      next unless n.is_a?(Hash)
+      if (n[:type] == :assignment && n[:let]) || n[:type] == :array_decl
+        decls << n
+      elsif n[:type] == :if_statement
+        decls += find_all_decls(n[:body])
+        (n[:elif_branches] || []).each { |elif| decls += find_all_decls(elif[:body]) }
+        decls += find_all_decls(n[:else_body] || [])
+      elsif n[:type] == :while_statement || n[:type] == :for_statement
+        decls += find_all_decls(n[:body])
+      elsif n[:type] == :match_expression
+        n[:cases].each do |c|
+          decls += find_all_decls(c[:body]) if c[:body].is_a?(Array)
+        end
+      end
+    end
+    decls
+  end
+
   def gen_function(node)
     @linker.register_function(node[:name], @emitter.current_pos); @ctx.reset_for_function(node[:name])
 
@@ -176,16 +199,24 @@ class NativeGenerator
 
     if node[:name].include?('.') then @ctx.var_types["self"] = node[:name].split('.')[0]; @ctx.var_is_ptr["self"] = true end
 
-    # Calculate needed stack size
-    needed_stack = @stack_size
-    node[:body].each do |stmt|
-      if stmt[:type] == :array_decl
-        needed_stack += (stmt[:size] * 8 + 16)
+    # Pre-calculate needed stack size based on non-register variables
+    @ctx.stack_ptr = 64
+    node[:params].each do |p|
+      p_name = p.is_a?(Hash) ? p[:name] : p
+      @ctx.declare_variable(p_name) unless @ctx.in_register?(p_name)
+    end
+
+    find_all_decls(node[:body]).each do |stmt|
+      if stmt[:type] == :assignment && stmt[:let]
+        @ctx.declare_variable(stmt[:name]) unless @ctx.in_register?(stmt[:name])
+      elsif stmt[:type] == :array_decl
+        @ctx.declare_array(stmt[:name], stmt[:size])
       end
     end
-    # Ensure 16-byte alignment
+
+    needed_stack = (@ctx.stack_ptr > @stack_size) ? @ctx.stack_ptr : @stack_size
     needed_stack = (needed_stack + 15) & ~15
-    @ctx.stack_ptr = 64 # Reset ptr but track for prologue
+    @ctx.stack_ptr = 64 # Reset for actual generation
     @ctx.current_fn_stack_size = needed_stack
 
     @emitter.emit_prologue(needed_stack)
@@ -197,8 +228,8 @@ class NativeGenerator
     # Stack alignment for x86_64 (16 bytes)
     # push rbp (8) + sub rsp, stack_size (even) + push N regs (N*8)
     # Total must be multiple of 16. Total pushed = 1 (RBP) + N (callee_saved).
-    # If 1 + N is odd, we need 8 bytes padding.
-    if @arch == :x86_64 && (callee_saved.length + 1) % 2 == 1
+    # If 1 + N is even, we need 8 bytes padding to make total odd (+ ret = even).
+    if @arch == :x86_64 && (callee_saved.length + 1) % 2 == 0
       @emitter.emit_sub_rsp(8)
     end
 
@@ -233,7 +264,7 @@ class NativeGenerator
     end
 
     unless has_ret
-      if @arch == :x86_64 && (@emitter.callee_saved_regs.length + 1) % 2 == 1
+      if @arch == :x86_64 && (@emitter.callee_saved_regs.length + 1) % 2 == 0
         @emitter.emit_add_rsp(8)
       end
       @emitter.pop_callee_saved(@emitter.callee_saved_regs)

@@ -49,24 +49,25 @@ module PrintUtils
       @emitter.push_reg(2); @emitter.push_reg(1)
 
       @emitter.emit_load_address("int_buffer", @linker)
-      # sub rax, 62; mov byte [rax], 10; rsi = rax
-      @emitter.emit([0x48, 0x83, 0xc0, 62, 0xc6, 0x00, 10])
-      @emitter.mov_reg_reg(6, 0)
-      @emitter.mov_reg_imm(1, 10)
-      # load original rax from stack [rsp+32]
-      @emitter.emit([0x48, 0x8b, 0x44, 0x24, 32])
+      @emitter.add_reg_imm(0, 62) # rax += 62
+      @emitter.mov_mem8_imm8(0, 10) # mov byte [rax], 10 ('\n')
+      @emitter.mov_reg_reg(6, 0) # rsi = rax
+      @emitter.mov_reg_imm(1, 10) # rcx = 10
+      @emitter.mov_rax_rsp_disp8(32) # load original rax from stack [rsp+32]
 
       l = @emitter.current_pos
-      @emitter.emit([0x48, 0x31, 0xd2, 0x48, 0xf7, 0xf1]) # xor rdx, rdx; div rcx
-      @emitter.emit([0x80, 0xc2, 0x30]) # add dl, '0'
-      @emitter.emit([0x48, 0xff, 0xce, 0x88, 0x16, 0x48, 0x85, 0xc0]) # dec rsi; mov [rsi], dl; test rax, rax
+      @emitter.xor_reg_reg(2, 2) # xor rdx, rdx
+      @emitter.idiv_reg(1) # idiv rcx
+      @emitter.add_reg_imm(2, 48) # add rdx, '0'
+      @emitter.dec_reg(6) # dec rsi
+      @emitter.mov_mem_reg_reg8(6, 2) # mov [rsi], dl
+      @emitter.test_rax_rax
       p_loop = @emitter.jne_rel32
       @emitter.patch_jne(p_loop, l)
 
       @emitter.mov_reg_reg(11, 6) # start ptr
       @emitter.emit_load_address("int_buffer", @linker)
-      # rax += 63; sub rax, r11; rdx = rax; rsi = r11
-      @emitter.emit([0x48, 0x83, 0xc0, 63])
+      @emitter.add_reg_imm(0, 63) # rax += 63
       @emitter.sub_reg_reg(0, 11) # rax = buf+63 - start
       @emitter.mov_reg_reg(2, 0) # RDX = len
       @emitter.mov_reg_reg(6, 11) # RSI = start

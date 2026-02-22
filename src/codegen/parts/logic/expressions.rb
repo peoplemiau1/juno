@@ -42,9 +42,84 @@ module GeneratorExpressions
     when :string_literal then gen_string_literal(expr)
     when :address_of then gen_address_of(expr)
     when :dereference then gen_dereference(expr)
+    when :match_expression then gen_match(expr)
+    when :panic then gen_panic(expr)
+    when :todo then gen_todo(expr)
+    when :cast then gen_cast(expr)
+    when :anonymous_function then gen_anonymous_fn(expr)
     else
       raise "Unknown expression type in eval_expression: #{expr[:type].inspect}"
     end
+  end
+
+  def gen_match(node)
+    eval_expression(node[:expression])
+    @emitter.push_reg(0) # Store matched value on stack
+
+    end_patches = []
+
+    node[:cases].each do |c|
+      @emitter.mov_rax_rsp_disp8(0) # Load matched value back
+      @emitter.mov_reg_reg(2, 0) # RDX = Matched value
+
+      gen_pattern_check(c[:pattern])
+      @emitter.test_rax_rax
+      next_case_patch = @emitter.je_rel32
+
+      # Match body
+      if c[:body].is_a?(Array)
+        c[:body].each { |s| process_node(s) }
+      else
+        eval_expression(c[:body])
+      end
+
+      end_patches << @emitter.jmp_rel32
+      @emitter.patch_je(next_case_patch, @emitter.current_pos)
+    end
+
+    # Label for jumps from inside cases
+    pop_pos = @emitter.current_pos
+    @emitter.pop_reg(2) # Pop matched value into RDX to keep RAX (result)
+
+    end_pos = @emitter.current_pos
+    end_patches.each { |p| @emitter.patch_jmp(p, pop_pos) }
+  end
+
+  def gen_pattern_check(pattern)
+    case pattern[:type]
+    when :wildcard_pattern
+      @emitter.mov_rax(1)
+    when :literal_pattern
+      @emitter.mov_reg_imm(1, pattern[:value].is_a?(TrueClass) ? 1 : (pattern[:value].is_a?(FalseClass) ? 0 : pattern[:value]))
+      @emitter.cmp_rax_rdx("==")
+    when :bind_pattern
+      # For now, just bind to a local variable if it was used in code
+      # This is simplified
+      @emitter.mov_rax(1)
+    else
+      @emitter.mov_rax(0)
+    end
+  end
+
+  def gen_panic(node)
+    @emitter.mov_rax(1) # exit code
+    @emitter.emit_sys_exit_rax
+  end
+
+  def gen_todo(node)
+    @emitter.mov_rax(2) # exit code
+    @emitter.emit_sys_exit_rax
+  end
+
+  def gen_cast(node)
+    eval_expression(node[:expression])
+    # Juno currently is mostly 64-bit, but we can add truncation if needed
+  end
+
+  def gen_anonymous_fn(node)
+    # This requires creating a real function and returning its address
+    # For now, a stub
+    @emitter.mov_rax(0)
   end
 
   def eval_binary_op(expr)
@@ -81,7 +156,31 @@ module GeneratorExpressions
     when "<<" then @emitter.shl_rax_cl
     when ">>" then @emitter.shr_rax_cl
     when "==", "!=", "<", ">", "<=", ">=" then @emitter.cmp_rax_rdx(expr[:op])
+    when "&&" then gen_logical_and(expr)
+    when "||" then gen_logical_or(expr)
     end
+  end
+
+  def gen_logical_and(node)
+    eval_expression(node[:left])
+    @emitter.test_rax_rax
+    exit_patch = @emitter.je_rel32
+    eval_expression(node[:right])
+    @emitter.test_rax_rax
+    @emitter.mov_rax(0)
+    @emitter.emit([0x0f, 0x95, 0xc0]) # setne al
+    @emitter.patch_je(exit_patch, @emitter.current_pos)
+  end
+
+  def gen_logical_or(node)
+    eval_expression(node[:left])
+    @emitter.test_rax_rax
+    success_patch = @emitter.jne_rel32
+    eval_expression(node[:right])
+    @emitter.test_rax_rax
+    @emitter.mov_rax(0)
+    @emitter.emit([0x0f, 0x95, 0xc0]) # setne al
+    @emitter.patch_jne(success_patch, @emitter.current_pos)
   end
 
   def pointer_node?(node)
