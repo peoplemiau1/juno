@@ -32,6 +32,7 @@ class NativeGenerator
     @emitter = (arch == :aarch64) ? AArch64Emitter.new : CodeEmitter.new
     @allocator = RegisterAllocator.new(arch)
     @stack_size = STACK_SIZE
+    @loop_stack = []
 
     base_rva = if target_os == :linux
                  (arch == :aarch64) ? 0x1000 : 0x401000

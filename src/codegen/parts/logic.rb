@@ -16,6 +16,7 @@ module GeneratorLogic
     when :assignment then process_assignment(node)
     when :deref_assign then process_deref_assign(node)
     when :fn_call then gen_fn_call(node)
+    when :variable, :binary_op, :literal, :unary_op, :string_literal, :member_access, :array_access, :dereference then eval_expression(node)
     when :return
        eval_expression(node[:expression])
        if @arch == :x86_64 && (@emitter.callee_saved_regs.length + 1) % 2 == 1
@@ -30,6 +31,8 @@ module GeneratorLogic
     when :insertC then gen_insertC(node)
     when :array_decl then gen_array_decl(node)
     when :array_assign then gen_array_assign(node)
+    when :break then gen_break(node)
+    when :continue then gen_continue(node)
     else
       raise "Unknown node type in process_node: #{node[:type].inspect}"
     end

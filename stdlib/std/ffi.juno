@@ -1,0 +1,134 @@
+struct Elf64_Phdr { type: i32, flags: i32, offset: i64, vaddr: i64, paddr: i64, filesz: i64, memsz: i64, align: i64 }
+struct Elf64_Dyn { tag: i64, val: i64 }
+struct Elf64_Sym { name: i32, info: u8, other: u8, shndx: i16, value: i64, size: i64 }
+
+let g_dlopen_ptr = 0
+let g_dlsym_ptr = 0
+
+fn _ffi_strcmp(s1: ptr, s2: ptr) -> int {
+    let i = 0
+    while 1 {
+        let c1 = u8(*(s1 + i))
+        let c2 = u8(*(s2 + i))
+        if c1 != c2 { return c1 - c2 }
+        if c1 == 0 { return 0 }
+        i = i + 1
+    }
+    return 0
+}
+
+fn _ffi_find_symbol(base: int, sym_name: ptr) -> int {
+    if base == 0 { return 0 }
+    let phoff = *(base + 32)
+    let phnum = u16(*(base + 56))
+    let dyn_addr = 0
+    let i = 0
+    while i < phnum {
+        let ph: Elf64_Phdr = base + phoff + (i * 56)
+        if ph.type == 2 {
+            dyn_addr = ph.vaddr
+            break
+        }
+        i = i + 1
+    }
+    if dyn_addr == 0 { return 0 }
+    let strtab = 0
+    let symtab = 0
+    let j = 0
+    while j < 200 {
+        let d_ptr = base + dyn_addr + (j * 16)
+        let tag = *d_ptr
+        let val = *(d_ptr + 8)
+        if tag == 0 { break }
+        if tag == 5 { strtab = val }
+        if tag == 6 { symtab = val }
+        j = j + 1
+    }
+    if strtab == 0 { return 0 }
+    if strtab < base { strtab = base + strtab }
+    if symtab < base { symtab = base + symtab }
+    let k = 0
+    while k < 15000 {
+        let sym: Elf64_Sym = symtab + (k * 24)
+        if sym.name != 0 {
+            if _ffi_strcmp(strtab + sym.name, sym_name) == 0 {
+                return base + sym.value
+            }
+        }
+        k = k + 1
+    }
+    return 0
+}
+
+#ifdef __x86_64__
+fn ffi_call(f_addr: int, a1: ptr, a2: int, a3: int) -> int {
+    insertC {
+        0x55, 0x48, 0x89, 0xe5, 0x48, 0x83, 0xe4, 0xf0,
+        0x48, 0x89, 0xf8, 0x48, 0x89, 0xf7, 0x48, 0x89, 0xd6, 0x48, 0x89, 0xca,
+        0xff, 0xd0,
+        0x48, 0x89, 0xec, 0x5d, 0xc3
+    }
+}
+#endif
+
+#ifdef __aarch64__
+fn ffi_call(f_addr: int, a1: ptr, a2: int, a3: int) -> int {
+    insertC {
+        0xE4, 0x03, 0x00, 0xAA, 0xE0, 0x03, 0x01, 0xAA, 0xE1, 0x03, 0x02, 0xAA,
+        0xE2, 0x03, 0x03, 0xAA, 0x80, 0x00, 0x3F, 0xD6, 0xC0, 0x03, 0x5F, 0xD6
+    }
+}
+#endif
+
+// Находим базу libc/ld через системный стек (Auxiliary Vector)
+fn ffi_init() -> int {
+    if g_dlopen_ptr != 0 { return 1 }
+    
+    // В PRoot/Box64 проще всего найти libc через попытку открыть её по стандартному пути
+    // Но мы сделаем хитрее: воспользуемся тем, что Box64 прокидывает символы
+    
+    // Попробуем найти dlopen в текущем процессе (он там есть благодаря Box64)
+    let base = 0x7f0000000000 // Базовое предположение для Box64
+    // Но так как у нас нет GetModuleHandle, мы все же прочитаем maps, но БЕЗОПАСНО
+    
+    let maps = file_read_all("/proc/self/maps")
+    let libc_idx = str_find(maps, "libc.so")
+    if libc_idx == 0 - 1 { libc_idx = str_find(maps, "libc-") }
+    
+    if libc_idx != 0 - 1 {
+        let start = libc_idx
+        while start > 0 {
+            if u8(*(maps + start - 1)) == 10 { break }
+            start = start - 1
+        }
+        // Парсим адрес вручную
+        let addr = 0
+        let i = 0
+        while i < 12 {
+            let c = u8(*(maps + start + i))
+            if c == 45 { break }
+            let v = 0
+            if c >= 48 { if c <= 57 { v = c - 48 } }
+            if c >= 97 { if c <= 102 { v = c - 87 } }
+            res = (addr << 4) | v
+            addr = res
+            i = i + 1
+        }
+        
+        g_dlopen_ptr = _ffi_find_symbol(addr, "dlopen")
+        g_dlsym_ptr = _ffi_find_symbol(addr, "dlsym")
+        
+        if g_dlopen_ptr != 0 { return 1 }
+    }
+    return 0
+}
+
+fn dlopen(lib: ptr) -> int {
+    ffi_init()
+    return ffi_call(g_dlopen_ptr, lib, 1, 0)
+}
+
+fn dlsym(h: int, s: ptr) -> int {
+    ffi_init()
+    return ffi_call(g_dlsym_ptr, h, s, 0)
+}

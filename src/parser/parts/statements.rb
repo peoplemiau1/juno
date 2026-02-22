@@ -18,6 +18,9 @@ module ParserStatements
   end
 
   def parse_statement
+    while match_symbol?(";")
+      consume_symbol(";")
+    end
     token = peek
     if token.nil?
       error_eof("Expected statement")
@@ -29,6 +32,9 @@ module ParserStatements
       when 'for'    then parse_for
       when 'let'    then parse_let
       when 'return' then parse_return
+when 'break'    then parse_break
+when 'continue' then parse_continue
+
       when 'fn'     then parse_fn_definition
       when 'struct' then parse_struct_definition
       when 'packed' then parse_packed_struct
@@ -193,6 +199,7 @@ module ParserStatements
         field_types[field_name] = consume_type
       end
       fields << field_name
+      consume_symbol(",") if match_symbol?(",")
     end
     consume_symbol('}')
     { type: :struct_definition, name: name, fields: fields, field_types: field_types, type_params: type_params }
@@ -221,6 +228,7 @@ module ParserStatements
         field_types[field_name] = consume_type
       end
       fields << field_name
+      consume_symbol(",") if match_symbol?(",")
     end
     consume_symbol('}')
     { type: :struct_definition, name: name, fields: fields, field_types: field_types, packed: true, type_params: type_params }
@@ -248,6 +256,7 @@ module ParserStatements
         field_types[field_name] = consume_type
       end
       fields << field_name
+      consume_symbol(",") if match_symbol?(",")
     end
     consume_symbol('}')
     { type: :union_definition, name: name, fields: fields, field_types: field_types, type_params: type_params }
@@ -351,4 +360,15 @@ module ParserStatements
     value = parse_expression
     { type: :deref_assign, target: target, value: value }
   end
+
+def parse_break
+  consume_keyword('break')
+  { type: :break }
+end
+
+def parse_continue
+  consume_keyword('continue')
+  { type: :continue }
+end
+
 end
