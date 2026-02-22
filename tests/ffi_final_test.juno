@@ -1,0 +1,10 @@
+extern fn strlen(s: ptr) -> int;
+
+fn main() {
+    let s = "Juno FFI Final Test";
+    let l = strlen(s);
+    prints("strlen: ");
+    print(l);
+    prints("\n");
+    return 0;
+}

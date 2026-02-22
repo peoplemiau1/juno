@@ -1,0 +1,14 @@
+extern fn OpenSSL_version(t: i32) -> ptr from "libcrypto.so.3"
+extern fn puts(s: ptr) -> i32 from "libc.so.6"
+
+fn main() -> i64 {
+    puts("OpenSSL Version Info:")
+
+    let v = OpenSSL_version(0)
+    puts(v)
+
+    let p = OpenSSL_version(3)
+    puts(p)
+
+    return 0
+}

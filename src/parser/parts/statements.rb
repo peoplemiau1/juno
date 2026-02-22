@@ -22,8 +22,8 @@ module ParserStatements
       consume_symbol(";")
     end
     token = peek
-    if token.nil?
-      error_eof("Expected statement")
+    if token.nil? || match_symbol?("}")
+      return nil
     end
     if token[:type] == :keyword
       case token[:value]
@@ -40,6 +40,7 @@ when 'continue' then parse_continue
       when 'packed' then parse_packed_struct
       when 'union'  then parse_union_definition
       when 'import' then parse_import
+      when 'extern' then parse_extern_definition
       else error_unexpected(token, "Unknown keyword")
       end
     elsif token[:type] == :insertC
@@ -101,7 +102,8 @@ when 'continue' then parse_continue
     consume_symbol('{')
     body = []
     until match_symbol?('}')
-      body << parse_statement
+      stmt = parse_statement
+      body << stmt if stmt
     end
     consume_symbol('}')
     else_body = nil
@@ -110,7 +112,8 @@ when 'continue' then parse_continue
       consume_symbol('{')
       else_body = []
       until match_symbol?('}')
-        else_body << parse_statement
+        stmt = parse_statement
+        else_body << stmt if stmt
       end
       consume_symbol('}')
     end
@@ -165,7 +168,8 @@ when 'continue' then parse_continue
     consume_symbol('{')
     body = []
     until match_symbol?('}')
-      body << parse_statement
+      stmt = parse_statement
+      body << stmt if stmt
     end
     consume_symbol('}')
     params.unshift("self") if name.include?('.') && !params.include?("self")
@@ -298,7 +302,8 @@ when 'continue' then parse_continue
     consume_symbol('{')
     body = []
     until match_symbol?('}')
-      body << parse_statement
+      stmt = parse_statement
+      body << stmt if stmt
     end
     consume_symbol('}')
     { type: :while_statement, condition: cond, body: body }
@@ -321,10 +326,49 @@ when 'continue' then parse_continue
     consume_symbol('{')
     body = []
     until match_symbol?('}')
-      body << parse_statement
+      stmt = parse_statement
+      body << stmt if stmt
     end
     consume_symbol('}')
     { type: :for_statement, init: init, condition: cond, update: update, body: body }
+  end
+
+  def parse_extern_definition
+    consume_keyword('extern')
+    consume_keyword('fn')
+    name = consume_ident
+
+    consume_symbol('(')
+    params = []
+    param_types = {}
+    until match_symbol?(')')
+      param_name = consume_ident
+      if match?(:colon)
+        consume(:colon)
+        param_types[param_name] = consume_type
+      end
+      params << param_name
+      consume_symbol(',') if match_symbol?(',')
+    end
+    consume_symbol(')')
+
+    return_type = nil
+    if match?(:colon)
+      consume(:colon)
+      return_type = consume_type
+    elsif match_symbol?('-') && peek_next && (peek_next[:value] == '>' || peek_next[:type] == :rangle)
+      consume_symbol('-')
+      if match_symbol?('>') then consume_symbol('>') else consume(:rangle) end
+      return_type = consume_type
+    end
+
+    lib_name = "libc.so.6"
+    if match_keyword?('from')
+      consume_keyword('from')
+      lib_name = consume(:string)[:value]
+    end
+
+    { type: :extern_definition, name: name, params: params, param_types: param_types, return_type: return_type, lib: lib_name }
   end
 
   def parse_import

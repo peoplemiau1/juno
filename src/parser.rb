@@ -15,7 +15,11 @@ class Parser
   def parse
     ast = []
     until @tokens.empty?
-      ast << parse_statement
+      if match_symbol?('}')
+        error_unexpected(peek, "Unexpected '}' at top level")
+      end
+      stmt = parse_statement
+      ast << stmt if stmt
     end
     ast
   end

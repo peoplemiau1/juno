@@ -265,6 +265,14 @@ class AArch64Emitter
     emit32(0xd63f0000 | (reg << 5))
   end
 
+  def emit_call_indirect(label, linker)
+    pos = current_pos
+    emit32(0x10000009) # ADR X9, 0
+    linker.add_import_patch(pos, label, :aarch64_adr)
+    emit32(0xf9400129) # LDR X9, [X9]
+    emit32(0xd63f0120) # BLR X9
+  end
+
   def jmp_rel32; pos = current_pos; emit32(0x14000000); pos; end
   def je_rel32; pos = current_pos; emit32(0x54000000); pos; end
   def jne_rel32; pos = current_pos; emit32(0x54000001); pos; end

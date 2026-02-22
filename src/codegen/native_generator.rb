@@ -63,6 +63,8 @@ class NativeGenerator
       case n[:type]
       when :function_definition
         @linker.declare_function(n[:name])
+      when :extern_definition
+        @linker.declare_import(n[:name], n[:lib])
       when :struct_definition
         gen_struct_def(n)
       when :union_definition
@@ -81,7 +83,7 @@ class NativeGenerator
     top_level = []
     @ast.each do |n|
       case n[:type]
-      when :struct_definition, :union_definition, :function_definition
+      when :struct_definition, :union_definition, :function_definition, :extern_definition
         next
       else
         top_level << n
@@ -131,7 +133,7 @@ class NativeGenerator
 
     builder = case @target_os
               when :linux
-                ELFBuilder.new(final_bytes, @arch, result[:code].length, result[:data].length, result[:bss_len])
+                ELFBuilder.new(final_bytes, @arch, result[:code].length, result[:data].length, result[:bss_len], external_symbols: result[:external_symbols], got_slots: result[:got_slots], label_rvas: result[:label_rvas])
               when :flat
                 FlatBuilder.new(final_bytes)
               when :windows

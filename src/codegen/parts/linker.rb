@@ -9,14 +9,21 @@ class Linker
     @import_patches = []
     @functions = {}
     @imports = {}
+    @external_symbols = [] # { name, lib }
     @data_pool = []
     @bss_pool = []
     @strings = {}
     @string_counter = 0
+    @got_slots = {}
   end
 
   def declare_function(name)
     @functions[name] ||= nil
+  end
+
+  def declare_import(name, lib)
+    @external_symbols << { name: name, lib: lib }
+    @got_slots[name] = nil # Will be assigned an RVA during finalization
   end
 
   def register_function(name, offset_in_code)
@@ -74,6 +81,13 @@ class Linker
   end
 
   def finalize(code_bytes)
+    # Ensure GOT slots are allocated in the data section
+    @got_slots.each do |name, _|
+      label = "got_#{name}"
+      add_data(label, [0].pack("Q<")) # 8 bytes for address
+      @got_slots[name] = label
+    end
+
     data_bytes = []
     data_offset = code_bytes.length
     # Align data section to 4096 bytes (page boundary) for proper ELF segment permissions
@@ -82,6 +96,10 @@ class Linker
     data_offset += padding
 
     @data_pool.each do |item|
+      if item[:id].start_with?("got_")
+        padding = (8 - (data_bytes.length % 8)) % 8
+        data_bytes += [0] * padding
+      end
       item[:rva] = @base_rva + data_offset + data_bytes.length
       data_bytes += item[:data].bytes
     end
@@ -101,9 +119,18 @@ class Linker
                 @functions[p[:id]]
        patch_value(full_binary, p, target)
     end
-    @import_patches.each { |p| patch_value(full_binary, p, @imports[p[:name]]) }
+    @import_patches.each do |p|
+       target = @got_slots[p[:name]] ?
+                (@data_pool.find { |d| d[:id] == @got_slots[p[:name]] }&.[](:rva)) :
+                @imports[p[:name]]
+       patch_value(full_binary, p, target)
+    end
 
-    { code: code_bytes, data: data_bytes, bss_len: bss_len, combined: full_binary }
+    label_rvas = {}
+    @data_pool.each { |d| label_rvas[d[:id]] = d[:rva] }
+    @bss_pool.each { |b| label_rvas[b[:id]] = b[:rva] }
+
+    { code: code_bytes, data: data_bytes, bss_len: bss_len, combined: full_binary, external_symbols: @external_symbols, got_slots: @got_slots, label_rvas: label_rvas }
   end
 
   def patch_value(code, patch, target_rva)
