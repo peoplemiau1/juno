@@ -178,16 +178,23 @@ class NativeGenerator
 
     if node[:name].include?('.') then @ctx.var_types["self"] = node[:name].split('.')[0]; @ctx.var_is_ptr["self"] = true end
 
-    # Calculate needed stack size
-    needed_stack = @stack_size
+    # Pre-calculate needed stack size based on non-register variables
+    @ctx.stack_ptr = 64
+    node[:params].each do |p|
+      p_name = p.is_a?(Hash) ? p[:name] : p
+      @ctx.declare_variable(p_name) unless @ctx.in_register?(p_name)
+    end
     node[:body].each do |stmt|
-      if stmt[:type] == :array_decl
-        needed_stack += (stmt[:size] * 8 + 16)
+      if stmt[:type] == :assignment && stmt[:let]
+        @ctx.declare_variable(stmt[:name]) unless @ctx.in_register?(stmt[:name])
+      elsif stmt[:type] == :array_decl
+        @ctx.declare_array(stmt[:name], stmt[:size])
       end
     end
-    # Ensure 16-byte alignment
+
+    needed_stack = (@ctx.stack_ptr > @stack_size) ? @ctx.stack_ptr : @stack_size
     needed_stack = (needed_stack + 15) & ~15
-    @ctx.stack_ptr = 64 # Reset ptr but track for prologue
+    @ctx.stack_ptr = 64 # Reset for actual generation
     @ctx.current_fn_stack_size = needed_stack
 
     @emitter.emit_prologue(needed_stack)

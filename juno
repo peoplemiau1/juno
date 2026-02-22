@@ -7,6 +7,7 @@ require_relative "src/lexer"
 require_relative "src/parser"
 require_relative "src/importer"
 require_relative "src/monomorphizer"
+require_relative "src/semantic"
 require_relative "src/optimizer/turbo"
 require_relative "src/analyzer/resource_auditor"
 require_relative "src/codegen/native_generator"
@@ -189,6 +190,9 @@ begin
 
   monomorphizer = Monomorphizer.new(ast)
   ast = monomorphizer.monomorphize
+
+  analyzer = SemanticAnalyzer.new(ast, input_file, code)
+  ast = analyzer.analyze
 
   optimizer = TurboOptimizer.new(ast)
   ast = optimizer.optimize
