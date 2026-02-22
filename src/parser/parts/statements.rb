@@ -18,6 +18,10 @@ module ParserStatements
   end
 
   def parse_statement
+    if match_symbol?(";")
+      consume_symbol(";")
+      return { type: :noop }
+    end
     token = peek
     if token.nil?
       error_eof("Expected statement")
