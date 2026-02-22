@@ -1,24 +1,28 @@
-# Архитектура компилятора Juno v2.1
+# Системная архитектура Juno v2.1
 
-## Конвейер компиляции
-1.  **Preprocessor**: Обработка макросов и условий компиляции.
-2.  **Lexer**: Токенизация с учетом позиций (line, column).
-3.  **Parser**: Рекурсивный нисходящий парсер. Обрабатывает forward-references.
-4.  **Importer**: Поиск и подстановка модулей `import`.
-5.  **Monomorphizer**: Поддержка Generics через создание специализаций.
-6.  **Resource Auditor**: Анализ графа владения и детекция утечек (E0007).
-7.  **Turbo Optimizer**:
-    *   Inlining
-    *   CSE (Common Subexpression Elimination)
-    *   Constant Propagation
-    *   Simulator (Compile-time loop evaluation)
-8.  **Register Allocator**: Linear Scan алгоритм для отображения переменных на регистры CPU.
-9.  **Native Generator**:
-    *   `CodeEmitter` (x86-64)
-    *   `AArch64Emitter` (ARM64)
-10. **Linker**: Сборка `.text`, `.data`, `.bss`. Патчинг адресов функций и меток.
+## Обзор конвейера (Compiler Pipeline)
 
-## Особенности v2.1
-*   **Регистры**: Juno использует callee-saved регистры для долгоживущих переменных и scratch-регистры для промежуточных вычислений.
-*   **ABI**: Полное соответствие System V ABI (x86_64) и AArch64 ABI.
-*   **Hell Mode**: Модуль `X86Decoder` гарантирует, что инъекция junk-кода не разрежет существующие инструкции.
+### 1. Фронтенд (Frontend)
+- **Lexer**: Потоковая токенизация с поддержкой UTF-8. Генерирует поток токенов с метаданными о позиционировании.
+- **Parser**: Рекурсивный нисходящий парсер. Реализует многопроходную обработку для поддержки forward-references. На выходе — типизированное AST.
+- **Importer**: Рекурсивное разрешение зависимостей. Поддерживает относительные и системные пути.
+
+### 2. Мидл-энд (Middle-end)
+- **Monomorphizer**: Специализация generic-структур и функций. Разворачивает полиморфизм в конкретные реализации на этапе компиляции.
+- **Resource Auditor**: Проверка графа владения (Ownership Graph). Гарантирует детерминированный жизненный цикл каждого выделенного блока памяти.
+- **Turbo Optimizer**:
+    - **Inlining**: Подстановка тел малых функций.
+    - **CSE**: Elimination of common subexpressions.
+    - **Simulator**: Compile-time evaluation of constant-bounded loops.
+
+### 3. Бэкенд (Backend)
+- **Register Allocator**: Алгоритм Linear Scan. Распределяет переменные по регистрам с учетом их времени жизни (Live ranges).
+- **Native Generator**:
+    - **ABI Compliance Layer**: Управление кадрами стека (Stack frames), выравниванием (Alignment) и сохранением контекста (Callee-saved regs).
+    - **Instruction Emitter**: Прямая кодировка машинных команд (x86-64 и AArch64).
+- **Metamorphic Engine**: Динамический мутатор байт-кода. Использует `X86Decoder` для безопасной инъекции junk-кода.
+
+### 4. Линковка (Linker)
+- **Symbol Resolution**: Сборка `.text`, `.data` и `.bss`.
+- **Relocation Patching**: Финализация адресов функций, строк и глобальных переменных.
+- **Post-Mutation Mapping**: Пересчет смещений после работы обфускатора.

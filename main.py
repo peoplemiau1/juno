@@ -1,30 +1,39 @@
 import pathlib
 
-# Конфигурация
-EXTENSIONS = {'.juno', '.mc', '.rb'}
-OUTPUT_FILE = "combined_project.txt"
+def merge_ruby_files(output_filename="combined_ruby.txt", search_dir="."):
+    # Создаем объект пути для директории поиска
+    base_path = pathlib.Path(search_dir)
+    # Имя выходного файла
+    output_path = pathlib.Path(output_filename)
 
-def collect_files():
-    root = pathlib.Path('.')
     count = 0
-    
-    with open(OUTPUT_FILE, 'w', encoding='utf-8') as outfile:
-        # Рекурсивный поиск файлов
-        for path in root.rglob('*'):
-            if path.suffix.lower() in EXTENSIONS and path.name != OUTPUT_FILE:
-                outfile.write(f"\n\n{'='*50}\n")
-                outfile.write(f"FILE: {path}\n")
-                outfile.write(f"{'='*50}\n\n")
-                
-                try:
-                    content = path.read_text(encoding='utf-8', errors='ignore')
-                    outfile.write(content)
-                    count += 1
-                    print(f"[+] Добавлен: {path}")
-                except Exception as e:
-                    print(f"[!] Ошибка в {path}: {e}")
 
-    print(f"\nГотово! Собрано файлов: {count} в {OUTPUT_FILE}")
+    with open(output_path, "w", encoding="utf-8") as outfile:
+        # Рекурсивный поиск всех файлов с расширением .rb
+        for rb_file in base_path.rglob("*.rb"):
+            # Пропускаем сам выходной файл, если он вдруг попал в поиск
+            if rb_file.name == output_path.name:
+                continue
+
+            try:
+                # Записываем заголовок с именем файла для удобства навигации
+                outfile.write(f"\n{'='*50}\n")
+                outfile.write(f"FILE: {rb_file}\n")
+                outfile.write(f"{'='*50}\n\n")
+
+                # Читаем содержимое .rb файла и записываем в общий
+                with open(rb_file, "r", encoding="utf-8", errors="ignore") as infile:
+                    outfile.write(infile.read())
+
+                outfile.write("\n")
+                count += 1
+                print(f"Добавлен: {rb_file}")
+
+            except Exception as e:
+                print(f"Ошибка при чтении {rb_file}: {e}")
+
+    print(f"\nГотово! Объединено файлов: {count}")
+    print(f"Результат сохранен в: {output_path.absolute()}")
 
 if __name__ == "__main__":
-    collect_files()
+    merge_ruby_files()
