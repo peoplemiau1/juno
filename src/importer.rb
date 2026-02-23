@@ -15,16 +15,17 @@ class Importer
   # Returns merged AST with all imported definitions
   def resolve(ast, current_file = nil)
     result = []
-    
+
     ast.each do |node|
-      if node[:type] == :import
-        imported_ast = process_import(node[:path], current_file, node[:system])
+      if node[:type] == :import || node[:type] == :use_statement
+        is_system = (node[:type] == :use_statement) || node[:system]
+        imported_ast = process_import(node[:path], current_file, is_system)
         result.concat(imported_ast)
       else
         result << node
       end
     end
-    
+
     result
   end
 
@@ -40,10 +41,19 @@ class Importer
     else
       full_path = File.join(@base_path, path)
     end
-    
+
     # Normalize path
     full_path = File.expand_path(full_path)
-    
+
+    # Support .juno and .wt extensions
+    unless File.exist?(full_path)
+      if File.exist?(full_path + ".juno")
+        full_path += ".juno"
+      elsif File.exist?(full_path + ".wt")
+        full_path += ".wt"
+      end
+    end
+
     # Check for circular imports
     if @import_stack.include?(full_path)
       cycle = @import_stack.drop_while { |p| p != full_path } + [full_path]
@@ -52,10 +62,10 @@ class Importer
         filename: current_file || "unknown"
       )
     end
-    
+
     # Return cached if already imported
     return [] if @imported.key?(full_path)
-    
+
     # Check file exists
     unless File.exist?(full_path)
       raise JunoImportError.new(
@@ -63,7 +73,7 @@ class Importer
         filename: current_file || "unknown"
       )
     end
-    
+
     # Parse imported file
     @import_stack.push(full_path)
     begin
@@ -72,10 +82,10 @@ class Importer
       tokens = lexer.tokenize
       parser = Parser.new(tokens, full_path, source)
       imported_ast = parser.parse
-      
+
       # Recursively resolve imports in the imported file
       resolved_ast = resolve(imported_ast, full_path)
-      
+
       # Cache and return only definitions (structs, functions)
       # Skip main function from imported modules
       definitions = resolved_ast.select do |node|
@@ -90,7 +100,7 @@ class Importer
           false
         end
       end
-      
+
       @imported[full_path] = definitions
       definitions
     ensure

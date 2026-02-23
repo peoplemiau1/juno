@@ -1,7 +1,7 @@
 class CodegenContext
-  attr_reader :variables, :globals, :var_types, :var_is_ptr, :structs, :arrays
-  attr_reader :var_registers, :used_callee_saved, :unions
-  attr_accessor :stack_ptr, :current_fn, :current_fn_stack_size
+  attr_reader :variables, :globals, :var_types, :var_is_ptr, :arrays
+  attr_reader :var_registers, :used_callee_saved
+  attr_accessor :stack_ptr, :current_fn, :current_fn_stack_size, :structs, :unions, :enums
 
   # Sized types: name -> { size: bytes, signed: bool }
   SIZED_TYPES = {
@@ -26,6 +26,7 @@ class CodegenContext
     @var_is_ptr = {}  # name -> bool
     @structs = {}     # name -> { size: int, fields: {name: offset}, packed: bool }
     @unions = {}      # name -> { size: int, fields: {name: type} }
+    @enums = {}       # name -> { size: int, variants: { name: { tag, params } } }
     @arrays = {}      # name -> { base_offset: int, size: int, ptr_offset: int }
     @var_registers = {} # name -> register symbol (:rbx, :r12, etc.)
     @used_callee_saved = [] # list of callee-saved regs used in current function
@@ -112,6 +113,10 @@ class CodegenContext
 
   def register_struct(name, size, fields)
     @structs[name] = { size: size, fields: fields }
+  end
+
+  def register_enum(name, size, variants)
+    @enums[name] = { size: size, variants: variants }
   end
 
   def register_global(name, label_id)

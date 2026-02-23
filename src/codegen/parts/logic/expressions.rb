@@ -93,9 +93,45 @@ module GeneratorExpressions
       @emitter.mov_reg_imm(1, pattern[:value].is_a?(TrueClass) ? 1 : (pattern[:value].is_a?(FalseClass) ? 0 : pattern[:value]))
       @emitter.cmp_rax_rdx("==")
     when :bind_pattern
-      # For now, just bind to a local variable if it was used in code
-      # This is simplified
+      # Bind matched value to variable name
+      if @ctx.in_register?(pattern[:name])
+        reg = @emitter.class.reg_code(@ctx.get_register(pattern[:name]))
+        @emitter.mov_reg_reg(reg, 2) # 2 is RDX which has the value
+      else
+        off = @ctx.get_variable_offset(pattern[:name])
+        @emitter.mov_stack_reg_val(off, 2)
+      end
       @emitter.mov_rax(1)
+    when :variant_pattern
+      enum_info = @ctx.enums[pattern[:enum]]
+      variant_info = enum_info[:variants][pattern[:variant]]
+
+      # Check tag (at [RDX])
+      @emitter.mov_rax_mem_idx(2, 0) # RAX = [RDX]
+      @emitter.mov_reg_imm(6, variant_info[:tag]) # RSI = target tag
+      @emitter.cmp_rax_rsi("==")
+
+      # If match, bind fields
+      # We need a conditional jump to bind only if tag matches
+      skip_bind = @emitter.je_rel32 # Wait, je means match, so we should jne to skip
+      # Actually cmp_rax_rsi returns 1 in RAX if equal.
+      # Let's use internal emitter methods if available or just test rax
+      @emitter.test_rax_rax
+      skip_bind = @emitter.je_rel32
+
+      (pattern[:fields] || []).each_with_index do |f_name, i|
+        # Field i is at [RDX + 8 + i*8]
+        @emitter.mov_rax_mem_idx(2, 8 + i * 8)
+        if @ctx.in_register?(f_name)
+          reg = @emitter.class.reg_code(@ctx.get_register(f_name))
+          @emitter.mov_reg_reg(reg, 0)
+        else
+          off = @ctx.get_variable_offset(f_name)
+          @emitter.mov_stack_reg_val(off, 0)
+        end
+      end
+      @emitter.mov_rax(1)
+      @emitter.patch_je(skip_bind, @emitter.current_pos)
     else
       @emitter.mov_rax(0)
     end
@@ -117,13 +153,37 @@ module GeneratorExpressions
   end
 
   def gen_anonymous_fn(node)
-    # This requires creating a real function and returning its address
-    # For now, a stub
-    @emitter.mov_rax(0)
+    label = "anon_fn_#{@ctx.object_id}_#{@emitter.current_pos}"
+    @linker.declare_function(label)
+
+    skip_patch = @emitter.jmp_rel32
+
+    old_ctx = @ctx
+    @ctx = CodegenContext.new(@arch)
+    old_ctx.globals.each { |k, v| @ctx.register_global(k, v) }
+    @ctx.structs = old_ctx.structs
+    @ctx.unions = old_ctx.unions
+    @ctx.enums = old_ctx.enums
+
+    @linker.register_function(label, @emitter.current_pos)
+
+    anon_node = {
+      type: :function_definition,
+      name: label,
+      params: node[:params] || [],
+      param_types: node[:param_types] || {},
+      body: node[:body]
+    }
+
+    gen_function_internal(anon_node)
+
+    @ctx = old_ctx
+    @emitter.patch_jmp(skip_patch, @emitter.current_pos)
+    @emitter.emit_load_address(label, @linker)
   end
 
   def eval_binary_op(expr)
-    if expr[:op] == "+" && (expr[:left][:type] == :string_literal || expr[:right][:type] == :string_literal)
+    if (expr[:op] == "+" || expr[:op] == "<>") && (expr[:left][:type] == :string_literal || expr[:right][:type] == :string_literal)
        return gen_fn_call({ type: :fn_call, name: "concat", args: [expr[:left], expr[:right]] })
     end
     if (expr[:op] == "+" || expr[:op] == "-") && (pointer_node?(expr[:left]) || pointer_node?(expr[:right]))

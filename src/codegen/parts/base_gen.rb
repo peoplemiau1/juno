@@ -72,4 +72,15 @@ module BaseGenerator
     end
     @ctx.register_union(node[:name], max_size == 0 ? 8 : max_size, fields)
   end
+
+  def gen_enum_def(node)
+    variants = {}
+    max_payload = 0
+    node[:variants].each_with_index do |v, idx|
+      payload_size = (v[:params] || []).length * 8
+      max_payload = payload_size if payload_size > max_payload
+      variants[v[:name]] = { tag: idx, params: v[:params] || [] }
+    end
+    @ctx.register_enum(node[:name], 8 + max_payload, variants)
+  end
 end

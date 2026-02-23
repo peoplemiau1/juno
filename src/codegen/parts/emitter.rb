@@ -282,6 +282,17 @@ class CodeEmitter
     emit([0x0f, cond_op, 0xc0]) # setCC al
   end
 
+  def cmp_rax_rsi(op)
+    cmp_reg_reg(0, 6)
+    mov_rax(0)
+    cond_op = case op
+              when "==" then 0x94 when "!=" then 0x95
+              when "<"  then 0x9c when ">"  then 0x9f
+              when "<=" then 0x9e when ">=" then 0x9d
+              end
+    emit([0x0f, cond_op, 0xc0]) # setCC al
+  end
+
   def cmov(cond, dst, src)
     # CMOVcc reg64, r/m64: 0F 4x /r
     op = case cond

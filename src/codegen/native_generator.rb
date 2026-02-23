@@ -69,6 +69,8 @@ class NativeGenerator
         gen_struct_def(n)
       when :union_definition
         gen_union_def(n)
+      when :enum_definition
+        gen_enum_def(n)
       when :assignment
         # Register top-level let as global
         if n[:let] && n[:name]
@@ -83,7 +85,7 @@ class NativeGenerator
     top_level = []
     @ast.each do |n|
       case n[:type]
-      when :struct_definition, :union_definition, :function_definition, :extern_definition
+      when :struct_definition, :union_definition, :function_definition, :extern_definition, :enum_definition
         next
       else
         top_level << n
@@ -170,10 +172,14 @@ class NativeGenerator
         decls += find_all_decls(n[:body])
         (n[:elif_branches] || []).each { |elif| decls += find_all_decls(elif[:body]) }
         decls += find_all_decls(n[:else_body] || [])
-      elsif n[:type] == :while_statement || n[:type] == :for_statement
+      elsif n[:type] == :while_statement
+        decls += find_all_decls(n[:body])
+      elsif n[:type] == :for_statement
+        decls << n[:init] if n[:init] && n[:init][:type] == :assignment
         decls += find_all_decls(n[:body])
       elsif n[:type] == :match_expression
         n[:cases].each do |c|
+          decls += find_decls_in_pattern(c[:pattern])
           decls += find_all_decls(c[:body]) if c[:body].is_a?(Array)
         end
       end
@@ -181,9 +187,23 @@ class NativeGenerator
     decls
   end
 
+  def find_decls_in_pattern(pattern)
+    case pattern[:type]
+    when :bind_pattern
+      [{ type: :assignment, let: true, name: pattern[:name] }]
+    when :variant_pattern
+      (pattern[:fields] || []).map { |f| { type: :assignment, let: true, name: f } }
+    else
+      []
+    end
+  end
+
   def gen_function(node)
     @linker.register_function(node[:name], @emitter.current_pos); @ctx.reset_for_function(node[:name])
+    gen_function_internal(node)
+  end
 
+  def gen_function_internal(node)
     # Run register allocator for function body, skip globals
     res = @allocator.allocate(node[:body], @ctx.globals.keys)
     res[:allocations].each { |var, reg| @ctx.assign_register(var, reg) }

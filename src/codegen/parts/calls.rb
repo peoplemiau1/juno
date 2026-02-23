@@ -38,6 +38,18 @@ module GeneratorCalls
 
   def gen_fn_call(node)
     name = node[:name]
+
+    if @ctx.variables.key?(name) || @ctx.in_register?(name)
+      return gen_indirect_fn_call(node)
+    end
+
+    if name.include?('.')
+      parts = name.split('.')
+      if @ctx.enums.key?(parts[0])
+        return gen_enum_variant_init(parts[0], parts[1], node[:args])
+      end
+    end
+
     builtin_method = "gen_#{name}"
     return send(builtin_method, node) if respond_to?(builtin_method)
     aliases = {
@@ -136,5 +148,63 @@ module GeneratorCalls
 
   def handle_windows_io_stub(node)
     eval_expression(node[:args][0])
+  end
+
+  def gen_indirect_fn_call(node)
+    name = node[:name]
+    args = node[:args] || []
+
+    # Load fn pointer into R11
+    if @ctx.in_register?(name)
+      @emitter.mov_reg_reg(11, @emitter.class.reg_code(@ctx.get_register(name)))
+    else
+      @emitter.mov_reg_stack_val(11, @ctx.variables[name])
+    end
+
+    linux_like = (@target_os == :linux || @target_os == :flat)
+    regs = if @arch == :aarch64 then [0,1,2,3,4,5,6,7]
+           elsif linux_like then [7,6,2,1,8,9]
+           else [1,2,8,9] end
+
+    num_stack = [0, args.length - regs.length].max
+    padding = (@arch == :aarch64) ? 0 : ((num_stack % 2 == 1) ? 8 : 0)
+
+    @emitter.push_reg(11) # Save fn ptr
+    @emitter.emit_sub_rsp(padding) if padding > 0
+    args.reverse_each { |a| eval_expression(a); @emitter.push_reg(0) }
+
+    num_pop = [args.length, regs.length].min
+    num_pop.times { |i| @emitter.pop_reg(regs[i]) }
+
+    # Load saved fn ptr back to R11. It is now at [RSP + num_stack*8 + padding]
+    offset = num_stack * (@arch == :aarch64 ? 16 : 8) + padding
+    # Using mov_reg_mem_idx(11, REG_RSP, offset)
+    @emitter.mov_reg_mem_idx(11, 4, offset)
+
+    @emitter.call_reg(11)
+
+    @emitter.emit_add_rsp(offset + 8) # +8 for the pushed R11
+  end
+
+  def gen_enum_variant_init(enum_name, variant_name, args)
+    enum_info = @ctx.enums[enum_name]
+    variant_info = enum_info[:variants][variant_name]
+
+    # Allocate on heap
+    eval_expression({ type: :fn_call, name: "malloc", args: [{ type: :literal, value: enum_info[:size] }] })
+
+    ptr_reg = @ctx.acquire_scratch
+    @emitter.mov_reg_reg(ptr_reg, 0)
+
+    @emitter.mov_reg_imm(1, variant_info[:tag])
+    @emitter.mov_mem_reg_idx(ptr_reg, 0, 1)
+
+    (args || []).each_with_index do |a, i|
+      eval_expression(a)
+      @emitter.mov_mem_reg_idx(ptr_reg, 8 + i * 8, 0)
+    end
+
+    @emitter.mov_reg_reg(0, ptr_reg)
+    @ctx.release_scratch(ptr_reg)
   end
 end

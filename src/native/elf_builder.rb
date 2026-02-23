@@ -66,7 +66,7 @@ class ELFBuilder
     end
 
     machine = (@arch == :aarch64) ? 0xb7 : 0x3e
-    type = 3 # ET_DYN (Position Independent Executable or Shared Object)
+    type = (@arch == :aarch64) ? 3 : 2 # ET_DYN for ARM, ET_EXEC for x86
     header = "\x7fELF".b << [2, 1, 1, 0].pack("C4") << "\x00" * 8
     header << [type, machine].pack("SS") << [1].pack("L")
     header << [base + 0x1000].pack("Q")

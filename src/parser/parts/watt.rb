@@ -4,11 +4,13 @@ module WattParser
   def parse_use
     consume_keyword('use')
     path = ""
-    while match?(:ident) || match_symbol?('/')
+    while match?(:ident) || match_symbol?('/') || match_symbol?('.')
       if match?(:ident)
         path += consume_ident
-      else
+      elsif match_symbol?('/')
         path += consume_symbol('/')[:value]
+      elsif match_symbol?('.')
+        path += consume_symbol('.')[:value]
       end
     end
 

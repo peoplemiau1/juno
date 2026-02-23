@@ -297,6 +297,11 @@ module ParserStatements
 
   def parse_let
     token = consume_keyword('let')
+    is_mut = false
+    if match_keyword?('mut')
+      consume_keyword('mut')
+      is_mut = true
+    end
     name = consume_ident
     if match?(:lbracket)
       consume(:lbracket)
@@ -312,6 +317,7 @@ module ParserStatements
     consume_symbol('=')
     node = { type: :assignment, name: name, expression: (match_symbol?(";") ? {type: :literal, value: 0} : parse_expression) }
     node[:let] = true
+    node[:mut] = is_mut
     node[:var_type] = var_type if var_type
     with_loc(node, token)
   end
@@ -421,7 +427,7 @@ module ParserStatements
         error_unexpected(peek, "Expected string or system path for import")
       end
 
-      { type: :import, path: path + ".juno", system: true }
+      { type: :import, path: path, system: true }
     end
   end
 

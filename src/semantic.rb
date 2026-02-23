@@ -22,6 +22,8 @@ class SemanticAnalyzer
         @structs[node[:name]] = node
       when :union_definition
         @unions[node[:name]] = node
+      when :enum_definition
+        @structs[node[:name]] = node # Treat enums as structs for pointer checks
       end
     end
 
@@ -42,14 +44,20 @@ class SemanticAnalyzer
       node[:params].each do |p|
         p_name = p.is_a?(Hash) ? p[:name] : p
         type = (node[:param_types] && node[:param_types][p_name]) || "int"
-        local_vars[p_name] = type
+        local_vars[p_name] = { type: type, mut: true } # Params are mutable in Juno by default
       end
       node[:body].each { |stmt| analyze_node(stmt, local_vars) }
       "void"
     when :assignment
       type = analyze_node(node[:expression], local_vars)
       if node[:let]
-        local_vars[node[:name]] = node[:var_type] || type
+        local_vars[node[:name]] = { type: node[:var_type] || type, mut: node[:mut] }
+      else
+        # Reassignment
+        var_info = local_vars[node[:name]]
+        if var_info && !var_info[:mut]
+           error_at(node, "Cannot reassign to non-mutable variable '#{node[:name]}'")
+        end
       end
       type
     when :binary_op
@@ -83,7 +91,7 @@ class SemanticAnalyzer
       end
     when :variable
       name = node[:name]
-      return local_vars[name] if local_vars.key?(name)
+      return local_vars[name][:type] if local_vars.key?(name) && local_vars[name].is_a?(Hash)
       if @symbol_table.key?(name)
         sym = @symbol_table[name]
         return "fn_ptr" if sym[:type] == :function
@@ -111,6 +119,14 @@ class SemanticAnalyzer
       "void"
     when :while_statement
       analyze_node(node[:condition], local_vars)
+      node[:body].each { |s| analyze_node(s, local_vars) }
+      "void"
+    when :for_statement
+      if node[:init] && node[:init][:type] == :assignment
+        local_vars[node[:init][:name]] = { type: "int", mut: true }
+      end
+      analyze_node(node[:condition], local_vars)
+      analyze_node(node[:update], local_vars)
       node[:body].each { |s| analyze_node(s, local_vars) }
       "void"
     when :return

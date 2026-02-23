@@ -92,7 +92,7 @@ module ParserExpressions
 
   def parse_additive
     node = parse_term
-    while match_symbol?('+') || match_symbol?('-')
+    while match_symbol?('+') || match_symbol?('-') || match_symbol?('<>')
       token = consume_symbol
       op = token[:value]
       right = parse_term

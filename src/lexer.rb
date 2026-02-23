@@ -28,7 +28,7 @@ class Lexer
       when /\A(\/\/|#).*$/
         cursor += $&.length
         @column += $&.length
-      when /\A(struct|union|fn|func|def|if|elif|else|return|while|loop|break|continue|let|for|import|use|packed|extern|from|pub|match|todo|panic|as|true|false)\b/
+      when /\A(struct|union|fn|func|def|if|elif|else|return|while|loop|break|continue|let|for|import|use|packed|extern|from|pub|match|todo|panic|as|true|false|mut|type|enum)\b/
         # Normalize func/def -> fn
         kw = $1
         kw = "fn" if kw == "func" || kw == "def"
