@@ -147,6 +147,18 @@ module JunoErrorReporter
     error.display
     exit 1
   end
+
+  def self.syntax_error(message, filename, line, col, source)
+    report(JunoSyntaxError.new(message, filename: filename, line_num: line, column: col, source: source))
+  end
+
+  def self.type_error(message, filename, line, col, source)
+    report(JunoTypeError.new(message, filename: filename, line_num: line, column: col, source: source))
+  end
+
+  def self.undefined_error(message, filename, line, col, source)
+    report(JunoUndefinedError.new(message, filename: filename, line_num: line, column: col, source: source))
+  end
   
   def self.warn(message, filename: nil, line_num: nil)
     puts ""

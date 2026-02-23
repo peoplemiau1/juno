@@ -1,4 +1,4 @@
-require_relative "errors"
+require_relative "../errors"
 require_relative "parser/parts/expressions"
 require_relative "parser/parts/statements"
 require_relative "parser/parts/watt"

@@ -10,7 +10,7 @@ require_relative "parts/calls"
 require_relative "parts/syscall_mapper"
 require_relative "parts/base_gen"
 require_relative "parts/print_utils"
-require_relative "../optimizer/register_allocator"
+require_relative "../../optimizer/register_allocator"
 
 class NativeGenerator
   attr_accessor :hell_mode
@@ -56,7 +56,8 @@ class NativeGenerator
     @linker.add_data("newline_char", "\n")
   end
 
-  def generate(output_path)
+  def generate(output_path, ir = nil)
+    # If IR is provided, we can use it. For now we use @ast for safety.
     # FIRST PASS: SYMBOL TABLE & TYPE REGISTRATION
     # Ensure all functions, structs and unions are known before generation starts
     @ast.each do |n|
@@ -98,7 +99,7 @@ class NativeGenerator
     gen_synthetic_main(top_level) if has_top_level
 
     @ast.each do |n|
-      gen_function(n) if n[:type] == :function_definition
+      gen_function(n, @ctx, @emitter, @linker) if n[:type] == :function_definition
     end
 
     if @hell_mode && (@arch == :x86_64 || @arch == :aarch64)
@@ -198,15 +199,15 @@ class NativeGenerator
     end
   end
 
-  def gen_function(node)
-    @linker.register_function(node[:name], @emitter.current_pos); @ctx.reset_for_function(node[:name])
-    gen_function_internal(node)
+  def gen_function(node, ctx, emitter, linker)
+    linker.register_function(node[:name], emitter.current_pos); ctx.reset_for_function(node[:name])
+    gen_function_internal(node, ctx, emitter, linker)
   end
 
-  def gen_function_internal(node)
+  def gen_function_internal(node, ctx, emitter, linker)
     # Run register allocator for function body, skip globals
-    res = @allocator.allocate(node[:body], @ctx.globals.keys)
-    res[:allocations].each { |var, reg| @ctx.assign_register(var, reg) }
+    res = @allocator.allocate(node[:body], ctx.globals.keys)
+    res[:allocations].each { |var, reg| ctx.assign_register(var, reg) }
 
     params = node[:params].map { |p| p.is_a?(Hash) ? p[:name] : p }
     param_types = node[:param_types] || {}

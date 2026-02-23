@@ -3,15 +3,17 @@
 
 require 'optparse'
 require 'fileutils'
-require_relative "src/lexer"
-require_relative "src/parser"
-require_relative "src/importer"
-require_relative "src/monomorphizer"
-require_relative "src/semantic"
+require_relative "src/frontend/lexer"
+require_relative "src/frontend/parser"
+require_relative "src/middle/importer"
+require_relative "src/middle/monomorphizer"
+require_relative "src/middle/semantic"
 require_relative "src/optimizer/turbo"
-require_relative "src/analyzer/resource_auditor"
-require_relative "src/codegen/native_generator"
-require_relative "src/preprocessor"
+require_relative "src/middle/analyzer/resource_auditor"
+require_relative "src/backend/codegen/native_generator"
+require_relative "src/middle/ir_generator"
+require_relative "src/backend/hellion"
+require_relative "src/frontend/preprocessor"
 require_relative "src/errors"
 
 LOGO = <<-'EOF'
@@ -208,10 +210,18 @@ begin
   auditor = ResourceAuditor.new(ast, func_signatures, code, input_file)
   auditor.audit
 
+  # IR-BASED ARCHITECTURE
+  ir_gen = IRGenerator.new
+  ir = ir_gen.generate(ast)
+
   generator = NativeGenerator.new(ast, target_os: options[:os], arch: options[:arch], source: code, filename: input_file)
   generator.hell_mode = $hell_mode if $hell_mode
   FileUtils.mkdir_p("build")
-  generator.generate(output_path)
+
+  # The transition to Hellion (Pure IR Backend) is in progress.
+  # For now, NativeGenerator still uses AST-traversal for complex cases (Hell Mode, SIMD),
+  # but all new language features (Watt match, closures) are funneled through IR.
+  generator.generate(output_path, ir)
 
   puts "Success! Binary generated: #{output_path}"
   $hell_mode.report if $hell_mode

@@ -1,7 +1,7 @@
 # src/importer.rb - Module import system for Juno
-require_relative "lexer"
-require_relative "parser"
-require_relative "errors"
+require_relative "../frontend/lexer"
+require_relative "../frontend/parser"
+require_relative "../errors"
 
 class Importer
   def initialize(base_path = ".", system_path: nil)
