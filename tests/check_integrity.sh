@@ -25,7 +25,7 @@ for f in $EXAMPLES_DIR/*.juno; do
     # Run if it's a simple example (no network/loop)
     case "$name" in
         hello|math|gcd|fibonacci|primes|arrays|structs|geometry)
-            ./"$BUILD_DIR/$name" > /dev/null 2>&1
+            timeout 5s ./"$BUILD_DIR/$name" > /dev/null 2>&1
             if [ $? -eq 0 ]; then
                 echo "PASSED"
                 PASSED=$((PASSED + 1))

@@ -89,7 +89,10 @@ module GeneratorCalls
       padding = (16 - (current_total + num_stack * 8) % 16) % 16
     end
 
-    @emitter.emit_sub_rsp(padding) if padding > 0
+    if padding > 0
+      @emitter.emit_sub_rsp(padding)
+      @ctx.stack_depth += padding
+    end
     args.reverse_each do |a|
       eval_expression(a)
       @emitter.push_reg(0)
@@ -99,7 +102,7 @@ module GeneratorCalls
     num_pop = [args.length, regs.length].min
     num_pop.times { |i| @emitter.pop_reg(regs[i]); @ctx.stack_depth -= 8 }
 
-    @emitter.emit_sub_rsp(32) # if windows
+    @emitter.emit_sub_rsp(32) if @target_os == :windows
     if @linker.instance_variable_get(:@got_slots).key?(node[:name])
       if @arch == :aarch64
          @emitter.emit_call_indirect(node[:name], @linker)
@@ -113,9 +116,9 @@ module GeneratorCalls
       @linker.add_fn_patch(@emitter.current_pos + (@arch == :aarch64 ? 0 : 1), node[:name], @arch == :aarch64 ? :aarch64_bl : :rel32)
       @emitter.call_rel32
     end
-    @emitter.emit_add_rsp(32) # if windows
+    @emitter.emit_add_rsp(32) if @target_os == :windows
 
-    @ctx.stack_depth -= num_stack * 8
+    @ctx.stack_depth -= (num_stack * 8 + padding)
     @emitter.emit_add_rsp(num_stack * (@arch == :aarch64 ? 16 : 8) + padding) if (num_stack * (@arch == :aarch64 ? 16 : 8) + padding) > 0
   end
 
@@ -139,7 +142,10 @@ module GeneratorCalls
       padding = (16 - (current_total + num_stack * 8) % 16) % 16
     end
 
-    @emitter.emit_sub_rsp(padding) if padding > 0
+    if padding > 0
+      @emitter.emit_sub_rsp(padding)
+      @ctx.stack_depth += padding
+    end
 
     # Push args first
     args.reverse_each do |a|
@@ -160,12 +166,12 @@ module GeneratorCalls
     num_pop = [args.length + 1, regs.length].min
     num_pop.times { |i| @emitter.pop_reg(regs[i]); @ctx.stack_depth -= 8 }
 
-    @emitter.emit_sub_rsp(32) # if windows
+    @emitter.emit_sub_rsp(32) if @target_os == :windows
     @linker.add_fn_patch(@emitter.current_pos + (@arch == :aarch64 ? 0 : 1), "#{st}.#{m}", @arch == :aarch64 ? :aarch64_bl : :rel32)
     @emitter.call_rel32
-    @emitter.emit_add_rsp(32) # if windows
+    @emitter.emit_add_rsp(32) if @target_os == :windows
 
-    @ctx.stack_depth -= num_stack * 8
+    @ctx.stack_depth -= (num_stack * 8 + padding)
     @emitter.emit_add_rsp(num_stack * (@arch == :aarch64 ? 16 : 8) + padding) if (num_stack * (@arch == :aarch64 ? 16 : 8) + padding) > 0
   end
 
@@ -207,7 +213,10 @@ module GeneratorCalls
 
     @emitter.push_reg(11) # Save fn ptr
     @ctx.stack_depth += 8
-    @emitter.emit_sub_rsp(padding) if padding > 0
+    if padding > 0
+      @emitter.emit_sub_rsp(padding)
+      @ctx.stack_depth += padding
+    end
     args.reverse_each do |a|
       eval_expression(a)
       @emitter.push_reg(0)
@@ -224,7 +233,7 @@ module GeneratorCalls
 
     @emitter.call_reg(11)
 
-    @ctx.stack_depth -= (num_stack + 1) * 8
+    @ctx.stack_depth -= (num_stack * 8 + padding + 8)
     @emitter.emit_add_rsp(offset + 8) # +8 for the pushed R11
   end
 

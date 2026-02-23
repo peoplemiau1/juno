@@ -75,7 +75,7 @@ class SemanticAnalyzer
       end
       type
     when :increment
-      var_info = local_vars[node[:name]]
+      var_info = local_vars[node[:name]] || @symbol_table[node[:name]]
       if var_info && !var_info[:mut]
         error_at(node, "Cannot increment/decrement non-mutable variable '#{node[:name]}'")
       end
@@ -138,6 +138,7 @@ class SemanticAnalyzer
         # Check argument count
         expected = sym[:params].length
         actual = (node[:args] || []).length
+        actual += 1 if name.include?('.') # Account for implicit self
         if expected != actual
           error_at(node, "Function '#{name}' expects #{expected} arguments, but got #{actual}")
         end

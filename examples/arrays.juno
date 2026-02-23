@@ -32,13 +32,13 @@ fn main(): int {
     print(max)
     
     // Pointer access
-    let ptr = &numbers[0]
+    let p = &numbers[0]
     print("First via pointer:")
-    print(*ptr)
+    print(*p)
     
-    let ptr2 = ptr_add(ptr, 2)
+    let p2 = ptr_add(p, 2)
     print("Third via ptr_add:")
-    print(*ptr2)
+    print(*p2)
     
     return 0
 }

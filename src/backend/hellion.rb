@@ -131,20 +131,39 @@ class Hellion
       emitter.mov_reg_stack_val(0, vreg_map[ins.args[1]])
       dst_off = ctx.get_variable_offset(ins.args[0])
       emitter.mov_stack_reg_val(dst_off, 0)
-    when :ADD, :ARITH
-      op = (ins.op == :ADD) ? "+" : ins.args[0]
-      dst = (ins.op == :ADD) ? ins.args[0] : ins.args[1]
-      src1 = (ins.op == :ADD) ? ins.args[1] : ins.args[2]
-      src2 = (ins.op == :ADD) ? ins.args[2] : ins.args[3]
+    when :ADD, :SUB, :MUL, :DIV, :MOD, :AND, :OR, :XOR, :SHL, :SHR, :ARITH
+      if ins.op == :ARITH
+        op = ins.args[0]
+        dst = ins.args[1]
+        src1 = ins.args[2]
+        src2 = ins.args[3]
+      else
+        op = ins.op
+        dst = ins.args[0]
+        src1 = ins.args[1]
+        src2 = ins.args[2]
+      end
 
       emitter.mov_reg_stack_val(0, vreg_map[src1])
       emitter.mov_reg_stack_val(2, vreg_map[src2])
+
       case op
-      when "+" then emitter.add_rax_rdx
-      when "-" then emitter.sub_rax_rdx
-      when "*" then emitter.imul_rax_rdx
-      when "==" then emitter.cmp_rax_rdx("==")
-      # ... other ops
+      when :ADD, "+" then emitter.add_rax_rdx
+      when :SUB, "-" then emitter.sub_rax_rdx
+      when :MUL, "*" then emitter.imul_rax_rdx
+      when :DIV, "/" then emitter.div_rax_by_rdx
+      when :MOD, "%" then emitter.mod_rax_by_rdx
+      when :AND, "&" then emitter.and_rax_rdx
+      when :OR, "|"  then emitter.or_rax_rdx
+      when :XOR, "^" then emitter.xor_rax_rdx
+      when :SHL, "<<" then emitter.shl_rax_cl
+      when :SHR, ">>" then emitter.shr_rax_cl
+      when :CMP, "==" then emitter.cmp_rax_rdx("==")
+      when "!=" then emitter.cmp_rax_rdx("!=")
+      when "<" then emitter.cmp_rax_rdx("<")
+      when ">" then emitter.cmp_rax_rdx(">")
+      when "<=" then emitter.cmp_rax_rdx("<=")
+      when ">=" then emitter.cmp_rax_rdx(">=")
       end
       emitter.mov_stack_reg_val(vreg_map[dst], 0)
     when :CMP
@@ -158,7 +177,15 @@ class Hellion
     when :JCC
       cond = ins.args[0]
       label = ins.args[1]
-      patch_pos = (cond == "==") ? emitter.je_rel32 : emitter.jne_rel32
+      patch_pos = case cond
+                  when "==", "JZ" then emitter.je_rel32
+                  when "!=", "JNZ" then emitter.jne_rel32
+                  when "<" then emitter.jl_rel32
+                  when ">" then emitter.jg_rel32
+                  when "<=" then emitter.jle_rel32
+                  when ">=" then emitter.jge_rel32
+                  else emitter.je_rel32
+                  end
       linker.add_fn_patch(patch_pos + (@arch == :aarch64 ? 0 : 2), label, @arch == :aarch64 ? :aarch64_bl : :rel32)
     when :JZ
       emitter.mov_reg_stack_val(0, vreg_map[ins.args[0]])

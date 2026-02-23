@@ -137,7 +137,7 @@ class IRGenerator
     else_l = next_label("if_else")
     end_l = next_label("if_end")
 
-    if node[:condition][:type] == :binary_op && [:CMP, :CMP_EQ, :CMP_NE].include?(node[:condition][:op]) # Simplified
+    if node[:condition][:type] == :binary_op && ["==", "!=", "<", ">", "<=", ">="].include?(node[:condition][:op])
        # Optimization: JCC directly
     end
 

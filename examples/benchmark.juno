@@ -1,7 +1,7 @@
 // Juno Benchmark - Speed Test
 
 fn sum_loop(n: int): int {
-    let total = 0
+    let mut total = 0
     for (i = 0; i < n; i++) {
         total = total + i
     }
@@ -9,7 +9,7 @@ fn sum_loop(n: int): int {
 }
 
 fn nested_loop(n: int): int {
-    let count = 0
+    let mut count = 0
     for (i = 0; i < n; i++) {
         for (j = 0; j < n; j++) {
             count = count + 1
@@ -19,7 +19,7 @@ fn nested_loop(n: int): int {
 }
 
 fn multiply_loop(n: int): int {
-    let result = 1
+    let mut result = 1
     for (i = 1; i < n; i++) {
         result = result * 2
         if (result > 1000000) {
@@ -49,7 +49,7 @@ fn main(): int {
     
     // Test 4: Math operations
     prints("Math ops 1000000:")
-    let x = 0
+    let mut x = 0
     for (i = 0; i < 1000000; i++) {
         x = x + i * 2 - i
     }
