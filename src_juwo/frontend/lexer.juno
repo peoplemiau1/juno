@@ -1,0 +1,211 @@
+// src_juwo/frontend/lexer.juno
+
+enum TokenKind {
+    Ident,
+    Keyword,
+    Number,
+    String,
+    Symbol,
+    Operator,
+    EOF
+}
+
+struct Token {
+    let kind: TokenKind
+    let value: ptr
+    let line: int
+    let column: int
+}
+
+struct Lexer {
+    let source: ptr
+    let pos: int
+    let line: int
+    let col: int
+    let tokens: ptr // List
+}
+
+fn Lexer.init(source: ptr) {
+    self.source = source
+    self.pos = 0
+    self.line = 1
+    self.col = 1
+    self.tokens = malloc(24) // size of List
+    let l: List = self.tokens
+    l.init(100)
+}
+
+fn Lexer.is_alpha(c: int): bool {
+    if (c >= 97 && c <= 122) { return true } // a-z
+    if (c >= 65 && c <= 90) { return true }  // A-Z
+    if (c == 95) { return true }             // _
+    return false
+}
+
+fn Lexer.is_digit(c: int): bool {
+    if (c >= 48 && c <= 57) { return true } // 0-9
+    return false
+}
+
+fn Lexer.peek(): int {
+    let p = ptr_add(self.source, self.pos)
+    return byte_at(p, 0)
+}
+
+fn Lexer.advance(): int {
+    let c = self.peek()
+    self.pos = self.pos + 1
+    if (c == 10) { // \n
+        self.line = self.line + 1
+        self.col = 1
+    } else {
+        self.col = self.col + 1
+    }
+    return c
+}
+
+fn Lexer.tokenize() {
+    while (true) {
+        let c = self.peek()
+        if (c == 0) { break }
+
+        if (c == 32 || c == 9 || c == 13 || c == 10) {
+            self.advance()
+            continue
+        }
+
+        if (self.is_alpha(c)) {
+            self.read_ident()
+            continue
+        }
+
+        if (self.is_digit(c)) {
+            self.read_number()
+            continue
+        }
+
+        if (c == 34) { // "
+            self.read_string()
+            continue
+        }
+
+        // Symbols and Operators
+        self.read_symbol()
+    }
+
+    let eof_tok = malloc(32) // Token
+    let t: Token = eof_tok
+    t.kind = TokenKind.EOF
+    t.value = 0
+    t.line = self.line
+    t.column = self.col
+    let l: List = self.tokens
+    l.add(eof_tok)
+}
+
+fn Lexer.read_ident() {
+    let start = self.pos
+    while (self.is_alpha(self.peek()) || self.is_digit(self.peek())) {
+        self.advance()
+    }
+    let len = self.pos - start
+    let val = malloc(len + 1)
+    memcpy(val, ptr_add(self.source, start), len)
+    byte_set(val, len, 0)
+
+    let tok = malloc(32)
+    let t: Token = tok
+    t.kind = TokenKind.Ident
+    // Check if it is a keyword
+    if (str_equals(val, "fn") || str_equals(val, "let") || str_equals(val, "if") || str_equals(val, "else") || str_equals(val, "return") || str_equals(val, "while") || str_equals(val, "for") || str_equals(val, "struct") || str_equals(val, "enum") || str_equals(val, "match")) {
+        t.kind = TokenKind.Keyword
+    }
+    t.value = val
+    t.line = self.line
+    t.column = self.col - len
+    let l: List = self.tokens
+    l.add(tok)
+}
+
+fn Lexer.read_number() {
+    let start = self.pos
+    while (self.is_digit(self.peek())) {
+        self.advance()
+    }
+    let len = self.pos - start
+    let val = malloc(len + 1)
+    memcpy(val, ptr_add(self.source, start), len)
+    byte_set(val, len, 0)
+
+    let tok = malloc(32)
+    let t: Token = tok
+    t.kind = TokenKind.Number
+    t.value = val
+    t.line = self.line
+    t.column = self.col - len
+    let l: List = self.tokens
+    l.add(tok)
+}
+
+fn Lexer.read_string() {
+    self.advance() // skip "
+    let start = self.pos
+    while (self.peek() != 34 && self.peek() != 0) {
+        if (self.peek() == 92) { // \
+            self.advance()
+        }
+        self.advance()
+    }
+    let len = self.pos - start
+    let val = malloc(len + 1)
+    memcpy(val, ptr_add(self.source, start), len)
+    byte_set(val, len, 0)
+    self.advance() // skip "
+
+    let tok = malloc(32)
+    let t: Token = tok
+    t.kind = TokenKind.String
+    t.value = val
+    t.line = self.line
+    t.column = self.col - len - 1
+    let l: List = self.tokens
+    l.add(tok)
+}
+
+fn Lexer.read_symbol() {
+    let start_pos = self.pos
+    let c = self.advance()
+
+    // Multi-char operators like ==, !=, <=, >=
+    let next = self.peek()
+    let is_multi = false
+    if (c == 61 && next == 61) { is_multi = true } // ==
+    if (c == 33 && next == 61) { is_multi = true } // !=
+    if (c == 60 && next == 61) { is_multi = true } // <=
+    if (c == 62 && next == 61) { is_multi = true } // >=
+    if (c == 45 && next == 62) { is_multi = true } // ->
+
+    let len = 1
+    if (is_multi) {
+        self.advance()
+        len = 2
+    }
+
+    let val = malloc(len + 1)
+    memcpy(val, ptr_add(self.source, start_pos), len)
+    byte_set(val, len, 0)
+
+    let tok = malloc(32)
+    let t: Token = tok
+    t.kind = is_multi ? TokenKind.Operator : TokenKind.Symbol
+    if (!is_multi) {
+        if (c == 43 || c == 45 || c == 42 || c == 47 || c == 37 || c == 61 || c == 60 || c == 62) {
+            t.kind = TokenKind.Operator
+        }
+    }
+    t.value = val
+    t.line = self.line
+    t.column = self.col - len
+    let l: List = self.tokens
+    l.add(tok)
+}

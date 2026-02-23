@@ -107,6 +107,22 @@ class Hellion
          emitter.mov_rax(val)
       end
       emitter.mov_stack_reg_val(vreg_map[ins.args[0]], 0)
+    when :MOVE
+      dst = ins.args[0]
+      src = ins.args[1]
+      if src.is_a?(Integer)
+        emitter.mov_rax(src)
+      elsif vreg_map[src]
+        emitter.mov_reg_stack_val(0, vreg_map[src])
+      else
+        emitter.mov_reg_stack_val(0, ctx.get_variable_offset(src))
+      end
+
+      if vreg_map[dst]
+        emitter.mov_stack_reg_val(vreg_map[dst], 0)
+      else
+        emitter.mov_stack_reg_val(ctx.get_variable_offset(dst), 0)
+      end
     when :LOAD
       src_off = ctx.get_variable_offset(ins.args[1])
       emitter.mov_reg_stack_val(0, src_off)
@@ -115,16 +131,62 @@ class Hellion
       emitter.mov_reg_stack_val(0, vreg_map[ins.args[1]])
       dst_off = ctx.get_variable_offset(ins.args[0])
       emitter.mov_stack_reg_val(dst_off, 0)
-    when :ADD
-      emitter.mov_reg_stack_val(0, vreg_map[ins.args[1]])
-      emitter.mov_reg_stack_val(2, vreg_map[ins.args[2]])
-      emitter.add_rax_rdx
-      emitter.mov_stack_reg_val(vreg_map[ins.args[0]], 0)
+    when :ADD, :SUB, :MUL, :DIV, :MOD, :AND, :OR, :XOR, :SHL, :SHR, :ARITH
+      if ins.op == :ARITH
+        op = ins.args[0]
+        dst = ins.args[1]
+        src1 = ins.args[2]
+        src2 = ins.args[3]
+      else
+        op = ins.op
+        dst = ins.args[0]
+        src1 = ins.args[1]
+        src2 = ins.args[2]
+      end
+
+      emitter.mov_reg_stack_val(0, vreg_map[src1])
+      emitter.mov_reg_stack_val(2, vreg_map[src2])
+
+      case op
+      when :ADD, "+" then emitter.add_rax_rdx
+      when :SUB, "-" then emitter.sub_rax_rdx
+      when :MUL, "*" then emitter.imul_rax_rdx
+      when :DIV, "/" then emitter.div_rax_by_rdx
+      when :MOD, "%" then emitter.mod_rax_by_rdx
+      when :AND, "&" then emitter.and_rax_rdx
+      when :OR, "|"  then emitter.or_rax_rdx
+      when :XOR, "^" then emitter.xor_rax_rdx
+      when :SHL, "<<" then emitter.shl_rax_cl
+      when :SHR, ">>" then emitter.shr_rax_cl
+      when :CMP, "==" then emitter.cmp_rax_rdx("==")
+      when "!=" then emitter.cmp_rax_rdx("!=")
+      when "<" then emitter.cmp_rax_rdx("<")
+      when ">" then emitter.cmp_rax_rdx(">")
+      when "<=" then emitter.cmp_rax_rdx("<=")
+      when ">=" then emitter.cmp_rax_rdx(">=")
+      end
+      emitter.mov_stack_reg_val(vreg_map[dst], 0)
     when :CMP
-      emitter.mov_reg_stack_val(0, vreg_map[ins.args[1]])
-      emitter.mov_reg_stack_val(2, vreg_map[ins.args[2]])
-      emitter.cmp_rax_rdx(ins.metadata[:cond])
-      emitter.mov_stack_reg_val(vreg_map[ins.args[0]], 0)
+      emitter.mov_reg_stack_val(0, vreg_map[ins.args[0]])
+      if ins.args[1].is_a?(Integer)
+        emitter.mov_reg_imm(2, ins.args[1])
+      else
+        emitter.mov_reg_stack_val(2, vreg_map[ins.args[1]])
+      end
+      emitter.cmp_reg_reg(0, 2)
+    when :JCC
+      cond = ins.args[0]
+      label = ins.args[1]
+      patch_pos = case cond
+                  when "==", "JZ" then emitter.je_rel32
+                  when "!=", "JNZ" then emitter.jne_rel32
+                  when "<" then emitter.jl_rel32
+                  when ">" then emitter.jg_rel32
+                  when "<=" then emitter.jle_rel32
+                  when ">=" then emitter.jge_rel32
+                  else emitter.je_rel32
+                  end
+      linker.add_fn_patch(patch_pos + (@arch == :aarch64 ? 0 : 2), label, @arch == :aarch64 ? :aarch64_bl : :rel32)
     when :JZ
       emitter.mov_reg_stack_val(0, vreg_map[ins.args[0]])
       emitter.test_rax_rax
@@ -142,13 +204,26 @@ class Hellion
       emitter.mov_reg_mem_idx(0, 0, ins.args[2], ins.args[3])
       emitter.mov_stack_reg_val(vreg_map[ins.args[0]], 0)
     when :CALL
-      # Placeholder for full calling convention
-      ins.args[2].each_with_index do |av, i|
-         # load to regs...
+      # ins.args = [dst, name, args_count]
+      args_count = ins.args[2]
+      regs = [7, 6, 2, 1, 8, 9] # RDI, RSI, RDX, RCX, R8, R9
+
+      [args_count, regs.length].min.times do |i|
+        # Load from param_i
+        # For simplicity, we assume param_i was stored as a variable/vreg
+        # In IRGenerator we emitted MOVE param_i, arg
+        emitter.mov_reg_stack_val(regs[i], ctx.get_variable_offset("param_#{i}"))
       end
+
       emitter.call_rel32
       linker.add_fn_patch(emitter.current_pos - 4, ins.args[1], :rel32)
       emitter.mov_stack_reg_val(vreg_map[ins.args[0]], 0)
+    when :ALLOC_STACK
+      emitter.emit_sub_rsp(ins.args[0])
+    when :FREE_STACK
+      emitter.emit_add_rsp(ins.args[0])
+    when :RAW_BYTES
+      emitter.emit(ins.args[0])
     end
   end
 end

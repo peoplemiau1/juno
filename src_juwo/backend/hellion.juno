@@ -1,0 +1,105 @@
+// src_juwo/backend/hellion.juno
+
+enum IROp {
+    MOV,
+    ADD,
+    SUB,
+    MUL,
+    DIV,
+    CMP,
+    JMP,
+    JZ,
+    CALL,
+    RET,
+    LABEL
+}
+
+struct IRInstruction {
+    let op: IROp
+    let arg1: ptr
+    let arg2: ptr
+    let arg3: ptr
+}
+
+struct Hellion {
+    let code: ptr // List of bytes (i8)
+    let arch: int // 1 for x86_64, 2 for aarch64
+}
+
+fn Hellion.init(arch: int) {
+    self.arch = arch
+    self.code = malloc(24) // size of List
+    let l: List = self.code
+    l.init(1024)
+}
+
+fn Hellion.emit_byte(b: int) {
+    let l: List = self.code
+    l.add(b)
+}
+
+fn Hellion.translate(ir_list: ptr) {
+    let l: List = ir_list
+    for (i = 0; i < l.len; i++) {
+        let ins: IRInstruction = l.get(i)
+        self.translate_instruction(ins)
+    }
+}
+
+fn Hellion.translate_instruction(ins: IRInstruction) {
+    match (ins.op) {
+        IROp.MOV => self.emit_mov(ins.arg1, ins.arg2)
+        IROp.ADD => self.emit_arith(1, ins.arg1, ins.arg2, ins.arg3)
+        IROp.SUB => self.emit_arith(2, ins.arg1, ins.arg2, ins.arg3)
+        IROp.MUL => self.emit_arith(3, ins.arg1, ins.arg2, ins.arg3)
+        IROp.JZ  => self.emit_jz(ins.arg1, ins.arg2)
+        IROp.RET => self.emit_ret(ins.arg1)
+    }
+}
+
+fn Hellion.emit_mov(dst: ptr, src: ptr) {
+    if (self.arch == 1) { // x86_64
+        // MOV RAX, imm (simplified)
+        self.emit_byte(0x48)
+        self.emit_byte(0xB8)
+        // emit 8 bytes of src value
+        let val = atoi(src)
+        for (i = 0; i < 8; i++) {
+            self.emit_byte(val & 0xFF)
+            val = val >> 8
+        }
+    }
+}
+
+fn Hellion.emit_arith(op_type: int, dst: ptr, src1: ptr, src2: ptr) {
+    if (self.arch == 1) {
+        // ADD RAX, RDX
+        if (op_type == 1) {
+            self.emit_byte(0x48)
+            self.emit_byte(0x01)
+            self.emit_byte(0xD0)
+        }
+    }
+}
+
+fn Hellion.emit_jz(cond: ptr, label: ptr) {
+    if (self.arch == 1) {
+        // TEST RAX, RAX
+        self.emit_byte(0x48)
+        self.emit_byte(0x85)
+        self.emit_byte(0xC0)
+        // JZ rel32
+        self.emit_byte(0x0F)
+        self.emit_byte(0x84)
+        // placeholder for offset
+        for (i = 0; i < 4; i++) { self.emit_byte(0) }
+    }
+}
+
+fn Hellion.emit_ret(val: ptr) {
+    if (self.arch == 1) {
+        // POP RBP; RET
+        self.emit_byte(0x5D)
+        self.emit_byte(0xC3)
+    }
+}

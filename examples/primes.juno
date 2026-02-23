@@ -19,7 +19,7 @@ fn is_prime(n: int): int {
     }
     
     // Проверяем нечётные делители до sqrt(n)
-    let i = 3
+    let mut i = 3
     while (i * i <= n) {
         let div = n / i
         if (div * i == n) {
@@ -34,7 +34,7 @@ fn main(): int {
     print("=== Поиск простых чисел ===")
     
     let limit = 50
-    let count = 0
+    let mut count = 0
     
     print("Простые числа до 50:")
     

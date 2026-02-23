@@ -75,17 +75,34 @@ module GeneratorCalls
            else [1,2,8,9] end
 
     num_stack = [0, args.length - regs.length].max
-    # On AArch64, push_reg(16) already maintains 16-byte alignment.
-    # No extra padding is needed for AArch64 stack arguments.
-    padding = (@arch == :aarch64) ? 0 : ((num_stack % 2 == 1) ? 8 : 0)
 
-    @emitter.emit_sub_rsp(padding) if padding > 0
-    args.reverse_each { |a| eval_expression(a); @emitter.push_reg(0) }
+    padding = 0
+    if @arch == :x86_64
+      # Calculate current stack alignment
+      # Frame (8 for RBP + stack_size) + Callee-saved + Alignment padding + Temp pushes
+      callee_saved_count = @emitter.callee_saved_regs.length
+      align_pad = ((callee_saved_count + 1) % 2 == 0) ? 8 : 0
+      current_total = 8 + @ctx.current_fn_stack_size + callee_saved_count * 8 + align_pad + @ctx.stack_depth
+
+      # We will push num_stack * 8 bytes.
+      # We want (current_total + padding + num_stack * 8) % 16 == 0
+      padding = (16 - (current_total + num_stack * 8) % 16) % 16
+    end
+
+    if padding > 0
+      @emitter.emit_sub_rsp(padding)
+      @ctx.stack_depth += padding
+    end
+    args.reverse_each do |a|
+      eval_expression(a)
+      @emitter.push_reg(0)
+      @ctx.stack_depth += 8
+    end
 
     num_pop = [args.length, regs.length].min
-    num_pop.times { |i| @emitter.pop_reg(regs[i]) }
+    num_pop.times { |i| @emitter.pop_reg(regs[i]); @ctx.stack_depth -= 8 }
 
-    @emitter.emit_sub_rsp(32) # if windows
+    @emitter.emit_sub_rsp(32) if @target_os == :windows
     if @linker.instance_variable_get(:@got_slots).key?(node[:name])
       if @arch == :aarch64
          @emitter.emit_call_indirect(node[:name], @linker)
@@ -99,8 +116,9 @@ module GeneratorCalls
       @linker.add_fn_patch(@emitter.current_pos + (@arch == :aarch64 ? 0 : 1), node[:name], @arch == :aarch64 ? :aarch64_bl : :rel32)
       @emitter.call_rel32
     end
-    @emitter.emit_add_rsp(32) # if windows
+    @emitter.emit_add_rsp(32) if @target_os == :windows
 
+    @ctx.stack_depth -= (num_stack * 8 + padding)
     @emitter.emit_add_rsp(num_stack * (@arch == :aarch64 ? 16 : 8) + padding) if (num_stack * (@arch == :aarch64 ? 16 : 8) + padding) > 0
   end
 
@@ -115,12 +133,26 @@ module GeneratorCalls
            else [1,2,8,9] end
 
     num_stack = [0, (args.length + 1) - regs.length].max
-    padding = (@arch == :aarch64) ? 0 : ((num_stack % 2 == 1) ? 8 : 0)
 
-    @emitter.emit_sub_rsp(padding) if padding > 0
+    padding = 0
+    if @arch == :x86_64
+      callee_saved_count = @emitter.callee_saved_regs.length
+      align_pad = ((callee_saved_count + 1) % 2 == 0) ? 8 : 0
+      current_total = 8 + @ctx.current_fn_stack_size + callee_saved_count * 8 + align_pad + @ctx.stack_depth
+      padding = (16 - (current_total + num_stack * 8) % 16) % 16
+    end
+
+    if padding > 0
+      @emitter.emit_sub_rsp(padding)
+      @ctx.stack_depth += padding
+    end
 
     # Push args first
-    args.reverse_each { |a| eval_expression(a); @emitter.push_reg(0) }
+    args.reverse_each do |a|
+      eval_expression(a)
+      @emitter.push_reg(0)
+      @ctx.stack_depth += 8
+    end
 
     # Push 'this' LAST so it's on top
     if @ctx.in_register?(v)
@@ -129,15 +161,17 @@ module GeneratorCalls
       @emitter.mov_reg_stack_val(0, @ctx.variables[v])
     end
     @emitter.push_reg(0)
+    @ctx.stack_depth += 8
 
     num_pop = [args.length + 1, regs.length].min
-    num_pop.times { |i| @emitter.pop_reg(regs[i]) }
+    num_pop.times { |i| @emitter.pop_reg(regs[i]); @ctx.stack_depth -= 8 }
 
-    @emitter.emit_sub_rsp(32) # if windows
+    @emitter.emit_sub_rsp(32) if @target_os == :windows
     @linker.add_fn_patch(@emitter.current_pos + (@arch == :aarch64 ? 0 : 1), "#{st}.#{m}", @arch == :aarch64 ? :aarch64_bl : :rel32)
     @emitter.call_rel32
-    @emitter.emit_add_rsp(32) # if windows
+    @emitter.emit_add_rsp(32) if @target_os == :windows
 
+    @ctx.stack_depth -= (num_stack * 8 + padding)
     @emitter.emit_add_rsp(num_stack * (@arch == :aarch64 ? 16 : 8) + padding) if (num_stack * (@arch == :aarch64 ? 16 : 8) + padding) > 0
   end
 
@@ -167,14 +201,30 @@ module GeneratorCalls
            else [1,2,8,9] end
 
     num_stack = [0, args.length - regs.length].max
-    padding = (@arch == :aarch64) ? 0 : ((num_stack % 2 == 1) ? 8 : 0)
+
+    padding = 0
+    if @arch == :x86_64
+      callee_saved_count = @emitter.callee_saved_regs.length
+      align_pad = ((callee_saved_count + 1) % 2 == 0) ? 8 : 0
+      # Include +8 for the fn ptr we are about to push
+      current_total = 8 + @ctx.current_fn_stack_size + callee_saved_count * 8 + align_pad + @ctx.stack_depth + 8
+      padding = (16 - (current_total + num_stack * 8) % 16) % 16
+    end
 
     @emitter.push_reg(11) # Save fn ptr
-    @emitter.emit_sub_rsp(padding) if padding > 0
-    args.reverse_each { |a| eval_expression(a); @emitter.push_reg(0) }
+    @ctx.stack_depth += 8
+    if padding > 0
+      @emitter.emit_sub_rsp(padding)
+      @ctx.stack_depth += padding
+    end
+    args.reverse_each do |a|
+      eval_expression(a)
+      @emitter.push_reg(0)
+      @ctx.stack_depth += 8
+    end
 
     num_pop = [args.length, regs.length].min
-    num_pop.times { |i| @emitter.pop_reg(regs[i]) }
+    num_pop.times { |i| @emitter.pop_reg(regs[i]); @ctx.stack_depth -= 8 }
 
     # Load saved fn ptr back to R11. It is now at [RSP + num_stack*8 + padding]
     offset = num_stack * (@arch == :aarch64 ? 16 : 8) + padding
@@ -183,6 +233,7 @@ module GeneratorCalls
 
     @emitter.call_reg(11)
 
+    @ctx.stack_depth -= (num_stack * 8 + padding + 8)
     @emitter.emit_add_rsp(offset + 8) # +8 for the pushed R11
   end
 

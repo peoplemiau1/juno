@@ -1,0 +1,265 @@
+// src_juwo/frontend/parser.juno
+
+enum NodeType {
+    Literal,
+    Variable,
+    BinaryOp,
+    FnCall,
+    Assignment,
+    IfStatement,
+    WhileStatement,
+    Return,
+    Block
+}
+
+struct Node {
+    let type: NodeType
+    let data1: ptr
+    let data2: ptr
+    let data3: ptr
+}
+
+struct Parser {
+    let tokens: ptr // List
+    let pos: int
+}
+
+fn Parser.init(tokens: ptr) {
+    self.tokens = tokens
+    self.pos = 0
+}
+
+fn Parser.peek(): ptr {
+    let l: List = self.tokens
+    return l.get(self.pos)
+}
+
+fn Parser.advance(): ptr {
+    let t = self.peek()
+    self.pos = self.pos + 1
+    return t
+}
+
+fn Parser.match_kind(kind: TokenKind): bool {
+    let t: Token = self.peek()
+    return t.kind == kind
+}
+
+fn Parser.match_value(val: ptr): bool {
+    let t: Token = self.peek()
+    return str_equals(t.value, val)
+}
+
+fn Parser.consume(kind: TokenKind): ptr {
+    if (self.match_kind(kind)) {
+        return self.advance()
+    }
+    // Panic or error
+    exit(1)
+    return 0
+}
+
+fn Parser.parse_expression(): ptr {
+    return self.parse_equality()
+}
+
+fn Parser.parse_equality(): ptr {
+    let expr = self.parse_comparison()
+    while (self.match_value("==") || self.match_value("!=")) {
+        let op = self.advance()
+        let t: Token = op
+        let right = self.parse_comparison()
+        let node = malloc(32)
+        let n: Node = node
+        n.type = NodeType.BinaryOp
+        n.data1 = t.value
+        n.data2 = expr
+        n.data3 = right
+        expr = node
+    }
+    return expr
+}
+
+fn Parser.parse_comparison(): ptr {
+    let expr = self.parse_term()
+    while (self.match_value("<") || self.match_value(">") || self.match_value("<=") || self.match_value(">=")) {
+        let op = self.advance()
+        let t: Token = op
+        let right = self.parse_term()
+        let node = malloc(32)
+        let n: Node = node
+        n.type = NodeType.BinaryOp
+        n.data1 = t.value
+        n.data2 = expr
+        n.data3 = right
+        expr = node
+    }
+    return expr
+}
+
+fn Parser.parse_term(): ptr {
+    let expr = self.parse_factor()
+    while (self.match_value("+") || self.match_value("-")) {
+        let op = self.advance()
+        let t: Token = op
+        let right = self.parse_factor()
+        let node = malloc(32)
+        let n: Node = node
+        n.type = NodeType.BinaryOp
+        n.data1 = t.value
+        n.data2 = expr
+        n.data3 = right
+        expr = node
+    }
+    return expr
+}
+
+fn Parser.parse_factor(): ptr {
+    let expr = self.parse_primary()
+    while (self.match_value("*") || self.match_value("/")) {
+        let op = self.advance()
+        let t: Token = op
+        let right = self.parse_primary()
+        let node = malloc(32)
+        let n: Node = node
+        n.type = NodeType.BinaryOp
+        n.data1 = t.value
+        n.data2 = expr
+        n.data3 = right
+        expr = node
+    }
+    return expr
+}
+
+fn Parser.parse_primary(): ptr {
+    if (self.match_kind(TokenKind.Number)) {
+        let t: Token = self.advance()
+        let node = malloc(32)
+        let n: Node = node
+        n.type = NodeType.Literal
+        n.data1 = t.value
+        return node
+    }
+
+    if (self.match_kind(TokenKind.Ident)) {
+        let t: Token = self.advance()
+        if (self.match_value("(")) {
+            // Function call
+            self.advance() // skip (
+            let args = malloc(24) // List
+            let l: List = args
+            l.init(5)
+            while (!self.match_value(")")) {
+                l.add(self.parse_expression())
+                if (self.match_value(",")) { self.advance() }
+            }
+            self.advance() // skip )
+
+            let node = malloc(32)
+            let n: Node = node
+            n.type = NodeType.FnCall
+            n.data1 = t.value
+            n.data2 = args
+            return node
+        }
+
+        let node = malloc(32)
+        let n: Node = node
+        n.type = NodeType.Variable
+        n.data1 = t.value
+        return node
+    }
+
+    if (self.match_value("(")) {
+        self.advance()
+        let expr = self.parse_expression()
+        self.consume(TokenKind.Symbol) // )
+        return expr
+    }
+
+    exit(1)
+    return 0
+}
+
+fn Parser.parse_statement(): ptr {
+    if (self.match_value("if")) {
+        return self.parse_if()
+    }
+    if (self.match_value("while")) {
+        return self.parse_while()
+    }
+    if (self.match_value("return")) {
+        self.advance()
+        let expr = self.parse_expression()
+        let node = malloc(32)
+        let n: Node = node
+        n.type = NodeType.Return
+        n.data1 = expr
+        return node
+    }
+    if (self.match_value("{")) {
+        return self.parse_block()
+    }
+
+    // Assignment or expression statement
+    let expr = self.parse_expression()
+    if (self.match_value("=")) {
+        let t: Node = expr
+        if (t.type != NodeType.Variable) { exit(1) }
+        self.advance()
+        let val = self.parse_expression()
+        let node = malloc(32)
+        let n: Node = node
+        n.type = NodeType.Assignment
+        n.data1 = t.data1 // name
+        n.data2 = val
+        return node
+    }
+    return expr
+}
+
+fn Parser.parse_block(): ptr {
+    self.advance() // skip {
+    let stmts = malloc(24) // List
+    let l: List = stmts
+    l.init(10)
+    while (!self.match_value("}")) {
+        l.add(self.parse_statement())
+    }
+    self.advance() // skip }
+    let node = malloc(32)
+    let n: Node = node
+    n.type = NodeType.Block
+    n.data1 = stmts
+    return node
+}
+
+fn Parser.parse_if(): ptr {
+    self.advance() // skip if
+    let cond = self.parse_expression()
+    let body = self.parse_block()
+    let else_body = 0
+    if (self.match_value("else")) {
+        self.advance()
+        else_body = self.parse_block()
+    }
+    let node = malloc(32)
+    let n: Node = node
+    n.type = NodeType.IfStatement
+    n.data1 = cond
+    n.data2 = body
+    n.data3 = else_body
+    return node
+}
+
+fn Parser.parse_while(): ptr {
+    self.advance() // skip while
+    let cond = self.parse_expression()
+    let body = self.parse_block()
+    let node = malloc(32)
+    let n: Node = node
+    n.type = NodeType.WhileStatement
+    n.data1 = cond
+    n.data2 = body
+    return node
+}

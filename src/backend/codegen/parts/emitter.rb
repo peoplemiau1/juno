@@ -342,6 +342,10 @@ class CodeEmitter
   def je_rel32; pos = current_pos; emit([0x0f, 0x84, 0, 0, 0, 0]); pos; end
   def jne_rel32; pos = current_pos; emit([0x0f, 0x85, 0, 0, 0, 0]); pos; end
   def jae_rel32; pos = current_pos; emit([0x0f, 0x83, 0, 0, 0, 0]); pos; end
+  def jl_rel32; pos = current_pos; emit([0x0f, 0x8c, 0, 0, 0, 0]); pos; end
+  def jg_rel32; pos = current_pos; emit([0x0f, 0x8f, 0, 0, 0, 0]); pos; end
+  def jle_rel32; pos = current_pos; emit([0x0f, 0x8e, 0, 0, 0, 0]); pos; end
+  def jge_rel32; pos = current_pos; emit([0x0f, 0x8d, 0, 0, 0, 0]); pos; end
 
   def cld; emit([0xfc]); end
   def rep_movsb; emit([0xf3, 0xa4]); end

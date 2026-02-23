@@ -1,7 +1,7 @@
 class CodegenContext
   attr_reader :variables, :globals, :var_types, :var_is_ptr, :arrays
   attr_reader :var_registers, :used_callee_saved
-  attr_accessor :stack_ptr, :current_fn, :current_fn_stack_size, :structs, :unions, :enums
+  attr_accessor :stack_ptr, :current_fn, :current_fn_stack_size, :structs, :unions, :enums, :stack_depth
 
   # Sized types: name -> { size: bytes, signed: bool }
   SIZED_TYPES = {
@@ -32,6 +32,7 @@ class CodegenContext
     @var_registers = {} # name -> register symbol (:rbx, :r12, etc.)
     @used_callee_saved = [] # list of callee-saved regs used in current function
     @stack_ptr = 64   # Start after shadow space + internal usage
+    @stack_depth = 0
     @current_fn = nil
     @available_scratch = (arch == :aarch64) ? (9..15).to_a : [10, 11]
     @used_scratch = []
@@ -79,6 +80,7 @@ class CodegenContext
     @var_registers = {}
     @used_callee_saved = []
     @stack_ptr = 64
+    @stack_depth = 0
     @current_fn = name
   end
 
