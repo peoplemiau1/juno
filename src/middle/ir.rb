@@ -27,7 +27,7 @@ module JunoIR
   # JZ/JNZ    src, label
   # JCC       cond, label        (Standardized)
   # CALL      dest, fn_name, args_count (Standardized)
-  # CALL_IND  dest, src_ptr, [args]
+  # CALL_IND  dest, src_ptr, args_count (Standardized)
   # RET       src
   # LABEL     name
   # LEA       dest, label_name

@@ -124,12 +124,21 @@ class SemanticAnalyzer
 
       # Handle methods
       if name.include?('.') && !sym
-        # Simple heuristic: try to find method in any struct
-        # In a real compiler we'd check the receiver type
-        @symbol_table.each do |k, v|
-           if k.end_with?(".#{name.split('.').last}")
-              sym = v
-              break
+        receiver, method = name.split('.')
+        receiver_type = nil
+        if local_vars.key?(receiver)
+           receiver_type = local_vars[receiver][:type]
+        end
+
+        if receiver_type && @symbol_table.key?("#{receiver_type}.#{method}")
+           sym = @symbol_table["#{receiver_type}.#{method}"]
+        else
+           # Fallback to heuristic if type unknown
+           @symbol_table.each do |k, v|
+              if k.end_with?(".#{method}")
+                 sym = v
+                 break
+              end
            end
         end
       end

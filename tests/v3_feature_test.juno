@@ -1,0 +1,19 @@
+import "../stdlib/std.juno"
+
+struct Test {
+    let mut x: int
+}
+
+fn main() {
+    let mut t = malloc(8)
+    let mut obj: Test = t
+    obj.x = 10
+    print(obj.x)
+
+    match (obj.x) {
+        10 -> prints("It is 10\n")
+        _  -> prints("Not 10\n")
+    }
+
+    return 0
+}

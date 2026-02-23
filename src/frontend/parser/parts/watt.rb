@@ -161,6 +161,9 @@ module WattParser
     field_types = {}
     until match_symbol?('}')
       consume_keyword('let') if match_keyword?('let')
+      if match_keyword?('mut')
+         consume_keyword('mut')
+      end
       field_name = consume_ident
       if match?(:colon)
         consume(:colon)

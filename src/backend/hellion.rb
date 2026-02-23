@@ -158,12 +158,8 @@ class Hellion
       when :XOR, "^" then emitter.xor_rax_rdx
       when :SHL, "<<" then emitter.shl_rax_cl
       when :SHR, ">>" then emitter.shr_rax_cl
-      when :CMP, "==" then emitter.cmp_rax_rdx("==")
-      when "!=" then emitter.cmp_rax_rdx("!=")
-      when "<" then emitter.cmp_rax_rdx("<")
-      when ">" then emitter.cmp_rax_rdx(">")
-      when "<=" then emitter.cmp_rax_rdx("<=")
-      when ">=" then emitter.cmp_rax_rdx(">=")
+      when :CMP then emitter.cmp_rax_rdx(ins.metadata[:cond] || "==")
+      when "==", "!=", "<", ">", "<=", ">=" then emitter.cmp_rax_rdx(op)
       end
       emitter.mov_stack_reg_val(vreg_map[dst], 0)
     when :CMP
@@ -186,16 +182,15 @@ class Hellion
                   when ">=" then emitter.jge_rel32
                   else emitter.je_rel32
                   end
-      linker.add_fn_patch(patch_pos + (@arch == :aarch64 ? 0 : 2), label, @arch == :aarch64 ? :aarch64_bl : :rel32)
+      linker.add_fn_patch(patch_pos + (@arch == :aarch64 ? 0 : 2), label, @arch == :aarch64 ? :aarch64_b : :rel32)
     when :JZ
       emitter.mov_reg_stack_val(0, vreg_map[ins.args[0]])
       emitter.test_rax_rax
       patch_pos = emitter.je_rel32
-      linker.add_fn_patch(patch_pos + (emitter.is_a?(AArch64Emitter) ? 0 : 2), ins.args[1], emitter.is_a?(AArch64Emitter) ? :aarch64_bl : :rel32) # Wait, JMP not BL
-      # Need a real JMP patch helper here
+      linker.add_fn_patch(patch_pos + (@arch == :aarch64 ? 0 : 2), ins.args[1], @arch == :aarch64 ? :aarch64_b : :rel32)
     when :JMP
       patch_pos = emitter.jmp_rel32
-      linker.add_fn_patch(patch_pos + (emitter.is_a?(AArch64Emitter) ? 0 : 1), ins.args[0], emitter.is_a?(AArch64Emitter) ? :aarch64_bl : :rel32)
+      linker.add_fn_patch(patch_pos + (@arch == :aarch64 ? 0 : 1), ins.args[0], @arch == :aarch64 ? :aarch64_b : :rel32)
     when :RET
       emitter.mov_reg_stack_val(0, vreg_map[ins.args[0]])
       emitter.emit_epilogue(1024)
@@ -219,9 +214,11 @@ class Hellion
       linker.add_fn_patch(emitter.current_pos - 4, ins.args[1], :rel32)
       emitter.mov_stack_reg_val(vreg_map[ins.args[0]], 0)
     when :ALLOC_STACK
-      emitter.emit_sub_rsp(ins.args[0])
+      # NO-OP if already handled by prologue
+      # emitter.emit_sub_rsp(ins.args[0])
     when :FREE_STACK
-      emitter.emit_add_rsp(ins.args[0])
+      # NO-OP if already handled by epilogue
+      # emitter.emit_add_rsp(ins.args[0])
     when :RAW_BYTES
       emitter.emit(ins.args[0])
     end

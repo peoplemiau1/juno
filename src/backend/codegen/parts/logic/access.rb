@@ -3,6 +3,12 @@
 module GeneratorAccess
   def load_member_rax(full)
     v, f = full.split('.')
+    if @ctx.enums.key?(v)
+       enum_info = @ctx.enums[v]
+       variant_info = enum_info[:variants][f]
+       @emitter.mov_rax(variant_info[:tag])
+       return
+    end
     st = @ctx.var_types[v]
     return unless st && @ctx.structs[st]
     f_off = @ctx.structs[st][:fields][f]
@@ -19,6 +25,7 @@ module GeneratorAccess
      st = @ctx.var_types[v]
      return unless st && @ctx.structs[st]
      f_off = @ctx.structs[st][:fields][f]
+     puts "DEBUG: save_member_rax #{full}, st=#{st}, f_off=#{f_off}"
      @emitter.mov_reg_reg(11, 0) # R11 = value (RAX)
      if @ctx.in_register?(v)
        @emitter.mov_rax_from_reg(@emitter.class.reg_code(@ctx.get_register(v)))

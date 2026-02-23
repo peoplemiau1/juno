@@ -104,6 +104,9 @@ class ResourceAuditor
         else
            if !node[:name].include?('.')
               @var_to_res[node[:name]] = res_id
+           else
+              # Assignment to field counts as consumption/transfer
+              @res_status[res_id] = :consumed
            end
         end
       else
@@ -209,9 +212,10 @@ class ResourceAuditor
     exempt = [
       'byte_at', 'byte_set', 'byte_add', 'ptr_add',
       'prints', 'print', 'printi', 'output_int',
-      'memcpy', 'memset', 'str_len', 'str_copy', 'str_cat', 'str_cmp',
+      'memcpy', 'memset', 'str_len', 'str_copy', 'str_cat', 'str_cmp', 'str_equals', 'str_empty',
       'json_get', 'json_at', 'json_len', 'json_has', 'json_get_str', 'json_get_int', 'json_get_bool', 'json_is_null',
-      'str_contains', 'vec_get', 'fs_write_text', 'net_accept_client', 'arena_alloc',
+      'str_contains', 'vec_get', 'fs_write_text', 'fs_read', 'os_read_file', 'net_accept_client', 'net_recv', 'arena_alloc',
+      'init', 'add', 'get', 'set', 'push', 'pop', 'at', 'match_kind', 'tokenize', 'parse_statement',
       'parse_val', 'parse_str', 'parse_num', 'parse_arr', 'parse_obj', 'str_new', 'vec_new', 'arena_new'
     ]
     !exempt.include?(fn_name)

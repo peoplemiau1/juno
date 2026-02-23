@@ -9,12 +9,18 @@ fn main() {
     prints("Juwo Compiler v3.0 (Juwo Edition)\n")
 
     // Read source file
-    let buf = malloc(1024 * 64)
-    let n = os_read_file("main.juno", buf, 1024 * 64)
+    let capacity = 1024 * 64
+    let buf = malloc(capacity + 1)
+    let n = os_read_file("main.juno", buf, capacity)
     if (n < 0) {
         prints("Error: Could not read main.juno\n")
         return 1
     }
+    if (n == capacity) {
+        prints("Error: File too large for buffer\n")
+        return 1
+    }
+    byte_set(buf, n, 0)
 
     // Lexer
     let lex = malloc(40) // Lexer size
@@ -47,6 +53,12 @@ fn main() {
 
     // Placeholder translation
     prints("Backend initialized.\n")
+
+    // Cleanup
+    free(buf)
+    free(lex)
+    free(pars)
+    free(ast_list)
 
     prints("Juwo Edition compiler finished.\n")
     return 0

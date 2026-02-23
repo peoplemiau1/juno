@@ -6,8 +6,14 @@ class RegisterAllocator
 
   def initialize(arch = :x86_64)
     @arch = arch
-    @allocatable_regs = (arch == :aarch64) ? AARCH64_REGS : X86_64_REGS
     @caller_saved = (arch == :aarch64) ? AARCH64_CALLER_SAVED : X86_64_CALLER_SAVED
+    # Use both callee-saved and caller-saved registers for allocation.
+    # Caller-saved registers will be spilled at call boundaries.
+    @allocatable_regs = if arch == :aarch64
+                          AARCH64_REGS + AARCH64_CALLER_SAVED
+                        else
+                          X86_64_REGS + X86_64_CALLER_SAVED
+                        end
   end
 
   def allocate(nodes, globals = [])

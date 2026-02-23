@@ -145,6 +145,12 @@ module ParserExpressions
       operand = parse_unary
       return { type: :unary_op, op: '~', operand: operand }
     end
+    # Logical NOT: !expr
+    if match_symbol?('!')
+      consume_symbol('!')
+      operand = parse_unary
+      return { type: :unary_op, op: '!', operand: operand }
+    end
     parse_factor
   end
 

@@ -27,9 +27,8 @@ class IRGenerator
     case node[:type]
     when :function_definition
       emit(:LABEL, node[:name], type: :function)
-      emit(:ALLOC_STACK, 1024) # Default frame
+      # ALLOC/FREE handled by backend prologue/epilogue for now
       node[:body].each { |stmt| process_node(stmt) }
-      emit(:FREE_STACK, 1024)
       emit(:RET, "v0") # Implicit return 0 if no ret
     when :extern_definition
       # Externs are handled by linker, but IR can track them
@@ -96,7 +95,7 @@ class IRGenerator
         # For simplicity in expressions, we might still need a way to get result in reg
         # But formalized JIR uses CMP + JCC.
         # For expressions, we'll use ARITH for now if it's not for a jump.
-        emit(:ARITH, op, dst, left, right, cond: expr[:op])
+        emit(:ARITH, expr[:op], dst, left, right)
       else
         emit(:ARITH, op, dst, left, right)
       end

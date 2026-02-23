@@ -4,6 +4,7 @@ enum TokenKind {
     Ident,
     Keyword,
     Number,
+    Float,
     String,
     Symbol,
     Operator,
@@ -26,11 +27,12 @@ struct Lexer {
 }
 
 fn Lexer.init(source: ptr) {
+    let List_SIZE = 24
     self.source = source
     self.pos = 0
     self.line = 1
     self.col = 1
-    self.tokens = malloc(24) // size of List
+    self.tokens = malloc(List_SIZE) // size of List
     let l: List = self.tokens
     l.init(100)
 }
@@ -44,6 +46,18 @@ fn Lexer.is_alpha(c: int): bool {
 
 fn Lexer.is_digit(c: int): bool {
     if (c >= 48 && c <= 57) { return true } // 0-9
+    return false
+}
+
+fn Lexer.is_hex_digit(c: int): bool {
+    if (self.is_digit(c)) { return true }
+    if (c >= 97 && c <= 102) { return true } // a-f
+    if (c >= 65 && c <= 70) { return true }  // A-F
+    return false
+}
+
+fn Lexer.is_bin_digit(c: int): bool {
+    if (c == 48 || c == 49) { return true }
     return false
 }
 
@@ -74,6 +88,19 @@ fn Lexer.tokenize() {
             continue
         }
 
+        // Comments
+        if (c == 47) { // /
+            let next = byte_at(self.source, self.pos + 1)
+            if (next == 47) { // //
+                self.skip_line_comment()
+                continue
+            }
+            if (next == 42) { // /*
+                self.skip_block_comment()
+                continue
+            }
+        }
+
         if (self.is_alpha(c)) {
             self.read_ident()
             continue
@@ -96,11 +123,33 @@ fn Lexer.tokenize() {
     let eof_tok = malloc(32) // Token
     let t: Token = eof_tok
     t.kind = TokenKind.EOF
-    t.value = 0
+    let empty_val = malloc(1)
+    byte_set(empty_val, 0, 0)
+    t.value = empty_val
     t.line = self.line
     t.column = self.col
     let l: List = self.tokens
     l.add(eof_tok)
+}
+
+fn Lexer.skip_line_comment() {
+    while (self.peek() != 10 && self.peek() != 0) {
+        self.advance()
+    }
+}
+
+fn Lexer.skip_block_comment() {
+    self.advance() // /
+    self.advance() // *
+    while (self.peek() != 0) {
+        if (self.peek() == 42 && byte_at(self.source, self.pos + 1) == 47) {
+            self.advance() // *
+            self.advance() // /
+            return 0
+        }
+        self.advance()
+    }
+    // Unterminated block comment
 }
 
 fn Lexer.read_ident() {
@@ -117,7 +166,7 @@ fn Lexer.read_ident() {
     let t: Token = tok
     t.kind = TokenKind.Ident
     // Check if it is a keyword
-    if (str_equals(val, "fn") || str_equals(val, "let") || str_equals(val, "if") || str_equals(val, "else") || str_equals(val, "return") || str_equals(val, "while") || str_equals(val, "for") || str_equals(val, "struct") || str_equals(val, "enum") || str_equals(val, "match")) {
+    if (str_equals(val, "fn") || str_equals(val, "let") || str_equals(val, "if") || str_equals(val, "else") || str_equals(val, "return") || str_equals(val, "while") || str_equals(val, "for") || str_equals(val, "struct") || str_equals(val, "enum") || str_equals(val, "match") || str_equals(val, "import") || str_equals(val, "mut") || str_equals(val, "true") || str_equals(val, "false") || str_equals(val, "break") || str_equals(val, "continue") || str_equals(val, "int") || str_equals(val, "string") || str_equals(val, "bool") || str_equals(val, "real") || str_equals(val, "ptr")) {
         t.kind = TokenKind.Keyword
     }
     t.value = val
@@ -129,9 +178,46 @@ fn Lexer.read_ident() {
 
 fn Lexer.read_number() {
     let start = self.pos
-    while (self.is_digit(self.peek())) {
-        self.advance()
+    let mut is_float = false
+    let mut kind = TokenKind.Number
+
+    if (self.peek() == 48) { // 0
+        let next = byte_at(self.source, self.pos + 1)
+        if (next == 120 || next == 88) { // x or X
+            self.advance() // 0
+            self.advance() // x
+            while (self.is_hex_digit(self.peek())) { self.advance() }
+        } elif (next == 98 || next == 66) { // b or B
+            self.advance() // 0
+            self.advance() // b
+            while (self.is_bin_digit(self.peek())) { self.advance() }
+        } else {
+            while (self.is_digit(self.peek())) { self.advance() }
+        }
+    } else {
+        while (self.is_digit(self.peek())) { self.advance() }
     }
+
+    if (self.peek() == 46) { // .
+        if (self.is_digit(byte_at(self.source, self.pos + 1))) {
+            is_float = true
+            kind = TokenKind.Float
+            self.advance() // .
+            while (self.is_digit(self.peek())) { self.advance() }
+        }
+    }
+
+    // Optional exponent for floats
+    if (is_float) {
+        let e = self.peek()
+        if (e == 101 || e == 69) { // e or E
+            self.advance()
+            let next = self.peek()
+            if (next == 43 || next == 45) { self.advance() } // + or -
+            while (self.is_digit(self.peek())) { self.advance() }
+        }
+    }
+
     let len = self.pos - start
     let val = malloc(len + 1)
     memcpy(val, ptr_add(self.source, start), len)
@@ -139,7 +225,7 @@ fn Lexer.read_number() {
 
     let tok = malloc(32)
     let t: Token = tok
-    t.kind = TokenKind.Number
+    t.kind = kind
     t.value = val
     t.line = self.line
     t.column = self.col - len
@@ -160,7 +246,9 @@ fn Lexer.read_string() {
     let val = malloc(len + 1)
     memcpy(val, ptr_add(self.source, start), len)
     byte_set(val, len, 0)
-    self.advance() // skip "
+    if (self.peek() == 34) {
+        self.advance() // skip closing "
+    }
 
     let tok = malloc(32)
     let t: Token = tok
@@ -178,14 +266,14 @@ fn Lexer.read_symbol() {
 
     // Multi-char operators like ==, !=, <=, >=
     let next = self.peek()
-    let is_multi = false
+    let mut is_multi = false
     if (c == 61 && next == 61) { is_multi = true } // ==
     if (c == 33 && next == 61) { is_multi = true } // !=
     if (c == 60 && next == 61) { is_multi = true } // <=
     if (c == 62 && next == 61) { is_multi = true } // >=
     if (c == 45 && next == 62) { is_multi = true } // ->
 
-    let len = 1
+    let mut len = 1
     if (is_multi) {
         self.advance()
         len = 2
@@ -197,7 +285,11 @@ fn Lexer.read_symbol() {
 
     let tok = malloc(32)
     let t: Token = tok
-    t.kind = is_multi ? TokenKind.Operator : TokenKind.Symbol
+    if (is_multi) {
+        t.kind = TokenKind.Operator
+    } else {
+        t.kind = TokenKind.Symbol
+    }
     if (!is_multi) {
         if (c == 43 || c == 45 || c == 42 || c == 47 || c == 37 || c == 61 || c == 60 || c == 62) {
             t.kind = TokenKind.Operator

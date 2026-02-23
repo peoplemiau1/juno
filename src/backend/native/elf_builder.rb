@@ -19,6 +19,9 @@ class ELFBuilder
     interp_data = ""; dynstr = ""; dynsym = ""; rela_plt = ""; hash = ""; dynamic = ""
     interp_rva = 0; metadata_rel_off = 0; dynamic_rva = 0; dynstr_rva = 0; dyn_len = 0
 
+    # 4KB Page Alignment for segments
+    code_segment_filesz = align_val(0x1000 + @code_len, 0x1000)
+
     if has_dyn
       interp_data = (@arch == :aarch64) ? "/lib/ld-linux-aarch64.so.1\x00" : "/lib64/ld-linux-x86-64.so.2\x00"
       dynstr = "\x00"
@@ -44,7 +47,7 @@ class ELFBuilder
       interp_rva = base + 0x200
 
       metadata_rel_off = align_val(@data_len, 16)
-      metadata_rva = base + 0x1000 + @code_len + metadata_rel_off
+      metadata_rva = base + code_segment_filesz + metadata_rel_off
 
       dynstr_rva = metadata_rva
       dynsym_rva = align_val(dynstr_rva + dynstr.length, 8)
@@ -81,12 +84,10 @@ class ELFBuilder
       ph += [3, 4, 0x200, interp_rva, interp_rva, interp_data.length, interp_data.length, 1].pack("LLQQQQQQ")
     end
 
-    # 4KB Page Alignment for segments
-    code_segment_filesz = align_val(0x1000 + @code_len, 0x1000)
     ph += [1, 5, 0, base, base, 0x1000 + @code_len, 0x1000 + @code_len, 0x1000].pack("LLQQQQQQ")
 
     if has_dyn
-      ph += [2, 6, code_segment_filesz + metadata_rel_off + (dynamic_rva - dynstr_rva), dynamic_rva, dynamic_rva, dyn_len, dyn_len, 8].pack("LLQQQQQQ")
+      ph += [2, 6, code_segment_filesz + metadata_rel_off + (dynamic_rva - dynstr_rva), base + code_segment_filesz + metadata_rel_off + (dynamic_rva - dynstr_rva), base + code_segment_filesz + metadata_rel_off + (dynamic_rva - dynstr_rva), dyn_len, dyn_len, 8].pack("LLQQQQQQ")
     end
 
     data_filesz = @data_len + (has_dyn ? (metadata_rel_off + (dynamic_rva - dynstr_rva) + dyn_len) : 0)

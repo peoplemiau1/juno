@@ -1,0 +1,22 @@
+import "../stdlib/std.juno"
+
+enum TokenKind { Ident, Keyword, Number, EOF }
+struct Token {
+    let kind: TokenKind
+    let v: ptr
+}
+
+fn main() {
+    prints("Testing Lexer Logic\n")
+    let tok = malloc(16)
+    let t: Token = tok
+    t.kind = TokenKind.Ident
+    t.v = "foo"
+
+    match (t.kind) {
+        TokenKind.Ident -> prints("It is an identifier\n")
+        _ -> prints("Unknown\n")
+    }
+
+    return 0
+}

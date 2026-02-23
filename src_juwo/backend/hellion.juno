@@ -27,8 +27,9 @@ struct Hellion {
 }
 
 fn Hellion.init(arch: int) {
+    let List_SIZE = 24
     self.arch = arch
-    self.code = malloc(24) // size of List
+    self.code = malloc(List_SIZE) // size of List
     let l: List = self.code
     l.init(1024)
 }
@@ -48,24 +49,35 @@ fn Hellion.translate(ir_list: ptr) {
 
 fn Hellion.translate_instruction(ins: IRInstruction) {
     match (ins.op) {
-        IROp.MOV => self.emit_mov(ins.arg1, ins.arg2)
-        IROp.ADD => self.emit_arith(1, ins.arg1, ins.arg2, ins.arg3)
-        IROp.SUB => self.emit_arith(2, ins.arg1, ins.arg2, ins.arg3)
-        IROp.MUL => self.emit_arith(3, ins.arg1, ins.arg2, ins.arg3)
-        IROp.JZ  => self.emit_jz(ins.arg1, ins.arg2)
-        IROp.RET => self.emit_ret(ins.arg1)
+        IROp.MOV -> self.emit_mov(ins.arg1, ins.arg2)
+        IROp.ADD -> self.emit_arith(1, ins.arg1, ins.arg2, ins.arg3)
+        IROp.SUB -> self.emit_arith(2, ins.arg1, ins.arg2, ins.arg3)
+        IROp.MUL -> self.emit_arith(3, ins.arg1, ins.arg2, ins.arg3)
+        IROp.JZ  -> self.emit_jz(ins.arg1, ins.arg2)
+        IROp.RET -> self.emit_ret(ins.arg1)
+        _ -> {
+            prints("Error: Unimplemented or unsupported IROp in Hellion.translate_instruction\n")
+            exit(1)
+        }
     }
 }
 
 fn Hellion.emit_mov(dst: ptr, src: ptr) {
     if (self.arch == 1) { // x86_64
-        // MOV RAX, imm (simplified)
-        self.emit_byte(0x48)
-        self.emit_byte(0xB8)
+        let reg = atoi(dst)
+        if (reg < 0 || reg > 15) {
+            prints("Error: Register out of range in Hellion.emit_mov\n")
+            exit(1)
+        }
+        // REX prefix: 0x48 | (W=1, R=0, X=0, B=reg[3])
+        let rex = 72 | ((reg >> 3) & 1)
+        self.emit_byte(rex)
+        self.emit_byte(184 + (reg & 7)) // 0xB8 + reg_low
+
         // emit 8 bytes of src value
-        let val = atoi(src)
+        let mut val = atoi(src)
         for (i = 0; i < 8; i++) {
-            self.emit_byte(val & 0xFF)
+            self.emit_byte(val & 255)
             val = val >> 8
         }
     }
@@ -73,11 +85,29 @@ fn Hellion.emit_mov(dst: ptr, src: ptr) {
 
 fn Hellion.emit_arith(op_type: int, dst: ptr, src1: ptr, src2: ptr) {
     if (self.arch == 1) {
-        // ADD RAX, RDX
-        if (op_type == 1) {
-            self.emit_byte(0x48)
-            self.emit_byte(0x01)
-            self.emit_byte(0xD0)
+        let d_reg = atoi(dst)
+        let s_reg = atoi(src2) // src1 is usually same as dst in many JIR simplifications, but let's be careful
+
+        // REX: 0x48 | (R=src[3], B=dst[3])
+        let rex = 72 | (((s_reg >> 3) & 1) << 2) | ((d_reg >> 3) & 1)
+        let modrm = 192 | ((s_reg & 7) << 3) | (d_reg & 7) // 0xC0 | (src_low << 3) | dst_low
+
+        if (op_type == 1) { // ADD
+            self.emit_byte(rex)
+            self.emit_byte(1) // 0x01
+            self.emit_byte(modrm)
+        } elif (op_type == 2) { // SUB
+            self.emit_byte(rex)
+            self.emit_byte(41) // 0x29
+            self.emit_byte(modrm)
+        } elif (op_type == 3) { // MUL (IMUL reg, reg)
+            self.emit_byte(rex)
+            self.emit_byte(15) // 0x0F
+            self.emit_byte(175) // 0xAF
+            self.emit_byte(modrm)
+        } else {
+            prints("Error: Unsupported op_type in Hellion.emit_arith\n")
+            exit(1)
         }
     }
 }
@@ -85,21 +115,20 @@ fn Hellion.emit_arith(op_type: int, dst: ptr, src1: ptr, src2: ptr) {
 fn Hellion.emit_jz(cond: ptr, label: ptr) {
     if (self.arch == 1) {
         // TEST RAX, RAX
-        self.emit_byte(0x48)
-        self.emit_byte(0x85)
-        self.emit_byte(0xC0)
+        self.emit_byte(72)
+        self.emit_byte(133)
+        self.emit_byte(192)
         // JZ rel32
-        self.emit_byte(0x0F)
-        self.emit_byte(0x84)
-        // placeholder for offset
+        self.emit_byte(15)
+        self.emit_byte(132)
+        // Note: Backpatching not yet supported in this proof-of-concept
         for (i = 0; i < 4; i++) { self.emit_byte(0) }
     }
 }
 
 fn Hellion.emit_ret(val: ptr) {
     if (self.arch == 1) {
-        // POP RBP; RET
-        self.emit_byte(0x5D)
-        self.emit_byte(0xC3)
+        // Just plain RET for now to avoid RBP corruption without matching prologue
+        self.emit_byte(195) // 0xC3
     }
 }

@@ -108,8 +108,32 @@ module GeneratorExpressions
       enum_info = @ctx.enums[pattern[:enum]]
       variant_info = enum_info[:variants][pattern[:variant]]
 
-      # Check tag (at [RDX])
-      @emitter.mov_rax_mem_idx(2, 0) # RAX = [RDX]
+      # Check if RDX is likely a pointer or a tag
+      # If it's a tag (small integer), compare directly.
+      # If it's a pointer, load tag from [RDX].
+
+      # For now, let's assume if it has fields it MUST be a pointer.
+      # If no fields, it could be either.
+      if (pattern[:fields] || []).empty?
+         # Try both? No.
+         # Let's see... if the matched value was an enum variant constructor, it's a pointer.
+         # If it was assigned a variant constant, it's an integer.
+
+         # Unified approach: if RDX > 0x1000, assume pointer.
+         @emitter.cmp_reg_imm(2, 4096)
+         is_ptr_patch = @emitter.jae_rel32
+
+         @emitter.mov_rax_from_reg(2) # RAX = RDX (tag)
+         skip_ptr_patch = @emitter.jmp_rel32
+
+         @emitter.patch_jae(is_ptr_patch, @emitter.current_pos)
+         @emitter.mov_rax_mem_idx(2, 0) # RAX = [RDX] (tag)
+
+         @emitter.patch_jmp(skip_ptr_patch, @emitter.current_pos)
+      else
+         @emitter.mov_rax_mem_idx(2, 0) # RAX = [RDX]
+      end
+
       @emitter.mov_reg_imm(6, variant_info[:tag]) # RSI = target tag
       @emitter.cmp_rax_rsi("==")
 
