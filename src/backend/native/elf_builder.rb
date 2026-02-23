@@ -81,21 +81,23 @@ class ELFBuilder
       ph += [3, 4, 0x200, interp_rva, interp_rva, interp_data.length, interp_data.length, 1].pack("LLQQQQQQ")
     end
 
-    code_segment_filesz = 0x1000 + @code_len
-    ph += [1, 5, 0, base, base, code_segment_filesz, code_segment_filesz, 0x1000].pack("LLQQQQQQ")
+    # 4KB Page Alignment for segments
+    code_segment_filesz = align_val(0x1000 + @code_len, 0x1000)
+    ph += [1, 5, 0, base, base, 0x1000 + @code_len, 0x1000 + @code_len, 0x1000].pack("LLQQQQQQ")
 
     if has_dyn
-      ph += [2, 6, 0x1000 + @code_len + metadata_rel_off + (dynamic_rva - dynstr_rva), dynamic_rva, dynamic_rva, dyn_len, dyn_len, 8].pack("LLQQQQQQ")
+      ph += [2, 6, code_segment_filesz + metadata_rel_off + (dynamic_rva - dynstr_rva), dynamic_rva, dynamic_rva, dyn_len, dyn_len, 8].pack("LLQQQQQQ")
     end
 
     data_filesz = @data_len + (has_dyn ? (metadata_rel_off + (dynamic_rva - dynstr_rva) + dyn_len) : 0)
     data_memsz = data_filesz + @bss_len
-    ph += [1, 6, 0x1000 + @code_len, base + 0x1000 + @code_len, base + 0x1000 + @code_len, data_filesz, data_memsz, 0x1000].pack("LLQQQQQQ")
+    ph += [1, 6, code_segment_filesz, base + code_segment_filesz, base + code_segment_filesz, data_filesz, data_memsz, 0x1000].pack("LLQQQQQQ")
 
     result = (header + ph).ljust(0x200, "\x00")
     result += interp_data.ljust(32, "\x00") if has_dyn
     result = result.ljust(0x1000, "\x00")
     result += @bytes[0...@code_len].pack("C*")
+    result = result.ljust(code_segment_filesz, "\x00") # Pad .text to 4KB
     data_part = @bytes[@code_len..-1].pack("C*")
     if has_dyn
       m2 = dynstr.ljust(align_val(dynstr.length, 8), "\x00")
@@ -108,17 +110,25 @@ class ELFBuilder
     end
     result += data_part
 
+    # Section String Table (.shstrtab)
+    shstrtab = "\x00.text\x00.data\x00.shstrtab\x00"
+
     # Add dummy section headers for better compatibility
     sh_off = result.length
+    sh_num = 4
     sh = "\x00" * 64 # NULL section
     sh += [1, 1, 6, base + 0x1000, 0x1000, @code_len, 0, 0, 16, 0].pack("LLQQQQLLQQ") # .text
-    sh += [7, 1, 3, base + 0x1000 + @code_len, 0x1000 + @code_len, data_filesz, 0, 0, 16, 0].pack("LLQQQQLLQQ") # .data
+    sh += [7, 1, 3, base + code_segment_filesz, code_segment_filesz, data_filesz, 0, 0, 16, 0].pack("LLQQQQLLQQ") # .data
+
+    shstrtab_data_off = sh_off + sh_num * 64
+    sh += [13, 3, 0, 0, shstrtab_data_off, shstrtab.length, 0, 0, 1, 0].pack("LLQQQQLLQQ") # .shstrtab
 
     # Update ELF header with SH info
     result[40..47] = [sh_off].pack("Q")  # e_shoff
     result[58..59] = [64].pack("S")      # e_shentsize
-    result[60..61] = [3].pack("S")       # e_shnum
+    result[60..61] = [4].pack("S")       # e_shnum
+    result[62..63] = [3].pack("S")       # e_shstrndx (index 3 is .shstrtab)
 
-    result + sh
+    result + sh + shstrtab
   end
 end

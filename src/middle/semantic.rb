@@ -15,15 +15,29 @@ class SemanticAnalyzer
     @ast.each do |node|
       case node[:type]
       when :function_definition
-        @symbol_table[node[:name]] = { type: :function, return_type: node[:return_type] || "int", params: node[:param_types] || {} }
+        @symbol_table[node[:name]] = {
+          type: :function,
+          return_type: node[:return_type] || "int",
+          params: node[:params] || [],
+          param_types: node[:param_types] || {}
+        }
       when :extern_definition
-        @symbol_table[node[:name]] = { type: :function, return_type: node[:return_type] || "int", params: node[:param_types] || {} }
+        @symbol_table[node[:name]] = {
+          type: :function,
+          return_type: node[:return_type] || "int",
+          params: node[:params] || [],
+          param_types: node[:param_types] || {}
+        }
       when :struct_definition
         @structs[node[:name]] = node
       when :union_definition
         @unions[node[:name]] = node
       when :enum_definition
         @structs[node[:name]] = node # Treat enums as structs for pointer checks
+      when :assignment
+        if node[:let]
+           @symbol_table[node[:name]] = { type: :global, var_type: node[:var_type] || "int", mut: node[:mut] }
+        end
       end
     end
 
@@ -54,12 +68,18 @@ class SemanticAnalyzer
         local_vars[node[:name]] = { type: node[:var_type] || type, mut: node[:mut] }
       else
         # Reassignment
-        var_info = local_vars[node[:name]]
+        var_info = local_vars[node[:name]] || @symbol_table[node[:name]]
         if var_info && !var_info[:mut]
            error_at(node, "Cannot reassign to non-mutable variable '#{node[:name]}'")
         end
       end
       type
+    when :increment
+      var_info = local_vars[node[:name]]
+      if var_info && !var_info[:mut]
+        error_at(node, "Cannot increment/decrement non-mutable variable '#{node[:name]}'")
+      end
+      "int"
     when :binary_op
       left_type = analyze_node(node[:left], local_vars)
       right_type = analyze_node(node[:right], local_vars)
@@ -99,13 +119,27 @@ class SemanticAnalyzer
       end
       "int"
     when :fn_call
-      sym = @symbol_table[node[:name]]
-      if sym
+      name = node[:name]
+      sym = @symbol_table[name]
+
+      # Handle methods
+      if name.include?('.') && !sym
+        # Simple heuristic: try to find method in any struct
+        # In a real compiler we'd check the receiver type
+        @symbol_table.each do |k, v|
+           if k.end_with?(".#{name.split('.').last}")
+              sym = v
+              break
+           end
+        end
+      end
+
+      if sym && sym[:type] == :function
         # Check argument count
         expected = sym[:params].length
         actual = (node[:args] || []).length
         if expected != actual
-          error_at(node, "Function '#{node[:name]}' expects #{expected} arguments, but got #{actual}")
+          error_at(node, "Function '#{name}' expects #{expected} arguments, but got #{actual}")
         end
         sym[:return_type]
       else

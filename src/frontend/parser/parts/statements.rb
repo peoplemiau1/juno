@@ -1,6 +1,10 @@
 module ParserStatements
   def consume_type
-    name = consume_ident
+    if match?(:keyword) && ["int", "string", "bool", "real", "ptr"].include?(peek[:value])
+      name = consume[:value]
+    else
+      name = consume_ident
+    end
     if match?(:langle)
       name += "<"
       consume(:langle)

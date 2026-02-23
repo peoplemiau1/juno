@@ -55,6 +55,7 @@ module GeneratorExpressions
   def gen_match(node)
     eval_expression(node[:expression])
     @emitter.push_reg(0) # Store matched value on stack
+    @ctx.stack_depth += 8
 
     end_patches = []
 
@@ -80,6 +81,7 @@ module GeneratorExpressions
     # Label for jumps from inside cases
     pop_pos = @emitter.current_pos
     @emitter.pop_reg(2) # Pop matched value into RDX to keep RAX (result)
+    @ctx.stack_depth -= 8
 
     end_pos = @emitter.current_pos
     end_patches.each { |p| @emitter.patch_jmp(p, pop_pos) }
@@ -119,21 +121,26 @@ module GeneratorExpressions
       @emitter.test_rax_rax
       skip_bind = @emitter.je_rel32
 
-      (pattern[:fields] || []).each_with_index do |f_name, i|
-        # Field i is at [RDX + 8 + i*8]
-        @emitter.mov_rax_mem_idx(2, 8 + i * 8)
-        if @ctx.in_register?(f_name)
-          reg = @emitter.class.reg_code(@ctx.get_register(f_name))
-          @emitter.mov_reg_reg(reg, 0)
-        else
-          off = @ctx.get_variable_offset(f_name)
-          @emitter.mov_stack_reg_val(off, 0)
-        end
-      end
+      unwrap_pattern(2, pattern[:fields] || [])
+
       @emitter.mov_rax(1)
       @emitter.patch_je(skip_bind, @emitter.current_pos)
     else
       @emitter.mov_rax(0)
+    end
+  end
+
+  def unwrap_pattern(ptr_reg, fields)
+    fields.each_with_index do |f_name, i|
+      # Field i is at [ptr_reg + 8 + i*8]
+      @emitter.mov_rax_mem_idx(ptr_reg, 8 + i * 8)
+      if @ctx.in_register?(f_name)
+        reg = @emitter.class.reg_code(@ctx.get_register(f_name))
+        @emitter.mov_reg_reg(reg, 0)
+      else
+        off = @ctx.get_variable_offset(f_name)
+        @emitter.mov_stack_reg_val(off, 0)
+      end
     end
   end
 
@@ -182,6 +189,12 @@ module GeneratorExpressions
     @emitter.emit_load_address(label, @linker)
   end
 
+  def has_fn_call?(node)
+    return false unless node.is_a?(Hash)
+    return true if node[:type] == :fn_call
+    node.any? { |k, v| v.is_a?(Hash) ? has_fn_call?(v) : (v.is_a?(Array) ? v.any?{|i| has_fn_call?(i)} : false) }
+  end
+
   def eval_binary_op(expr)
     if (expr[:op] == "+" || expr[:op] == "<>") && (expr[:left][:type] == :string_literal || expr[:right][:type] == :string_literal)
        return gen_fn_call({ type: :fn_call, name: "concat", args: [expr[:left], expr[:right]] })
@@ -191,7 +204,9 @@ module GeneratorExpressions
     end
 
     eval_expression(expr[:left])
-    scratch = @ctx.acquire_scratch
+    # Disable scratch registers if right side contains a function call
+    scratch = has_fn_call?(expr[:right]) ? nil : @ctx.acquire_scratch
+
     if scratch
       @emitter.mov_reg_reg(scratch, 0)
       eval_expression(expr[:right])
@@ -200,8 +215,10 @@ module GeneratorExpressions
       @ctx.release_scratch(scratch)
     else
       @emitter.push_reg(0)
+      @ctx.stack_depth += 8
       eval_expression(expr[:right])
       @emitter.mov_reg_reg(2, 0); @emitter.pop_reg(0)
+      @ctx.stack_depth -= 8
     end
 
     case expr[:op]
@@ -252,7 +269,7 @@ module GeneratorExpressions
     base = pointer_node?(expr[:left]) ? expr[:left] : expr[:right]
     offset = (base == expr[:left]) ? expr[:right] : expr[:left]
     eval_expression(base)
-    scratch = @ctx.acquire_scratch
+    scratch = has_fn_call?(offset) ? nil : @ctx.acquire_scratch
     if scratch
       @emitter.mov_reg_reg(scratch, 0)
       eval_expression(offset)
@@ -262,8 +279,10 @@ module GeneratorExpressions
       @ctx.release_scratch(scratch)
     else
       @emitter.push_reg(0)
+      @ctx.stack_depth += 8
       eval_expression(offset); @emitter.shl_rax_imm(3)
       @emitter.mov_reg_reg(2, 0); @emitter.pop_reg(0)
+      @ctx.stack_depth -= 8
     end
     expr[:op] == "+" ? @emitter.add_rax_rdx : @emitter.sub_rax_rdx
   end

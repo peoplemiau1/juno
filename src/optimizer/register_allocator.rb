@@ -1,10 +1,13 @@
 class RegisterAllocator
   X86_64_REGS = [:rbx, :r12, :r13, :r14, :r15]
+  X86_64_CALLER_SAVED = [:rcx, :rdx, :rsi, :rdi, :r8, :r9, :r10, :r11]
   AARCH64_REGS = [19, 20, 21, 22, 23, 24, 25, 26, 27, 28]
+  AARCH64_CALLER_SAVED = (0..18).to_a
 
   def initialize(arch = :x86_64)
     @arch = arch
     @allocatable_regs = (arch == :aarch64) ? AARCH64_REGS : X86_64_REGS
+    @caller_saved = (arch == :aarch64) ? AARCH64_CALLER_SAVED : X86_64_CALLER_SAVED
   end
 
   def allocate(nodes, globals = [])
@@ -39,6 +42,23 @@ class RegisterAllocator
         else
           false
         end
+      end
+
+      # Call Boundary: Spill all caller-saved registers if node contains a call
+      if contains_call?(node)
+        active.delete_if do |a|
+          if @caller_saved.include?(a[:reg])
+            # In a real linear scan, we'd spill to stack and potentially reload.
+            # Here we just force it to be spilled for its remaining lifetime if it crosses a call.
+            spilled << a[:var]
+            allocations.delete(a[:var])
+            true
+          else
+            false
+          end
+        end
+        # Ensure clobbered regs are not in free_regs for this instruction
+        # But they can be used after.
       end
 
       # Allocate for variables defined here
@@ -81,6 +101,12 @@ class RegisterAllocator
   end
 
   private
+
+  def contains_call?(node)
+    return false unless node.is_a?(Hash)
+    return true if node[:type] == :fn_call
+    node.any? { |k, v| v.is_a?(Hash) ? contains_call?(v) : (v.is_a?(Array) ? v.any?{|i| contains_call?(i)} : false) }
+  end
 
   def find_vars(node)
     return [] unless node.is_a?(Hash)

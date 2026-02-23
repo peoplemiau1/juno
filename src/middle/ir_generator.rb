@@ -27,7 +27,9 @@ class IRGenerator
     case node[:type]
     when :function_definition
       emit(:LABEL, node[:name], type: :function)
+      emit(:ALLOC_STACK, 1024) # Default frame
       node[:body].each { |stmt| process_node(stmt) }
+      emit(:FREE_STACK, 1024)
       emit(:RET, "v0") # Implicit return 0 if no ret
     when :extern_definition
       # Externs are handled by linker, but IR can track them
@@ -45,7 +47,7 @@ class IRGenerator
     case node[:type]
     when :assignment
       src = eval_expression(node[:expression])
-      emit(:STORE, node[:name], src, let: node[:let], mut: node[:mut])
+      emit(:MOVE, node[:name], src, let: node[:let], mut: node[:mut])
     when :if_statement
       process_if(node)
     when :while_statement
@@ -89,12 +91,22 @@ class IRGenerator
            when "==", "!=", "<", ">", "<=", ">=" then :CMP
            when "<>" then :CONCAT
            end
-      emit(op, dst, left, right, cond: (op == :CMP ? expr[:op] : nil))
+      if op == :CMP
+        emit(:CMP, left, right)
+        # For simplicity in expressions, we might still need a way to get result in reg
+        # But formalized JIR uses CMP + JCC.
+        # For expressions, we'll use ARITH for now if it's not for a jump.
+        emit(:ARITH, op, dst, left, right, cond: expr[:op])
+      else
+        emit(:ARITH, op, dst, left, right)
+      end
       dst
     when :fn_call
       args = (expr[:args] || []).map { |a| eval_expression(a) }
       dst = next_vreg
-      emit(:CALL, dst, expr[:name], args)
+      # Standardized CALL uses args_count
+      args.each_with_index { |arg, i| emit(:MOVE, "param_#{i}", arg) }
+      emit(:CALL, dst, expr[:name], args.length)
       dst
     when :member_access
       dst = next_vreg
@@ -125,8 +137,13 @@ class IRGenerator
     else_l = next_label("if_else")
     end_l = next_label("if_end")
 
+    if node[:condition][:type] == :binary_op && [:CMP, :CMP_EQ, :CMP_NE].include?(node[:condition][:op]) # Simplified
+       # Optimization: JCC directly
+    end
+
     cond = eval_expression(node[:condition])
-    emit(:JZ, cond, else_l)
+    emit(:CMP, cond, 0)
+    emit(:JCC, "==", else_l) # JZ
 
     node[:body].each { |s| process_node(s) }
     emit(:JMP, end_l)
