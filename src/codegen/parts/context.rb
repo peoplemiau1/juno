@@ -16,6 +16,7 @@ class CodegenContext
     "int" => { size: 8, signed: true },
     "ptr" => { size: 8, signed: false },
     "bool" => { size: 1, signed: false },
+    "real" => { size: 8, signed: true }, # Placeholder for floats
   }
 
   def initialize(arch = :x86_64)

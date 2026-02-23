@@ -18,8 +18,15 @@ class Importer
 
     ast.each do |node|
       if node[:type] == :import || node[:type] == :use_statement
-        is_system = (node[:type] == :use_statement) || node[:system]
-        imported_ast = process_import(node[:path], current_file, is_system)
+        if node[:type] == :use_statement || node[:system]
+          begin
+            imported_ast = process_import(node[:path], current_file, true)
+          rescue JunoImportError
+            imported_ast = process_import(node[:path], current_file, false)
+          end
+        else
+          imported_ast = process_import(node[:path], current_file, false)
+        end
         result.concat(imported_ast)
       else
         result << node
@@ -90,7 +97,7 @@ class Importer
       # Skip main function from imported modules
       definitions = resolved_ast.select do |node|
         case node[:type]
-        when :struct_definition
+        when :struct_definition, :enum_definition, :type_alias, :extern_definition, :union_definition
           true
         when :function_definition
           node[:name] != "main"  # Don't import main()

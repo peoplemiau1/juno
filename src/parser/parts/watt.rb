@@ -140,9 +140,37 @@ module WattParser
   def parse_type_alias
     consume_keyword('type')
     name = consume_ident
-    consume_symbol('=')
-    target = consume_type
-    { type: :type_alias, name: name, target: target }
+    if match_symbol?('=')
+      consume_symbol('=')
+      target = consume_type
+      { type: :type_alias, name: name, target: target }
+    elsif match_symbol?('{')
+      # Watt-style type Name { fields } is a struct
+      parse_struct_at_ident(name)
+    else
+      error_unexpected(peek, "Expected '=' or '{' after type name")
+    end
+  end
+
+  def parse_struct_at_ident(name)
+    type_params = []
+    # (Assuming we might have consumed type name, now at { or <)
+    # This helper will be used by parse_type_alias
+    consume_symbol('{')
+    fields = []
+    field_types = {}
+    until match_symbol?('}')
+      consume_keyword('let') if match_keyword?('let')
+      field_name = consume_ident
+      if match?(:colon)
+        consume(:colon)
+        field_types[field_name] = consume_type
+      end
+      fields << field_name
+      consume_symbol(",") if match_symbol?(",")
+    end
+    consume_symbol('}')
+    { type: :struct_definition, name: name, fields: fields, field_types: field_types, type_params: type_params }
   end
 
   def parse_panic

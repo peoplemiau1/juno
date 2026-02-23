@@ -176,6 +176,11 @@ module ParserStatements
     params = []
     param_types = {}
     until match_symbol?(')')
+      is_mut = false
+      if match_keyword?('mut')
+        consume_keyword('mut')
+        is_mut = true
+      end
       param_name = consume_ident
       if match?(:colon)
         consume(:colon)
