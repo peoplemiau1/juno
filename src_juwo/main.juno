@@ -1,0 +1,53 @@
+// src_juwo/main.juno
+
+import "../stdlib/std.juno"
+import "frontend/lexer.juno"
+import "frontend/parser.juno"
+import "backend/hellion.juno"
+
+fn main() {
+    prints("Juwo Compiler v3.0 (Juwo Edition)\n")
+
+    // Read source file
+    let buf = malloc(1024 * 64)
+    let n = os_read_file("main.juno", buf, 1024 * 64)
+    if (n < 0) {
+        prints("Error: Could not read main.juno\n")
+        return 1
+    }
+
+    // Lexer
+    let lex = malloc(40) // Lexer size
+    let l: Lexer = lex
+    l.init(buf)
+    l.tokenize()
+    prints("Lexing complete: ")
+    let tokens: List = l.tokens
+    print(tokens.len)
+    prints(" tokens\n")
+
+    // Parser
+    let pars = malloc(16) // Parser size
+    let p: Parser = pars
+    p.init(l.tokens)
+    let ast_list = malloc(24) // List of statements
+    let al: List = ast_list
+    al.init(100)
+
+    while (!p.match_kind(TokenKind.EOF)) {
+        al.add(p.parse_statement())
+    }
+    prints("Parsing complete.\n")
+
+    // Backend (Hellion)
+    // For now we'd need an IR generator pass, but let's assume we translate AST or simple IR
+    let backend = malloc(16) // Hellion size
+    let h: Hellion = backend
+    h.init(1) // x86_64
+
+    // Placeholder translation
+    prints("Backend initialized.\n")
+
+    prints("Juwo Edition compiler finished.\n")
+    return 0
+}
