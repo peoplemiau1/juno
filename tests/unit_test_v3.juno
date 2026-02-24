@@ -1,0 +1,19 @@
+// tests/unit_test_v3.juno - Unit test for Juno v3 compiler features
+
+fn test_if() {
+    output("Testing if...");
+    let a = 10;
+    let b = 20;
+    if (a < b) {
+        output("10 < 20 is TRUE");
+    } else {
+        output("10 < 20 is FALSE (ERROR)");
+    }
+}
+
+fn main() {
+    output("--- JUNO V3 UNIT TEST ---");
+    test_if();
+    output("--- ALL TESTS FINISHED ---");
+    return 0;
+}

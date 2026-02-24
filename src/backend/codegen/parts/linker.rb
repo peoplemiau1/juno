@@ -30,6 +30,10 @@ class Linker
     @functions[name] = @base_rva + offset_in_code
   end
 
+  def register_label(name, offset_in_code)
+    @functions[name] = @base_rva + offset_in_code
+  end
+
   def register_import(name, rva)
     @imports[name] = rva
   end

@@ -2,10 +2,10 @@
 fn main() {
     output("--- JUNO PRIME FINDER (2-100) ---");
     
-    let total_found = 0;
+    let mut total_found = 0;
 
-    for (n = 2; n <= 100; n++) {
-        let is_prime = 1; // Предполагаем, что число простое
+    for (n = 2; n <= 20; n++) {
+        let mut is_prime = 1; // Предполагаем, что число простое
         
         // Проверяем делители от 2 до n-1
         for (i = 2; i < n; i++) {
