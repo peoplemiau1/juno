@@ -1,5 +1,5 @@
 #!/usr/bin/env ruby
-# Unified Juno CLI
+# Unified Juno CLI - v3.0 Architecture (Industrial Edition)
 
 require 'optparse'
 require 'fileutils'
@@ -8,186 +8,54 @@ require_relative "src/frontend/parser"
 require_relative "src/middle/importer"
 require_relative "src/middle/monomorphizer"
 require_relative "src/middle/semantic"
+require_relative "src/middle/ir_generator"
 require_relative "src/optimizer/turbo"
 require_relative "src/middle/analyzer/resource_auditor"
-require_relative "src/backend/codegen/native_generator"
-require_relative "src/middle/ir_generator"
 require_relative "src/backend/hellion"
 require_relative "src/frontend/preprocessor"
 require_relative "src/errors"
-
-LOGO = <<-'EOF'
-      ____.
-     |    |__ __  ____   ____    __      __         __    __
-     |    |  |  \/    \ /  _ \  /  \    /  \_____ _/  |__/  |_
- /\__|    |  |  /   |  (  <_> ) \   \/\/   /\__  \\   __\   __\
- \________|____/|___|  /\____/   \        /  / __ \|  |  |  |
-                     \/           \__/\  /  (____  /__|  |__|
-                                       \/        \/
-    Juno & Watt Compiler
-EOF
 
 options = {
   arch: :x86_64,
   os: :linux,
   output: nil,
-  hell: false,
-  hell_level: :hell,
   run: false
 }
 
-def levenshtein_distance(s, t)
-  m = s.length
-  n = t.length
-  return m if n == 0
-  return n if m == 0
-  d = Array.new(m + 1) { Array.new(n + 1) }
-
-  (0..m).each { |i| d[i][0] = i }
-  (0..n).each { |j| d[0][j] = j }
-
-  (1..n).each do |j|
-    (1..m).each do |i|
-      d[i][j] = if s[i - 1] == t[j - 1]
-                  d[i - 1][j - 1]
-                else
-                  [d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + 1].min
-                end
-    end
-  end
-  d[m][n]
-end
-
-def did_you_mean(word, possibilities)
-  best_match = possibilities.min_by { |p| levenshtein_distance(word, p) }
-  if best_match && levenshtein_distance(word, best_match) <= 2
-    best_match
-  else
-    nil
-  end
-end
-
-VALID_OPTIONS = ["--arch", "--output", "--target", "--hell", "--run", "--version", "--help", "-a", "-o", "-t", "-r", "-v", "-h"]
-VALID_ARCHS = ["x86_64", "aarch64"]
-VALID_TARGETS = ["linux", "windows", "flat"]
-VALID_LEVELS = ["easy", "medium", "hard", "nightmare", "hell"]
-
 parser = OptionParser.new do |opts|
   opts.banner = "Usage: juno [options] <input_file>"
-  opts.separator ""
-  opts.separator "Options:"
-
-  opts.on("-a", "--arch ARCH", [:x86_64, :aarch64], "Target architecture (x86_64, aarch64)") do |a|
-    options[:arch] = a
-  end
-
-  opts.on("-o", "--output FILE", "Output binary path") do |o|
-    options[:output] = o
-  end
-
-  opts.on("-t", "--target OS", [:linux, :windows, :flat], "Target OS (linux, windows, flat)") do |t|
-    options[:os] = t
-  end
-
-  opts.on("--hell [LEVEL]", [:easy, :medium, :hard, :nightmare, :hell], "Enable HELL MODE obfuscation") do |level|
-    options[:hell] = true
-    options[:hell_level] = level || :hell
-  end
-
-  opts.on("-r", "--run", "Run after compilation") do
-    options[:run] = true
-  end
-
-  opts.on("-v", "--version", "Show version") do
-    puts LOGO
-    exit
-  end
-
-  opts.on("-h", "--help", "Prints this help") do
-    puts LOGO
-    puts opts
-    exit
-  end
+  opts.on("-a", "--arch ARCH", [:x86_64, :aarch64], "Target architecture") { |a| options[:arch] = a }
+  opts.on("-o", "--output FILE", "Output binary path") { |o| options[:output] = o }
+  opts.on("-t", "--target OS", [:linux, :flat], "Target OS") { |t| options[:os] = t }
+  opts.on("-r", "--run", "Run after compilation") { options[:run] = true }
 end
 
-begin
-  parser.parse!
-rescue OptionParser::InvalidArgument => e
-  puts "\e[31mError:\e[0m #{e.message}"
-  # Extract the last word which is usually the offending argument
-  arg = e.message.split.last
-  if arg
-    possibilities = case e.message
-                    when /arch/ then VALID_ARCHS
-                    when /target/ then VALID_TARGETS
-                    when /hell/ then VALID_LEVELS
-                    else []
-                    end
-    suggestion = did_you_mean(arg, possibilities)
-    puts "Did you mean? \e[36m#{suggestion}\e[0m" if suggestion
-  end
-  exit 1
-rescue OptionParser::InvalidOption => e
-  puts "\e[31mError:\e[0m #{e.message}"
-  opt = e.message.match(/--?\w+/).to_s
-  suggestion = did_you_mean(opt, VALID_OPTIONS)
-  puts "Did you mean? \e[36m#{suggestion}\e[0m" if suggestion
-  puts "Use --help for usage information."
-  exit 1
-rescue OptionParser::MissingArgument => e
-  puts "\e[31mError:\e[0m #{e.message}"
-  exit 1
-end
+parser.parse!
 
 if ARGV.empty?
-  puts LOGO
   puts parser
-  exit
-end
-
-if ARGV[0] == "help"
-  puts LOGO
-  puts parser
-  exit
-elsif ARGV[0] == "version"
-  puts LOGO
   exit
 end
 
 input_file = ARGV[0]
-unless File.exist?(input_file)
-  puts "\e[31mError:\e[0m File not found: #{input_file}"
-  exit 1
-end
-
-output_path = options[:output] || case options[:os]
-  when :linux then "build/output_#{options[:arch]}"
-  when :windows then "build/output.exe"
-  when :flat then "build/output.bin"
-end
-
-$hell_mode = nil
-if options[:hell]
-  require_relative "src/polymorph/hell_mode"
-  $hell_mode = HellMode.new(options[:hell_level], options[:arch])
-  puts "HELL MODE ACTIVATED - Level: #{options[:hell_level]} for #{options[:arch]}"
-end
+output_path = options[:output] || "build/output"
+FileUtils.mkdir_p("build")
 
 begin
+  # 1. FRONTEND: Text -> AST
   code = File.read(input_file)
 
   preprocessor = Preprocessor.new
   preprocessor.define(options[:os].to_s.upcase)
   preprocessor.define("__JUNO__")
-  preprocessor.define("__#{options[:arch]}__")
   code = preprocessor.process(code, input_file)
 
   lexer = Lexer.new(code, input_file)
   tokens = lexer.tokenize
-
   parser = Parser.new(tokens, input_file, code)
   ast = parser.parse
 
+  # 2. MIDDLE-END: AST -> IR (includes analysis and optimization)
   importer = Importer.new(File.dirname(input_file), system_path: File.join(__dir__, "stdlib"))
   ast = importer.resolve(ast, input_file)
 
@@ -200,48 +68,33 @@ begin
   optimizer = TurboOptimizer.new(ast)
   ast = optimizer.optimize
 
-  # Step 6.5: Resource Auditing
+  # Resource auditing
   func_signatures = {}
-  ast.each do |node|
-    if node[:type] == :function_definition
-      func_signatures[node[:name]] = node[:return_type]
-    end
-  end
+  ast.each { |node| func_signatures[node[:name]] = node[:return_type] if node[:type] == :function_definition }
   auditor = ResourceAuditor.new(ast, func_signatures, code, input_file)
   auditor.audit
 
-  # IR-BASED ARCHITECTURE
   ir_gen = IRGenerator.new
   ir = ir_gen.generate(ast)
 
-  generator = NativeGenerator.new(ast, target_os: options[:os], arch: options[:arch], source: code, filename: input_file)
-  generator.hell_mode = $hell_mode if $hell_mode
-  FileUtils.mkdir_p("build")
+  # 3. BACKEND (Hellion): IR -> Binary
+  backend = Hellion.new(options[:arch], options[:os])
+  backend.generate(ir, output_path)
 
-  # The transition to Hellion (Pure IR Backend) is in progress.
-  # For now, NativeGenerator still uses AST-traversal for complex cases (Hell Mode, SIMD),
-  # but all new language features (Watt match, closures) are funneled through IR.
-  generator.generate(output_path, ir)
+  puts "Success! Compiled to #{output_path}"
 
-  puts "Success! Binary generated: #{output_path}"
-  $hell_mode.report if $hell_mode
-
-  if options[:run]
-    if options[:os] == :linux
-      puts "Executing..."
-      exec("./#{output_path}")
-    else
-      puts "Running not supported for this target yet."
-    end
+  if options[:run] && options[:os] == :linux
+    puts "Executing..."
+    exec("./#{output_path}")
   end
+
 rescue JunoError => e
   e.display
   exit 1
 rescue Interrupt
-  puts "\nCompilation interrupted by user."
   exit 1
 rescue => e
-  ice = JunoInternalError.new(e.message, e, filename: input_file)
-  ice.display
+  puts "Internal Compiler Error: #{e.message}"
+  puts e.backtrace
   exit 1
 end
