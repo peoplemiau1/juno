@@ -53,6 +53,8 @@ class IRGenerator
       process_while(node)
     when :for_statement
       process_for(node)
+    when :increment
+      eval_expression(node)
     when :return
       src = eval_expression(node[:expression])
       emit(:RET, src)
@@ -128,6 +130,15 @@ class IRGenerator
       # Define the function at the label
       # Note: This is simplified IR representation
       emit(:FUNC_ADDR, dst, label, node: expr)
+      dst
+    when :increment
+      dst = next_vreg
+      val = eval_expression({type: :variable, name: expr[:name]})
+      one = next_vreg
+      emit(:SET, one, 1)
+      op = (expr[:op] == "++" ? :ADD : :SUB)
+      emit(:ARITH, op, dst, val, one)
+      emit(:MOVE, expr[:name], dst)
       dst
     end
   end

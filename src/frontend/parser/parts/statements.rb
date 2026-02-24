@@ -194,14 +194,16 @@ module ParserStatements
       consume_symbol(',') if match_symbol?(',')
     end
     consume_symbol(')')
-        return_type = nil
+    return_type = nil
     if match?(:colon)
       consume(:colon)
       return_type = consume_type
-    elsif match_symbol?('->')
-      consume_symbol('->')
+    elsif match_symbol?('-') && peek_next && peek_next[:value] == '>'
+      consume_symbol('-')
+      consume_symbol('>')
       return_type = consume_type
     end
+
 
     consume_symbol('{')
     body = []
