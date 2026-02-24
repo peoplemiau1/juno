@@ -1,54 +1,139 @@
-# Juno Intermediate Representation (JIR) Specification v3.0
+# Juno Intermediate Representation (JIR) Specification
 
-JIR is a low-level, platform-neutral instruction set used by the Juno compiler to decouple the frontend from architecture-specific backends.
+JIR is a low-level, platform-neutral instruction set used by the Juno compiler to decouple the frontend from architecture-specific backends. It uses a virtual register machine model with infinite virtual registers.
 
-## Instructions
+## Architecture Model
 
-### Data Movement
-- `MOVE dst, src`: Moves value from `src` to `dst`. `src` can be a literal, a variable, or a virtual register.
-- `MOV dst, src`: Alias for `MOVE`.
-- `SET dst, imm`: Sets `dst` to immediate value `imm`.
-- `LOAD dst, var`: Loads value of variable `var` into `dst`.
-- `STORE var, src`: Stores value of `src` into variable `var`.
-- `LEA dst, label`: Loads the address of `label` into `dst`.
-- `LEA_STR dst, value`: Loads address of string literal `value` into `dst`.
-- `LOAD_MEMBER dst, receiver, member`: Loads value of `member` from struct `receiver` into `dst`.
+### Virtual Registers
+Virtual registers are denoted as `vN` (e.g., `v1`, `v102`). These are mapped to physical registers or spilled to the stack by the backend's register allocator.
 
-### Arithmetic & Logic
-- `ARITH op, dst, src1, src2`: Performs arithmetic operation `op` on `src1` and `src2`, storing result in `dst`.
-  - Supported ops: `+`, `-`, `*`, `/`, `%`, `&`, `|`, `^`, `<<`, `>>`.
-- `CMP src1, src2`: Compares `src1` and `src2` and sets internal flags.
+### Memory Layout
+JIR assumes a linear address space.
+- **Stack**: Managed via `ALLOC_STACK` and `FREE_STACK`.
+- **Heap**: Managed via external `malloc`/`free` calls.
+- **Global Data**: Accessed via labels and `LEA` instructions.
 
-### Control Flow
-- `LABEL name`: Defines a symbolic label.
-- `JMP label`: Unconditional jump to `label`.
-- `JCC cond, label`: Conditional jump to `label` based on last `CMP`.
-  - Supported conds: `==`, `!=`, `<`, `>`, `<=`, `>=`.
-- `JZ src, label`: Jump to `label` if `src` is zero.
-- `JNZ src, label`: Jump to `label` if `src` is not zero.
-- `RET src`: Returns from current function with value `src`.
+### Calling Convention (Lowering)
+While JIR is architecture-neutral, the `CALL` instruction is lowered by the backend to follow the target ABI (e.g., System V AMD64 or ARM AAPCS). JIR callers assume registers are clobbered across calls unless they are callee-saved by the allocator's policy.
 
-### Functions & Stack
-- `CALL dst, name, args_count`: Calls function `name` with `args_count`. Result is stored in `dst`.
-- `CALL_IND dst, ptr, args_count`: Indirect call via `ptr` with `args_count`.
-- `FUNC_ADDR dst, label`: Loads address of function `label` into `dst`.
-- `ALLOC_STACK size`: Allocates `size` bytes on the stack frame.
-- `FREE_STACK size`: Frees `size` bytes from the stack frame.
+---
 
-### Memory Access
-- `LOAD_MEM dst, base, offset, size`: Loads `size` bytes from `[base + offset]` into `dst`.
-- `STORE_MEM base, offset, src, size`: Stores `size` bytes from `src` into `[base + offset]`.
+## Instruction Set Details
 
-### Miscellaneous
-- `SYSCALL dst, num, args`: Performs a system call.
-- `PANIC msg`: Terminates with error.
-- `TODO msg`: Placeholder for unimplemented features.
-- `CAST dst, src, type`: Casts `src` to `type` and stores in `dst`.
-- `TYPE_DEF node`: Metadata for type definitions (struct, union, enum).
-- `EXTERN name, lib`: Declaration of external symbol `name` from `lib`.
-- `RAW_BYTES data`: Injects raw machine code bytes (used in Hell Mode).
+### 1. Data Movement
 
-## Conventions
-- Virtual registers are named `v1`, `v2`, etc.
-- Variables are named identifiers.
-- Functions are defined starting with `LABEL name, type: :function`.
+| Instruction | Parameters | Description |
+|-------------|------------|-------------|
+| `MOVE` | `dst, src` | Copies value from `src` to `dst`. `src` can be a literal, variable, or virtual register. |
+| `SET` | `dst, imm` | Loads an immediate integer value into `dst`. |
+| `LOAD` | `dst, var` | Loads the value of a local/global variable into `dst`. |
+| `STORE` | `var, src` | Stores the value of `src` into a local/global variable. |
+| `LEA` | `dst, label` | Loads the effective address of a code or data label. |
+| `LEA_STR` | `dst, "val"` | Inlines a string literal and loads its address into `dst`. |
+
+### 2. Arithmetic & Logic
+
+| Instruction | Parameters | Description |
+|-------------|------------|-------------|
+| `ARITH` | `op, dst, s1, s2`| `dst = s1 op s2`. Ops: `+`, `-`, `*`, `/`, `%`, `&`, `\|`, `^`, `<<`, `>>`. |
+| `CMP` | `s1, s2` | Compares two values and updates internal backend flags for subsequent `JCC`. |
+
+### 3. Control Flow
+
+| Instruction | Parameters | Description |
+|-------------|------------|-------------|
+| `LABEL` | `name` | Defines a destination for jumps. |
+| `JMP` | `label` | Unconditional branch to `label`. |
+| `JCC` | `cond, label`| Conditional branch. Conds: `==`, `!=`, `<`, `>`, `<=`, `>=`. |
+| `JZ` | `src, label` | Jump to `label` if `src == 0`. |
+| `JNZ` | `src, label` | Jump to `label` if `src != 0`. |
+| `RET` | `src` | Exits the current function, returning `src`. |
+
+### 4. Function & Stack Management
+
+| Instruction | Parameters | Description |
+|-------------|------------|-------------|
+| `CALL` | `dst, name, n`| Calls function `name` with `n` arguments. Result in `dst`. |
+| `CALL_IND`| `dst, ptr, n` | Indirect call via function pointer `ptr`. |
+| `ALLOC_STACK`| `size` | Increases stack frame by `size`. Used for large arrays or spills. |
+| `FREE_STACK` | `size` | Decreases stack frame by `size`. |
+
+### 5. Memory Access (Raw)
+
+| Instruction | Parameters | Description |
+|-------------|------------|-------------|
+| `LOAD_MEM` | `dst, base, off, sz` | Loads `sz` bytes from `[base + off]` into `dst`. |
+| `STORE_MEM`| `base, off, src, sz` | Stores `sz` bytes from `src` into `[base + off]`. |
+
+---
+
+## Translation Examples
+
+### C-style Loop
+**Source:**
+```watt
+let mut i = 0
+while (i < 10) {
+    print(i)
+    i = i + 1
+}
+```
+
+**JIR:**
+```jir
+    SET v1, 0
+    STORE i, v1
+LABEL loop_start:
+    LOAD v2, i
+    SET v3, 10
+    CMP v2, v3
+    JCC >=, loop_end
+
+    LOAD v4, i
+    CALL v5, print, 1 (v4)
+
+    LOAD v6, i
+    SET v7, 1
+    ARITH +, v8, v6, v7
+    STORE i, v8
+
+    JMP loop_start
+LABEL loop_end:
+```
+
+### Struct Member Access
+**Source:**
+```watt
+struct Point { x: int, y: int }
+let p: Point = malloc(16)
+p.y = 42
+```
+
+**JIR:**
+```jir
+    SET v1, 16
+    CALL v2, malloc, 1 (v1)
+    STORE p, v2
+
+    LOAD v3, p
+    SET v4, 42
+    STORE_MEM v3, 8, v4, 8  ; Offset 8 for 'y'
+```
+
+---
+
+## Backend Implementation Notes
+
+### x86_64 Mapping
+- `MOVE v1, v2` often results in `mov rax, rbx` if both are in registers.
+- `CALL` handles the `RDI, RSI, RDX, RCX, R8, R9` argument sequence.
+- `ARITH` mappings:
+  - `+` -> `add`
+  - `-` -> `sub`
+  - `*` -> `imul`
+  - `/` -> `idiv` (requires `cdq` and `rax/rdx` management)
+
+### AArch64 Mapping
+- `MOVE v1, v2` -> `mov x0, x1`.
+- `CALL` uses `X0-X7` for arguments and `BL` for jumping.
+- `LEA` -> `adrp` + `add` or `ldr`.

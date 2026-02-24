@@ -6,7 +6,7 @@ import "frontend/parser.juno"
 import "backend/hellion.juno"
 
 fn main() {
-    prints("Juwo Compiler v3.0 (Juwo Edition)\n")
+    prints("Juwo Compiler (Juwo Edition)\n")
 
     // Read source file
     let capacity = 1024 * 64

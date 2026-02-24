@@ -1,5 +1,5 @@
 // stdlib/std/json.juno - Professional JSON Library for Juno
-// Ported and optimized for Juno v2.1
+// Ported and optimized for Juno
 
 let J_NULL = 0
 let J_BOOL = 1

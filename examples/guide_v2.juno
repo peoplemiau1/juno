@@ -1,11 +1,11 @@
-// Juno v2.1 "Architectural Integrity" - Official Guide
+// Juno   - Official Guide
 // Этот файл демонстрирует новые возможности компилятора.
 
 import "../stdlib/std.juno"
 
 // 1. Глобальные переменные (секция .data)
 let GLOBAL_COUNTER = 0
-let VERSION_STR = "Juno v2.1-stable"
+let VERSION_STR = "Juno -stable"
 let BUFFER[1024]
 
 // 2. Структуры
@@ -16,7 +16,7 @@ struct Point {
 
 // 3. Forward references (функции можно вызывать до объявления)
 fn main() {
-    prints("--- Juno v2.1 Demo ---\n")
+    prints("--- Juno  Demo ---\n")
     prints("Version: ")
     prints(VERSION_STR)
     prints("\n")

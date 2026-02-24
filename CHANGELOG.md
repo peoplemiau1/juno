@@ -1,6 +1,6 @@
 # CHANGELOG
 
-## v2.1 - 21.02.2026 "Architectural Integrity"
+##  - 21.02.2026
 
 ### Реестровое управление (Register Management)
 - **Linear Scan Register Allocator**: Переменные теперь живут в регистрах (`RBX`, `R12-R15` для x86; `X19-X28` для ARM).
@@ -12,7 +12,7 @@
 - **ResourceAuditor**: Внедрена система отслеживания владения указателями (Born -> Kill).
 - **Ошибка E0007**: Детекция утечек памяти и использования после освобождения (`use-after-free`) на этапе компиляции.
 
-### Hell Mode v2.1 (Hardened)
+### Hell Mode  (Hardened)
 - **Precise Decoder**: Внедрен полноценный декодер длин инструкций x86-64.
 - **Linker Mapping**: Интеллектуальный патчинг смещений после инъекции junk-кода.
 

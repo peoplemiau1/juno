@@ -24,7 +24,7 @@ LOGO = <<-'EOF'
  \________|____/|___|  /\____/   \        /  / __ \|  |  |  |
                      \/           \__/\  /  (____  /__|  |__|
                                        \/        \/
-    Juno & Watt Compiler v2.1 - "Unified Architectural Integrity"
+    Juno & Watt Compiler
 EOF
 
 options = {

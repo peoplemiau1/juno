@@ -1,4 +1,4 @@
-// compiler.juno v3.0 (ASM Generator)
+// compiler.juno  (ASM Generator)
 let c_v = 0;
 
 fn nxt() {
