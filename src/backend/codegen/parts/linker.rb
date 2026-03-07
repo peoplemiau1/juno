@@ -30,6 +30,10 @@ class Linker
     @functions[name] = @base_rva + offset_in_code
   end
 
+  def register_label(name, offset_in_code)
+    @functions[name] = @base_rva + offset_in_code
+  end
+
   def register_import(name, rva)
     @imports[name] = rva
   end
@@ -110,25 +114,31 @@ class Linker
       bss_len += item[:size]
     end
 
-    full_binary = code_bytes + data_bytes
-
-    @fn_patches.each { |p| patch_value(full_binary, p, @functions[p[:name]]) }
-    @data_patches.each do |p|
-       target = @data_pool.find { |d| d[:id] == p[:id] }&.[](:rva) ||
-                @bss_pool.find { |b| b[:id] == p[:id] }&.[](:rva) ||
-                @functions[p[:id]]
-       patch_value(full_binary, p, target)
-    end
-    @import_patches.each do |p|
-       target = @got_slots[p[:name]] ?
-                (@data_pool.find { |d| d[:id] == @got_slots[p[:name]] }&.[](:rva)) :
-                @imports[p[:name]]
-       patch_value(full_binary, p, target)
-    end
-
     label_rvas = {}
     @data_pool.each { |d| label_rvas[d[:id]] = d[:rva] }
     @bss_pool.each { |b| label_rvas[b[:id]] = b[:rva] }
+
+    full_binary = code_bytes + data_bytes
+
+    @fn_patches.each { |p|
+      target = @functions[p[:name]] ||
+               (@got_slots[p[:name]] && label_rvas[@got_slots[p[:name]]]) ||
+               (@got_slots[p[:name]] && label_rvas[p[:name]]) ||
+               @imports[p[:name]]
+      unless target
+        # Try finding RVA in data pool (for builtins or labels that ended up there)
+        target = label_rvas[p[:name]]
+      end
+      patch_value(full_binary, p, target)
+    }
+    @data_patches.each do |p|
+       target = label_rvas[p[:id]] || @functions[p[:id]]
+       patch_value(full_binary, p, target)
+    end
+    @import_patches.each do |p|
+       target = (@got_slots[p[:name]] && label_rvas[@got_slots[p[:name]]]) || @imports[p[:name]]
+       patch_value(full_binary, p, target)
+    end
 
     { code: code_bytes, data: data_bytes, bss_len: bss_len, combined: full_binary, external_symbols: @external_symbols, got_slots: @got_slots, label_rvas: label_rvas }
   end

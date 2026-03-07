@@ -1,13 +1,16 @@
 require 'fileutils'
-require_relative "src/lexer"
-require_relative "src/parser"
-require_relative "src/importer"
-require_relative "src/monomorphizer"
+require_relative "src/frontend/lexer"
+require_relative "src/frontend/parser"
+require_relative "src/middle/importer"
+require_relative "src/middle/monomorphizer"
 require_relative "src/optimizer/optimizer"
 require_relative "src/optimizer/turbo"
-require_relative "src/analyzer/resource_auditor"
-require_relative "src/codegen/native_generator"
-require_relative "src/preprocessor"
+require_relative "src/middle/analyzer/resource_auditor"
+require_relative "src/middle/semantic"
+require_relative "src/middle/ir_generator"
+require_relative "src/backend/codegen/native_generator"
+require "pp"
+require_relative "src/frontend/preprocessor"
 require_relative "src/errors"
 
 $hell_mode = nil
@@ -29,8 +32,8 @@ def compile_linux(input_file, arch = :x86_64, output_path = "build/output_linux"
     code = preprocessor.process(code, input_file)
 
     puts "Step 2: Lexing..."
-    lexer = Lexer.new(code, input_file)
-    tokens = lexer.tokenize
+    lexer = Lexer.tokenize(code, input_file) rescue Lexer.new(code, input_file).tokenize
+    tokens = lexer
 
     puts "Step 3: Parsing..."
     parser = Parser.new(tokens, input_file, code)
@@ -54,13 +57,22 @@ def compile_linux(input_file, arch = :x86_64, output_path = "build/output_linux"
     auditor = ResourceAuditor.new(ast, func_signatures, code, input_file)
     auditor.audit
 
-    puts "Step 6.5: Optimizing (Turbo)..."
+    puts "Step 6.5: Semantic Analysis..."
+    analyzer = SemanticAnalyzer.new(ast, input_file, code)
+    ast = analyzer.analyze
+    if ENV['DEBUG_AST']
+      pp ast
+    end
+
+    puts "Step 6.7: Optimizing (Turbo)..."
     optimizer = TurboOptimizer.new(ast)
     ast = optimizer.optimize
 
-    puts "Step 7: Native Code Generation (Linux ELF, Arch: #{arch})..."
+    puts "Step 7: Native Code Generation (Native, Arch: #{arch})..."
     generator = NativeGenerator.new(ast, target_os: :linux, arch: arch, source: code, filename: input_file)
-    generator.hell_mode = $hell_mode if $hell_mode
+    if $hell_mode
+      generator.hell_mode = $hell_mode
+    end
     FileUtils.mkdir_p("build")
     generator.generate(output_path)
 
@@ -70,8 +82,8 @@ def compile_linux(input_file, arch = :x86_64, output_path = "build/output_linux"
     e.display
     exit 1
   rescue => e
-    ice = JunoInternalError.new(e.message, e, filename: input_file)
-    ice.display
+    puts "Internal Compiler Error: #{e.message}"
+    puts e.backtrace.join("\n")
     exit 1
   end
 end

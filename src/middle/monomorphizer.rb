@@ -153,6 +153,10 @@ class Monomorphizer
     if node[:return_type]
       node[:return_type] = type_map[node[:return_type]] || node[:return_type]
     end
+
+    if node[:var_type]
+      node[:var_type] = type_map[node[:var_type]] || node[:var_type]
+    end
     
     node[:body]&.each { |n| rewrite_types(n, type_map) }
     node[:args]&.each { |n| rewrite_types(n, type_map) }

@@ -1,9 +1,11 @@
 require 'fileutils'
-require_relative "src/lexer"
-require_relative "src/parser"
-require_relative "src/importer"
+require_relative "src/frontend/lexer"
+require_relative "src/frontend/parser"
+require_relative "src/middle/importer"
+require_relative "src/middle/semantic"
+require_relative "src/middle/ir_generator"
 require_relative "src/optimizer/optimizer"
-require_relative "src/codegen/native_generator"
+require_relative "src/backend/codegen/native_generator"
 require_relative "src/errors"
 
 def compile_flat(input_file)
@@ -26,7 +28,9 @@ def compile_flat(input_file)
     ast = optimizer.optimize
 
     puts "Step 5: Native Code Generation (Flat Binary)..."
-    generator = NativeGenerator.new(ast, :flat)
+    analyzer = SemanticAnalyzer.new(ast, input_file, code)
+    ast = analyzer.analyze
+    generator = NativeGenerator.new(ast, target_os: :flat, arch: :x86_64, source: code, filename: input_file)
     FileUtils.mkdir_p("build")
     output_path = File.join("build", "output_flat.bin")
     generator.generate(output_path)

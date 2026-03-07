@@ -36,9 +36,10 @@ module GeneratorAssignments
          @emitter.mov_mem_reg_idx(2, 0, 0) # [RDX], RAX
        end
     else
-       if node[:var_type]
-         @ctx.var_types[name] = node[:var_type]
-         @ctx.var_is_ptr[name] = true if node[:var_type] == "ptr" || @ctx.structs.key?(node[:var_type])
+       type = node[:var_type] || node[:inferred_type]
+       if type
+         @ctx.var_types[name] = type
+         @ctx.var_is_ptr[name] = true if ["ptr", "str"].include?(type) || @ctx.structs.key?(type)
        end
        if @ctx.in_register?(name)
          reg = @emitter.class.reg_code(@ctx.get_register(name))

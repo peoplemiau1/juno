@@ -16,5 +16,5 @@ fn main() {
     let msg = "Hello, " + "Juno"
     prints(msg)
 
-    return v
+    return v - 3
 }

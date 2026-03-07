@@ -82,7 +82,7 @@ module GeneratorCalls
       # Frame (8 for RBP + stack_size) + Callee-saved + Alignment padding + Temp pushes
       callee_saved_count = @emitter.callee_saved_regs.length
       align_pad = ((callee_saved_count + 1) % 2 == 0) ? 8 : 0
-      current_total = 8 + @ctx.current_fn_stack_size + callee_saved_count * 8 + align_pad + @ctx.stack_depth
+      current_total = 8 + (@ctx.current_fn_stack_size || 0) + callee_saved_count * 8 + align_pad + @ctx.stack_depth
 
       # We will push num_stack * 8 bytes.
       # We want (current_total + padding + num_stack * 8) % 16 == 0
@@ -145,7 +145,7 @@ module GeneratorCalls
     if @arch == :x86_64
       callee_saved_count = @emitter.callee_saved_regs.length
       align_pad = ((callee_saved_count + 1) % 2 == 0) ? 8 : 0
-      current_total = 8 + @ctx.current_fn_stack_size + callee_saved_count * 8 + align_pad + @ctx.stack_depth
+      current_total = 8 + (@ctx.current_fn_stack_size || 0) + callee_saved_count * 8 + align_pad + @ctx.stack_depth
       padding = (16 - (current_total + num_stack * 8) % 16) % 16
     end
 
@@ -221,7 +221,7 @@ module GeneratorCalls
       callee_saved_count = @emitter.callee_saved_regs.length
       align_pad = ((callee_saved_count + 1) % 2 == 0) ? 8 : 0
       # Include +8 for the fn ptr we are about to push
-      current_total = 8 + @ctx.current_fn_stack_size + callee_saved_count * 8 + align_pad + @ctx.stack_depth + 8
+      current_total = 8 + (@ctx.current_fn_stack_size || 0) + callee_saved_count * 8 + align_pad + @ctx.stack_depth + 8
       padding = (16 - (current_total + num_stack * 8) % 16) % 16
     end
 

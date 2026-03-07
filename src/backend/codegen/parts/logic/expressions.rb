@@ -292,19 +292,21 @@ module GeneratorExpressions
   def gen_pointer_arith(expr)
     base = pointer_node?(expr[:left]) ? expr[:left] : expr[:right]
     offset = (base == expr[:left]) ? expr[:right] : expr[:left]
+    # If both are pointers, don't scale
+    no_scale = pointer_node?(expr[:left]) && pointer_node?(expr[:right])
     eval_expression(base)
     scratch = has_fn_call?(offset) ? nil : @ctx.acquire_scratch
     if scratch
       @emitter.mov_reg_reg(scratch, 0)
       eval_expression(offset)
-      @emitter.shl_rax_imm(3)
+      @emitter.shl_rax_imm(3) unless no_scale
       @emitter.mov_reg_reg(2, 0) # RDX = Offset
       @emitter.mov_reg_reg(0, scratch) # RAX = Base
       @ctx.release_scratch(scratch)
     else
       @emitter.push_reg(0)
       @ctx.stack_depth += 8
-      eval_expression(offset); @emitter.shl_rax_imm(3)
+      eval_expression(offset); @emitter.shl_rax_imm(3) unless no_scale
       @emitter.mov_reg_reg(2, 0); @emitter.pop_reg(0)
       @ctx.stack_depth -= 8
     end

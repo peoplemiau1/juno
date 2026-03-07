@@ -8,6 +8,11 @@ class AArch64Emitter
     r12: 12, r13: 13, r14: 14, r15: 15
   }
 
+  ARG_REGS = [0, 1, 2, 3, 4, 5, 6, 7]
+  RET_REG = 0
+  SCRATCH_REGS = (9..15).to_a
+  CALLEE_SAVED = (19..28).to_a
+
   def initialize
     @bytes = []
     @stack_shadow_size = 0

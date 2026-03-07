@@ -2,6 +2,7 @@
 
 module GeneratorControlFlow
   def gen_if(node)
+    return if node[:type] == :noop
     eval_expression(node[:condition])
     @emitter.test_rax_rax
     exit_patch_pos = @emitter.je_rel32

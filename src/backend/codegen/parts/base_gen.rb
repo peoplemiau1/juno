@@ -12,6 +12,7 @@ module BaseGenerator
       @emitter.call_rel32
     end
     @target_os == :linux ? @emitter.emit_sys_exit_rax : @emitter.emit_epilogue(@stack_size)
+    return # Ensure no extra bytes
   end
 
   def gen_synthetic_main(nodes)
@@ -48,6 +49,7 @@ module BaseGenerator
       @emitter.pop_callee_saved(@emitter.callee_saved_regs)
       @emitter.emit_epilogue(@stack_size)
     end
+    return # No fallthrough
   end
 
   def gen_struct_def(node)
