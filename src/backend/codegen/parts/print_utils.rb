@@ -46,14 +46,21 @@ module PrintUtils
     else
       # x86 implementation
       @emitter.push_reg(0); @emitter.push_reg(7); @emitter.push_reg(6)
-      @emitter.push_reg(2); @emitter.push_reg(1)
+      @emitter.push_reg(2); @emitter.push_reg(1); @emitter.push_reg(3) # R3 for sign
 
       @emitter.emit_load_address("int_buffer", @linker)
       @emitter.add_reg_imm(0, 62) # rax += 62
       @emitter.mov_mem8_imm8(0, 10) # mov byte [rax], 10 ('\n')
       @emitter.mov_reg_reg(6, 0) # rsi = rax
       @emitter.mov_reg_imm(1, 10) # rcx = 10
-      @emitter.mov_rax_rsp_disp8(32) # load original rax from stack [rsp+32]
+      @emitter.mov_rax_rsp_disp8(40) # load original rax from stack [rsp+40]
+      
+      @emitter.xor_reg_reg(3, 3) # is_neg = 0
+      @emitter.test_rax_rax
+      pos_label = @emitter.jge_rel32
+      @emitter.neg_reg(0)
+      @emitter.mov_reg_imm(3, 1) # is_neg = 1
+      @emitter.patch_jge(pos_label, @emitter.current_pos)
 
       l = @emitter.current_pos
       @emitter.xor_reg_reg(2, 2) # xor rdx, rdx
@@ -64,6 +71,12 @@ module PrintUtils
       @emitter.test_rax_rax
       p_loop = @emitter.jne_rel32
       @emitter.patch_jne(p_loop, l)
+
+      @emitter.test_reg_reg(3, 3)
+      skip_sign = @emitter.je_rel32
+      @emitter.dec_reg(6)
+      @emitter.mov_mem8_imm8(6, 45) # '-'
+      @emitter.patch_je(skip_sign, @emitter.current_pos)
 
       @emitter.mov_reg_reg(11, 6) # start ptr
       @emitter.emit_load_address("int_buffer", @linker)
@@ -76,8 +89,8 @@ module PrintUtils
       @emitter.mov_reg_imm(0, 1) # RAX = 1
       @emitter.syscall
 
-      @emitter.pop_reg(1); @emitter.pop_reg(2); @emitter.pop_reg(6)
-      @emitter.pop_reg(7); @emitter.pop_reg(0)
+      @emitter.pop_reg(3); @emitter.pop_reg(1); @emitter.pop_reg(2)
+      @emitter.pop_reg(6); @emitter.pop_reg(7); @emitter.pop_reg(0)
     end
   end
 end

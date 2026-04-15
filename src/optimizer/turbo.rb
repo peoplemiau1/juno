@@ -23,6 +23,8 @@ class TurboOptimizer
     
     @ast = @ast.map { |node| optimize_loops(node) }
     
+    @ast = @ast.map { |node| eliminate_dead_stores(node) }
+    
     @ast = @ast.map { |node| final_pass(node) }
     
     @ast
@@ -241,6 +243,58 @@ class TurboOptimizer
       if exprs_equal?(left[:right], right)
         return left[:left]
       end
+    end
+    
+    # a - b + b = a
+    if op == "+" && left[:type] == :binary_op && left[:op] == "-"
+      if exprs_equal?(left[:right], right)
+        return left[:left]
+      end
+    end
+    
+    # x & 0 = 0
+    if op == "&" && (literal_value(left) == 0 || literal_value(right) == 0)
+      return { type: :literal, value: 0 }
+    end
+    
+    # x | 0 = x
+    if op == "|" && literal_value(right) == 0
+      return left
+    end
+    if op == "|" && literal_value(left) == 0
+      return right
+    end
+    
+    # x ^ 0 = x
+    if op == "^" && literal_value(right) == 0
+      return left
+    end
+    
+    # Constant comparison folding: x == x => 1, x != x => 0
+    if ["==", "<=", ">="].include?(op) && exprs_equal?(left, right)
+      return { type: :literal, value: 1 }
+    end
+    if ["!=", "<", ">"].include?(op) && exprs_equal?(left, right)
+      return { type: :literal, value: 0 }
+    end
+    
+    # x && 0 = 0, x || 1 = 1
+    if op == "&&" && (literal_value(left) == 0 || literal_value(right) == 0)
+      return { type: :literal, value: 0 }
+    end
+    if op == "||" && (literal_value(left) != nil && literal_value(left) != 0)
+      return { type: :literal, value: 1 }
+    end
+    if op == "||" && (literal_value(right) != nil && literal_value(right) != 0)
+      return { type: :literal, value: 1 }
+    end
+    
+    # x && 1 = x (truthiness), 1 && x = x
+    if op == "&&" && literal_value(right) == 1
+      return left
+    end
+    if op == "&&" && literal_value(left) == 1
+      return right
     end
     
     expr
@@ -716,11 +770,17 @@ class TurboOptimizer
 
   def propagate_constants(body)
     constants = {}
-    modified = Set.new
+    assigned_once = Set.new
+    assigned_multi = Set.new
     
-    # First pass: find all modified variables
     body.each do |node|
-      collect_written_vars(node, modified)
+      if node.is_a?(Hash) && node[:type] == :assignment && node[:name]
+        if assigned_once.include?(node[:name])
+          assigned_multi << node[:name]
+        else
+          assigned_once << node[:name]
+        end
+      end
     end
     
     body.map do |node|
@@ -730,7 +790,7 @@ class TurboOptimizer
         expr = optimize_expr(expr)
         node[:expression] = expr
         
-        if expr[:type] == :literal && !modified.include?(node[:name])
+        if expr[:type] == :literal && !assigned_multi.include?(node[:name])
           constants[node[:name]] = expr[:value]
         else
           constants.delete(node[:name])
@@ -744,6 +804,11 @@ class TurboOptimizer
         node
       when :increment
         constants.delete(node[:name])
+        node
+      when :if_statement, :while_statement, :for_statement
+        written_in_branch = Set.new
+        collect_written_vars(node, written_in_branch)
+        written_in_branch.each { |v| constants.delete(v) }
         node
       else
         node
@@ -830,6 +895,79 @@ class TurboOptimizer
       when Array then v.any? { |x| has_side_effects?(x) }
       else false
       end
+    end
+  end
+
+  def eliminate_dead_stores(node)
+    return node unless node.is_a?(Hash)
+
+    case node[:type]
+    when :function_definition
+      node[:body] = remove_dead_stores(node[:body])
+      node[:body] = node[:body].map { |n| eliminate_dead_stores(n) }
+      node
+    when :if_statement
+      node[:body] = node[:body].map { |n| eliminate_dead_stores(n) }
+      node[:else_body] = node[:else_body]&.map { |n| eliminate_dead_stores(n) }
+      node
+    when :while_statement, :for_statement
+      node[:body] = node[:body].map { |n| eliminate_dead_stores(n) }
+      node
+    else
+      node
+    end
+  end
+
+  def remove_dead_stores(body)
+    return body unless body.is_a?(Array)
+
+    read_vars = Set.new
+    body.each { |node| collect_read_vars(node, read_vars) }
+
+    last_assign = {}
+    body.each_with_index do |node, idx|
+      if node.is_a?(Hash) && node[:type] == :assignment && node[:name]
+        last_assign[node[:name]] = idx
+      end
+    end
+
+    dead = Set.new
+    prev_assign = {}
+    body.each_with_index do |node, idx|
+      next unless node.is_a?(Hash) && node[:type] == :assignment && node[:name] && node[:let]
+
+      name = node[:name]
+      if prev_assign.key?(name) && !expr_reads_var?(body[prev_assign[name]+1..idx-1], name)
+        prev_expr = body[prev_assign[name]][:expression]
+        dead << prev_assign[name] unless has_side_effects?(prev_expr)
+      end
+      prev_assign[name] = idx
+    end
+
+    body.each_with_index.reject { |_, idx| dead.include?(idx) }.map(&:first)
+  end
+
+  def collect_read_vars(node, vars)
+    return unless node.is_a?(Hash)
+
+    vars << node[:name] if node[:type] == :variable
+
+    node.each do |key, v|
+      next if key == :name && node[:type] == :assignment
+      case v
+      when Hash then collect_read_vars(v, vars)
+      when Array then v.each { |x| collect_read_vars(x, vars) }
+      end
+    end
+  end
+
+  def expr_reads_var?(stmts, name)
+    return false unless stmts.is_a?(Array)
+    stmts.any? do |s|
+      next false unless s.is_a?(Hash)
+      reads = Set.new
+      collect_read_vars(s, reads)
+      reads.include?(name)
     end
   end
 end

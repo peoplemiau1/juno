@@ -262,6 +262,13 @@ class CodeEmitter
   def xor_rax_rdx; xor_reg_reg(0, 2); end
   def xor_rax_reg(src); xor_reg_reg(0, src); end
   def xor_rax_rax; xor_reg_reg(0, 0); end
+  
+  def neg_reg(reg)
+    log_asm "neg #{REG_NAMES[reg]}"
+    rex = rex_prefix(w: true, b: reg >= 8)
+    modrm = modrm_byte(3, 3, reg) # NEG /3
+    emit([rex, 0xf7, modrm])
+  end
 
   def not_reg(reg)
     log_asm "not #{REG_NAMES[reg]}"
@@ -449,6 +456,12 @@ class CodeEmitter
 
   def patch_jne(pos, target)
     @internal_patches << { pos: pos, target: target, type: :jne_rel32 }
+    offset = target - (pos + 6)
+    @bytes[pos+2..pos+5] = [offset].pack("l<").bytes
+  end
+
+  def patch_jge(pos, target)
+    @internal_patches << { pos: pos, target: target, type: :jge_rel32 }
     offset = target - (pos + 6)
     @bytes[pos+2..pos+5] = [offset].pack("l<").bytes
   end

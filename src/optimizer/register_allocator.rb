@@ -148,96 +148,122 @@ class RegisterAllocator
 
   def find_vars(node)
     vars = []
-    if node.is_a?(Hash)
-      case node[:type]
-      when :variable then vars << node[:name]
-      when :assignment then vars << node[:name] if node[:name]; vars += find_vars(node[:expression])
-      when :binary_op then vars += find_vars(node[:left]) + find_vars(node[:right])
-      when :fn_call then (node[:args] || []).each { |a| vars += find_vars(a) }
-      when :if_statement
-        vars += find_vars(node[:condition])
-        (node[:body] || []).each { |n| vars += find_vars(n) }
-        (node[:elif_branches] || []).each { |elif|
-          vars += find_vars(elif[:condition])
-          (elif[:body] || []).each { |n| vars += find_vars(n) }
-        }
-        (node[:else_body] || []).each { |n| vars += find_vars(n) }
-      when :while_statement
-        vars += find_vars(node[:condition])
-        (node[:body] || []).each { |n| vars += find_vars(n) }
-      when :match_expression
-        vars += find_vars(node[:expression])
-        (node[:cases] || []).each { |c|
-          if c[:body].is_a?(Array)
-            c[:body].each { |s| vars += find_vars(s) }
-          else
-            vars += find_vars(c[:body])
-          end
-        }
-      when :return
-        vars += find_vars(node[:expression])
-      when :increment
-        vars << node[:name]
-      end
-    elsif node.respond_to?(:op)
-      # IR Instruction
-      case node.op
-      when :CALL, :LEA, :FUNC_ADDR, :LEA_STR
-        node.args.each_with_index { |a, i| vars << a if i != 1 && a.is_a?(String) }
-      when :LEA_STACK
-        # args: [dst, var_name_or_off]
-        vars << node.args[0] if node.args[0].is_a?(String)
-        vars << node.args[1] if node.args[1].is_a?(String)
-      else
-        node.args.each { |a| vars << a if a.is_a?(String) }
-      end
+    return vars unless node.is_a?(Hash)
+
+    case node[:type]
+    when :variable then vars << node[:name]
+    when :assignment
+      vars << node[:name] if node[:name]
+      vars += find_vars(node[:expression])
+    when :binary_op
+      vars += find_vars(node[:left]) + find_vars(node[:right])
+    when :unary_op
+      vars += find_vars(node[:operand])
+    when :fn_call
+      (node[:args] || []).each { |a| vars += find_vars(a) }
+    when :if_statement
+      vars += find_vars(node[:condition])
+      (node[:body] || []).each { |n| vars += find_vars(n) }
+      (node[:elif_branches] || []).each { |elif|
+        vars += find_vars(elif[:condition])
+        (elif[:body] || []).each { |n| vars += find_vars(n) }
+      }
+      (node[:else_body] || []).each { |n| vars += find_vars(n) }
+    when :while_statement
+      vars += find_vars(node[:condition])
+      (node[:body] || []).each { |n| vars += find_vars(n) }
+    when :for_statement
+      vars += find_vars(node[:init]) if node[:init]
+      vars += find_vars(node[:condition]) if node[:condition]
+      vars += find_vars(node[:update]) if node[:update]
+      (node[:body] || []).each { |n| vars += find_vars(n) }
+    when :deref_assign
+      vars += find_vars(node[:target])
+      vars += find_vars(node[:value])
+    when :array_assign
+      vars << node[:name] if node[:name]
+      vars += find_vars(node[:index]) if node[:index]
+      vars += find_vars(node[:value]) if node[:value]
+    when :array_access
+      vars << node[:name] if node[:name]
+      vars += find_vars(node[:index]) if node[:index]
+    when :member_access
+      vars << node[:receiver] if node[:receiver]
+    when :address_of
+      vars += find_vars(node[:operand])
+    when :deref
+      vars += find_vars(node[:operand])
+    when :match_expression
+      vars += find_vars(node[:expression])
+      (node[:cases] || []).each { |c|
+        if c[:body].is_a?(Array)
+          c[:body].each { |s| vars += find_vars(s) }
+        else
+          vars += find_vars(c[:body])
+        end
+      }
+    when :return
+      vars += find_vars(node[:expression]) if node[:expression]
+    when :increment
+      vars << node[:name]
     end
     vars.uniq
   end
 
   def find_defined_vars(node)
-    if node.is_a?(Hash)
-      return (node[:type] == :assignment && node[:name]) ? [node[:name]] : []
-    elsif node.respond_to?(:op)
-      case node.op
-      when :SET, :MOVE, :LOAD, :ARITH, :CALL, :LOAD_MEM, :LOAD_MEMBER, :LEA, :LEA_STACK
-        return [node.args[0]] if node.args[0].is_a?(String)
-      end
+    return [] unless node.is_a?(Hash)
+
+    case node[:type]
+    when :assignment
+      node[:name] ? [node[:name]] : []
+    when :increment
+      node[:name] ? [node[:name]] : []
+    when :for_statement
+      node[:init] ? find_defined_vars(node[:init]) : []
+    else
+      []
     end
-    []
   end
 
   def find_addressed_vars(node)
-    if node.is_a?(Hash)
-      case node[:type]
-      when :address_of
-        op = node[:operand]
-        if op[:type] == :variable
-          return [op[:name]]
-        elsif op[:type] == :member_access
-          return [op[:receiver]]
-        elsif op[:type] == :array_access
-          return [op[:name]]
-        end
-        []
-      when :binary_op
-        find_addressed_vars(node[:left]) + find_addressed_vars(node[:right])
-      when :fn_call then (node[:args] || []).flat_map { |a| find_addressed_vars(a) }
-      when :if_statement
-        find_addressed_vars(node[:condition]) +
-        (node[:body] || []).flat_map { |n| find_addressed_vars(n) } +
-        (node[:else_body] || []).flat_map { |n| find_addressed_vars(n) }
-      when :while_statement
-        find_addressed_vars(node[:condition]) +
-        (node[:body] || []).flat_map { |n| find_addressed_vars(n) }
-      when :assignment then find_addressed_vars(node[:expression])
+    return [] unless node.is_a?(Hash)
+
+    case node[:type]
+    when :address_of
+      op = node[:operand]
+      case op[:type]
+      when :variable then [op[:name]]
+      when :member_access then [op[:receiver]]
+      when :array_access then [op[:name]]
       else []
       end
-    elsif node.respond_to?(:op)
-      return [node.args[1]] if node.op == :LEA_STACK && node.args[1].is_a?(String)
-      []
-    else
-      []
+    when :binary_op
+      find_addressed_vars(node[:left]) + find_addressed_vars(node[:right])
+    when :unary_op
+      find_addressed_vars(node[:operand])
+    when :fn_call
+      (node[:args] || []).flat_map { |a| find_addressed_vars(a) }
+    when :if_statement
+      find_addressed_vars(node[:condition]) +
+      (node[:body] || []).flat_map { |n| find_addressed_vars(n) } +
+      (node[:elif_branches] || []).flat_map { |elif|
+        (elif[:body] || []).flat_map { |n| find_addressed_vars(n) }
+      } +
+      (node[:else_body] || []).flat_map { |n| find_addressed_vars(n) }
+    when :while_statement
+      find_addressed_vars(node[:condition]) +
+      (node[:body] || []).flat_map { |n| find_addressed_vars(n) }
+    when :for_statement
+      find_addressed_vars(node[:init]) +
+      find_addressed_vars(node[:condition]) +
+      (node[:body] || []).flat_map { |n| find_addressed_vars(n) }
+    when :deref_assign
+      find_addressed_vars(node[:target]) + find_addressed_vars(node[:value])
+    when :assignment
+      find_addressed_vars(node[:expression])
+    when :return
+      node[:expression] ? find_addressed_vars(node[:expression]) : []
+    else []
     end
   end
 end
