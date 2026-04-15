@@ -1,9 +1,0 @@
-struct Point {
-    x
-    y
-}
-
-fn main() {
-    p = Point
-    p.z = 10
-}

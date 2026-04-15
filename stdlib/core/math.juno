@@ -1,0 +1,52 @@
+// stdlib/core/math.juno
+// Core math operations for Juno
+
+fn square(x) { return x * x }
+fn cube(x) { return x * x * x }
+
+fn abs_val(x) {
+    if (x < 0) { return 0 - x }
+    return x
+}
+
+fn min_val(a, b) {
+    if (a < b) { return a }
+    return b
+}
+
+fn max_val(a, b) {
+    if (a > b) { return a }
+    return b
+}
+
+fn factorial(n) {
+    let mut result = 1
+    let mut i = 1
+    for (i = 1; i <= n; i++) {
+        result = result * i
+    }
+    return result
+}
+
+fn gcd(a, b) {
+    let mut ma = a
+    let mut mb = b
+    while (mb != 0) {
+        let tmp = mb
+        mb = ma % mb
+        ma = tmp
+    }
+    return ma
+}
+
+fn ipow(base, exp) {
+    let mut res = 1
+    let mut b = base
+    let mut e = exp
+    while (e > 0) {
+        if (e % 2 == 1) { res = res * b }
+        b = b * b
+        e = e / 2
+    }
+    return res
+}

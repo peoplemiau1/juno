@@ -1,0 +1,70 @@
+// stdlib/core/io.juno
+// Input/Output and terminal operations
+
+fn os_open(path) { return open(path) }
+fn os_close(fd) { close(fd) }
+fn os_read(fd, buf, sz) { return read(fd, buf, sz) }
+fn os_write(fd, buf, sz) { return write(fd, buf, sz) }
+
+fn print_s(s) {
+    if (s == 0) { return 0 }
+    let mut len = 0
+    while (*(ptr_add(s, len)) != 0) {
+        len = len + 1
+    }
+    write(1, s, len)
+    return 0
+}
+
+fn println(s) {
+    print_s(s)
+    write(1, "\n", 1)
+    return 0
+}
+
+fn print_i(n) {
+    if (n == 0) { write(1, "0", 1); return 0 }
+    if (n < 0) { write(1, "-", 1); n = 0 - n }
+    
+    // stack buffer for 20 digits (max i64)
+    let buf = malloc(24)
+    let mut i = 0
+    let mut v = n
+    while (v > 0) {
+        let p = ptr_add(buf, i)
+        *p = (v % 10) + 48
+        v = v / 10
+        i = i + 1
+    }
+    
+    // Print reverse using direct syscall
+    while (i > 0) {
+        i = i - 1
+        let p = ptr_add(buf, i)
+        write(1, p, 1)
+    }
+    free(buf)
+    return 0
+}
+
+fn print_hex(val) {
+    write(1, "0x", 2)
+    let mut v = val
+    if (v == 0) { write(1, "0", 1); return 0 }
+    let s = malloc(17)
+    let chars = "0123456789ABCDEF"
+    let mut i = 15
+    while (v > 0) {
+        let digit = v % 16
+        let p_char = ptr_add(chars, digit)
+        let p_s = ptr_add(s, i)
+        *p_s = *p_char
+        v = v / 16
+        i = i - 1
+    }
+    write(1, ptr_add(s, i + 1), 16 - (i + 1))
+    free(s)
+}
+
+fn print_newline() { print("\n") }
+fn print_space() { print(" ") }

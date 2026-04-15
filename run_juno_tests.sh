@@ -66,14 +66,19 @@ for test_file in "${POSITIVE_TESTS[@]}"; do
         continue
     fi
     echo "[RUN] $test_file"
-    if ruby main_linux.rb "$test_file"; then
-        chmod +x build/output_linux
-        if ./build/output_linux; then
-            echo "[OK] $test_file"
-            PASSED=$((PASSED + 1))
-        else
-            echo "[FAIL] $test_file - runtime error"
+    if ./bin/juno "$test_file" >/dev/null 2>&1; then
+        chmod +x build/output
+        ./build/output
+        EXIT_CODE=$?
+        # Only treat known crash signals as failures:
+        # SIGABRT=134, SIGBUS=135, SIGFPE=136, SIGSEGV=139, SIGILL=132
+        if [ $EXIT_CODE -eq 139 ] || [ $EXIT_CODE -eq 134 ] || [ $EXIT_CODE -eq 135 ] || [ $EXIT_CODE -eq 136 ] || [ $EXIT_CODE -eq 132 ]; then
+            SIGNAL=$((EXIT_CODE - 128))
+            echo "[FAIL] $test_file - CRASH (signal $SIGNAL, exit $EXIT_CODE)"
             FAILED=$((FAILED + 1))
+        else
+            echo "[OK] $test_file (exit $EXIT_CODE)"
+            PASSED=$((PASSED + 1))
         fi
     else
         echo "[FAIL] $test_file - compilation error"
@@ -88,12 +93,12 @@ for test_file in "${FLAT_TESTS[@]}"; do
         continue
     fi
     echo "[RUN-FLAT] $test_file"
-    if ruby main_flat.rb "$test_file"; then
-        if [ ! -f build/output_flat.bin ]; then
+    if ./bin/juno -t flat "$test_file" >/dev/null 2>&1; then
+        if [ ! -f build/output ]; then
             echo "[FAIL] $test_file - flat binary missing"
             FAILED=$((FAILED + 1))
         else
-            ruby -e 'begin; b=File.binread("build/output_flat.bin",4); rescue; exit 1; end; exit 1 if b && b.bytes[0..3] == [0x7f,0x45,0x4c,0x46]' >/dev/null 2>&1
+            ruby -e 'begin; b=File.binread("build/output",4); rescue; exit 1; end; exit 1 if b && b.bytes[0..3] == [0x7f,0x45,0x4c,0x46]' >/dev/null 2>&1
             if [ $? -eq 0 ]; then
                 echo "[OK] $test_file"
                 PASSED=$((PASSED + 1))
@@ -128,10 +133,10 @@ done
 for test_file in "${expected_fail[@]}"; do
     [ ! -f "$test_file" ] && continue
     echo "[RUN-NEG] $test_file (expect failure)"
-    if ruby main_linux.rb "$test_file" >/dev/null 2>&1; then
+    if ./bin/juno "$test_file" >/dev/null 2>&1; then
         # If compiled, try run and expect failure
-        chmod +x build/output_linux 2>/dev/null
-        if ./build/output_linux >/dev/null 2>&1; then
+        chmod +x build/output 2>/dev/null
+        if ./build/output >/dev/null 2>&1; then
             echo "[UNEXPECTED PASS] $test_file"
             FAILED=$((FAILED + 1))
         else

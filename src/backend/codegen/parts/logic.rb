@@ -47,7 +47,7 @@ module GeneratorLogic
       off = @ctx.get_variable_offset(node[:name])
       @emitter.mov_reg_stack_val(0, off)
     end
-    @emitter.push_reg(0); @emitter.mov_rax(1); @emitter.mov_reg_reg(2, 0); @emitter.pop_reg(0)
+    @emitter.mov_reg_imm(2, 1) # RDX = 1
     node[:op] == "++" ? @emitter.add_rax_rdx : @emitter.sub_rax_rdx
     if @ctx.in_register?(node[:name])
       reg = @emitter.class.reg_code(@ctx.get_register(node[:name]))

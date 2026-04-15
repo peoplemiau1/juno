@@ -18,7 +18,13 @@ module GeneratorExpressions
         @emitter.emit_load_address(name, @linker)
       else
         # Try to find if it's a known function or global in linker
-        if @linker.functions.key?(name) || @linker.data_pool.any?{|d| d[:id] == name} || @linker.bss_pool.any?{|b| b[:id] == name}
+        if @linker.functions.key?(name)
+           # Load function pointer using fn_patch
+           @emitter.log_asm "lea rax, [rel #{name}] ; func ptr"
+           @emitter.emit([0x48, 0x8d, 0x05])
+           @linker.add_fn_patch(@emitter.current_pos, name, :rel32)
+           @emitter.emit([0, 0, 0, 0])
+        elsif @linker.data_pool.any?{|d| d[:id] == name} || @linker.bss_pool.any?{|b| b[:id] == name}
            @emitter.emit_load_address(name, @linker)
         else
            # This is likely an undefined variable
@@ -37,7 +43,9 @@ module GeneratorExpressions
         # On AArch64, CSET X0, EQ (to get 1 if X0 was 0) is CSINC X0, XZR, XZR, NE
         if @arch == :aarch64 then @emitter.emit32(0x1a9f17e0) else @emitter.emit([0x0f, 0x94, 0xc0]) end
       end
-    when :member_access then load_member_rax("#{expr[:receiver]}.#{expr[:member]}")
+    when :member_access
+      full_name = get_full_member_name(expr)
+      load_member_rax(full_name)
     when :array_access then gen_array_access(expr)
     when :string_literal then gen_string_literal(expr)
     when :address_of then gen_address_of(expr)
@@ -220,7 +228,7 @@ module GeneratorExpressions
   end
 
   def eval_binary_op(expr)
-    if (expr[:op] == "+" || expr[:op] == "<>") && (expr[:left][:type] == :string_literal || expr[:right][:type] == :string_literal)
+    if (expr[:op] == "+" || expr[:op] == "<>") && (pointer_node?(expr[:left]) || pointer_node?(expr[:right]) || expr[:left][:type] == :string_literal || expr[:right][:type] == :string_literal)
        return gen_fn_call({ type: :fn_call, name: "concat", args: [expr[:left], expr[:right]] })
     end
     if (expr[:op] == "+" || expr[:op] == "-") && (pointer_node?(expr[:left]) || pointer_node?(expr[:right]))
@@ -311,5 +319,20 @@ module GeneratorExpressions
       @ctx.stack_depth -= 8
     end
     expr[:op] == "+" ? @emitter.add_rax_rdx : @emitter.sub_rax_rdx
+  end
+
+  def get_full_member_name(node)
+    return node if node.is_a?(String)
+    return "" unless node.is_a?(Hash)
+    
+    if node[:type] == :variable
+      node[:name] || node[:value]
+    elsif node[:type] == :member_access
+      base = get_full_member_name(node[:receiver])
+      field = node[:field] || node[:member] || node[:member_name]
+      "#{base}.#{field}"
+    else
+      ""
+    end
   end
 end

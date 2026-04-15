@@ -6,7 +6,17 @@ module BuiltinThreads
     return unless @target_os == :linux
     # thread_create(flags, stack, func, arg)
     args = node[:args]
-    if args.length == 3
+    if args.length == 2
+      # Modern Juno v3.0: thread_create(func, arg)
+      eval_expression(args[1]); @emitter.push_reg(0) # arg
+      eval_expression(args[0]); @emitter.push_reg(0) # func
+      
+      @emitter.mov_reg_imm(0, 65536); @emitter.push_reg(0) # size
+      gen_alloc_stack({args: [{type: :literal, value: 65536}]})
+      @emitter.push_reg(0) # stack top
+      
+      @emitter.mov_rax(0x10F00); @emitter.push_reg(0) # flags
+    elsif args.length == 3
       eval_expression(args[2]); @emitter.push_reg(0) # arg
       eval_expression(args[0]); @emitter.push_reg(0) # func
       eval_expression(args[1]); @emitter.push_reg(0) # stack
@@ -89,12 +99,13 @@ module BuiltinThreads
     @emitter.mov_reg_imm(0, 3); @emitter.push_reg(0) # prot
     @emitter.mov_reg_imm(0, 0); @emitter.push_reg(0) # addr = 0
 
-    @emitter.pop_reg(@arch == :aarch64 ? 0 : 7)
+    # x86-64 order (from RDI to R9)
+    @emitter.pop_reg(@arch == :aarch64 ? 0 : 7) # addr
+    @emitter.pop_reg(@arch == :aarch64 ? 2 : 2) # prot
+    @emitter.pop_reg(@arch == :aarch64 ? 3 : 10) # flags
+    @emitter.pop_reg(@arch == :aarch64 ? 4 : 8) # fd
+    @emitter.pop_reg(@arch == :aarch64 ? 5 : 9) # offset
     @emitter.pop_reg(@arch == :aarch64 ? 1 : 6) # size
-    @emitter.pop_reg(@arch == :aarch64 ? 2 : 2)
-    @emitter.pop_reg(@arch == :aarch64 ? 3 : 10)
-    @emitter.pop_reg(@arch == :aarch64 ? 4 : 8)
-    @emitter.pop_reg(@arch == :aarch64 ? 5 : 9)
     emit_syscall(:mmap)
 
     @emitter.push_reg(0) # base addr

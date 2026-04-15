@@ -43,14 +43,14 @@ module BuiltinUtils
 
   def gen_rand(node)
     @emitter.emit_load_address("rand_seed", @linker)
-    @emitter.mov_rax_mem(0)
+    @emitter.mov_reg_mem_idx(0, 0, 0, 8)
     @emitter.mov_reg_imm(2, 1103515245)
     @emitter.imul_rax_rdx
     @emitter.emit_add_rax(12345)
     @emitter.push_reg(0)
     @emitter.emit_load_address("rand_seed", @linker)
     @emitter.pop_reg(2)
-    @emitter.mov_mem_reg_idx(@arch == :aarch64 ? 2 : 2, 0, 0, 8)
+    @emitter.mov_mem_reg_idx(0, 0, 2, 8)
     @emitter.mov_rax_from_reg(0)
     @emitter.shr_rax_imm(1)
   end
@@ -60,7 +60,7 @@ module BuiltinUtils
     @emitter.push_reg(0)
     @emitter.emit_load_address("rand_seed", @linker)
     @emitter.pop_reg(2)
-    @emitter.mov_mem_reg_idx(@arch == :aarch64 ? 2 : 2, 0, 0, 8)
+    @emitter.mov_mem_reg_idx(0, 0, 2, 8)
   end
 
   def gen_input(node)

@@ -18,8 +18,8 @@ module BuiltinStrings
        @emitter.mov_reg_reg(0, 9)
        @emitter.mov_reg_imm(1, 15); @emitter.and_rax_rdx # X0 = idx & 15
 
-       # buffer = pool + idx * 2048
-       @emitter.shl_rax_imm(11) # X0 *= 2048
+       # buffer = pool + idx * 65536
+       @emitter.shl_rax_imm(16) # X0 *= 65536
        @emitter.mov_reg_reg(9, 0) # X9 = offset
        @emitter.emit_load_address("concat_buffer_pool", @linker)
        @emitter.add_rax_rdx # X0 = pool + offset
@@ -54,14 +54,12 @@ module BuiltinStrings
     else
        @emitter.push_reg(2)
        @emitter.emit_load_address("concat_buffer_idx", @linker)
-       @emitter.mov_rax(1)
-       @emitter.mov_reg_reg(2, 0)
+       @emitter.mov_reg_imm(2, 1)
        @emitter.emit_load_address("concat_buffer_idx", @linker)
        @emitter.emit([0xf0, 0x48, 0x0f, 0xc1, 0x10])
        @emitter.mov_reg_reg(0, 2)
        @emitter.emit([0x48, 0x83, 0xe0, 0x0f])
-       @emitter.mov_reg_reg(0, 2)
-       @emitter.shl_rax_imm(11)
+       @emitter.shl_rax_imm(16)
        @emitter.push_reg(0)
        @emitter.emit_load_address("concat_buffer_pool", @linker)
        @emitter.pop_reg(2)

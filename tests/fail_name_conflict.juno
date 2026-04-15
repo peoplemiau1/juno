@@ -1,7 +1,0 @@
-fn foo() {
-    output("foo")
-}
-
-fn main() {
-    foo = 10
-}

@@ -12,164 +12,69 @@ class Lexer
     @column = 1
   end
 
+  require 'strscan'
+
   def tokenize
-    cursor = 0
-    while cursor < @code.length
-      chunk = @code[cursor..-1]
+    scanner = StringScanner.new(@code)
+    until scanner.eos?
+      @column = (scanner.pos - (@code.rindex("\n", scanner.pos - 1) || -1))
       
-      case chunk
-      when /\A\n/
+      if scanner.scan(/\n/)
         @line += 1
         @column = 1
-        cursor += 1
-      when /\A[ \t\r]+/
-        cursor += $&.length
-        @column += $&.length
-      when /\A(\/\/|#).*$/
-        cursor += $&.length
-        @column += $&.length
-      when /\A(struct|union|fn|func|def|if|elif|else|return|while|loop|break|continue|let|for|import|use|packed|extern|from|pub|match|todo|panic|as|true|false|mut|type|enum|real|int|string|bool|ptr)\b/
-        # Normalize func/def -> fn
-        kw = $1
-        kw = "fn" if kw == "func" || kw == "def"
+      elsif scanner.scan(/[ \t\r]+/)
+      elsif scanner.scan(/(\/\/|#).*$/)
+      elsif m = scanner.scan(/(struct|union|fn|func|def|if|elif|else|return|while|loop|break|continue|let|for|import|use|packed|extern|from|match|todo|panic|as|true|false|mut|type|enum|real|int|string|bool|ptr)\b/)
+        kw = m; kw = "fn" if kw == "func" || kw == "def"
         add_token(:keyword, kw)
-        cursor += $&.length
-        @column += $&.length
-      when /\AinsertC\s*\{/
-        start = cursor + $&.length
-        brace_count = 1
-        pos = start
-        while pos < @code.length && brace_count > 0
-          brace_count += 1 if @code[pos] == '{'
-          brace_count -= 1 if @code[pos] == '}'
-          pos += 1 if brace_count > 0
-        end
-        content = @code[start...pos]
-        add_token(:insertC, nil, content)
-        cursor = pos + 1
-        @column = 1
-      when /\A"/
-        # Parse string with escape sequences
-        cursor += 1  # skip opening quote
-        @column += 1
-        str_start = cursor
-        raw_str = ""
-        
-        while cursor < @code.length && @code[cursor] != '"'
-          if @code[cursor] == '\\'
-            # Escape sequence
-            raw_str += @code[cursor, 2]
-            cursor += 2
-            @column += 2
-          else
-            raw_str += @code[cursor]
-            cursor += 1
-            @column += 1
+      elsif scanner.scan(/"/)
+        str = ""
+        until scanner.scan(/"/)
+          if scanner.eos?
+             JunoErrorReporter.report(JunoLexerError.new("Unterminated string", filename: @filename, line_num: @line, column: @column, source: @source))
+             break
           end
+          if scanner.scan(/\\/)
+            if scanner.eos? then str << "\\"
+            else
+              case esc = scanner.getch
+              when "n" then str << "\n"
+              when "t" then str << "\t"
+              when "r" then str << "\r"
+              when "0" then str << "\0"
+              when "\\" then str << "\\"
+              when "\"" then str << "\""
+              when "e" then str << "\e"
+              when "x"
+                hex = scanner.scan(/[0-9a-fA-F]{2}/)
+                str << [hex.to_i(16)].pack('C') if hex
+              else str << "\\" << esc
+              end
+            end
+          else str << scanner.getch end
         end
-        
-        if cursor >= @code.length
-          error = JunoLexerError.new(
-            "Unterminated string",
-            filename: @filename,
-            line_num: @line,
-            column: @column,
-            source: @source
-          )
-          JunoErrorReporter.report(error)
-        end
-        
-        cursor += 1  # skip closing quote
-        @column += 1
-        
-        processed = process_escapes(raw_str)
-        add_token(:string, processed)
-      when /\A0x[0-9a-fA-F]+/
-        add_token(:number, $&.to_i(16))
-        cursor += $&.length
-        @column += $&.length
-      when /\A0b[01]+/
-        add_token(:number, $&.to_i(2))
-        cursor += $&.length
-        @column += $&.length
-      when /\A0o[0-7]+/
-        add_token(:number, $&.to_i(8))
-        cursor += $&.length
-        @column += $&.length
-      when /\A\d+/
-        add_token(:number, $&.to_i)
-        cursor += $&.length
-        @column += $&.length
-      when /\A[a-zA-Z_]\w*/
-        add_token(:ident, $&)
-        cursor += $&.length
-        @column += $&.length
-      when /\A(==|!=|<=|>=|<<|>>|<>|->|\+\+|\-\-)/
-        add_token(:operator, $&)
-        cursor += $&.length
-        @column += $&.length
-      when /\A(\|\|)/
-        add_token(:operator, '||')
-        cursor += 2
-        @column += 2
-      when /\A(&&)/
-        add_token(:operator, '&&')
-        cursor += 2
-        @column += 2
-      when /\A\|/
-        add_token(:bitor, '|')
-        cursor += 1
-        @column += 1
-      when /\A\^/
-        add_token(:bitxor, '^')
-        cursor += 1
-        @column += 1
-      when /\A~/
-        add_token(:bitnot, '~')
-        cursor += 1
-        @column += 1
-      when /\A</
-        add_token(:langle, '<')
-        cursor += 1
-        @column += 1
-      when /\A>/
-        add_token(:rangle, '>')
-        cursor += 1
-        @column += 1
-      when /\A&/
-        add_token(:ampersand, '&')
-        cursor += 1
-        @column += 1
-      when /\A\*/
-        # Check context - could be multiply or dereference
-        add_token(:star, '*')
-        cursor += 1
-        @column += 1
-      when /\A\[/
-        add_token(:lbracket, '[')
-        cursor += 1
-        @column += 1
-      when /\A\]/
-        add_token(:rbracket, ']')
-        cursor += 1
-        @column += 1
-      when /\A(\(|\)|\{|\}|\.|\,|\+|\-|\/|%|=|;|!)/
-        add_token(:symbol, $&)
-        cursor += $&.length
-        @column += $&.length
-      when /\A:/
-        add_token(:colon, ':')
-        cursor += 1
-        @column += 1
+        add_token(:string, process_escapes(str))
+      elsif m = scanner.scan(/0x[0-9a-fA-F]+/) then add_token(:number, m[2..-1].to_i(16))
+      elsif m = scanner.scan(/0b[01]+/) then add_token(:number, m[2..-1].to_i(2))
+      elsif m = scanner.scan(/0o[0-7]+/) then add_token(:number, m[2..-1].to_i(8))
+      elsif m = scanner.scan(/\d+/) then add_token(:number, m.to_i)
+      elsif m = scanner.scan(/[a-zA-Z_]\w*/) then add_token(:ident, m)
+      elsif m = scanner.scan(/==|!=|<=|>=|<<|>>|<>|->|\+\+|\-\-|\|\||&&/)
+        add_token(:operator, m)
+      elsif scanner.scan(/\|/) then add_token(:bitor, '|')
+      elsif scanner.scan(/\^/) then add_token(:bitxor, '^')
+      elsif scanner.scan(/~/) then add_token(:bitnot, '~')
+      elsif scanner.scan(/</) then add_token(:langle, '<')
+      elsif scanner.scan(/>/) then add_token(:rangle, '>')
+      elsif scanner.scan(/&/) then add_token(:ampersand, '&')
+      elsif scanner.scan(/\*/) then add_token(:star, '*')
+      elsif scanner.scan(/\[/) then add_token(:lbracket, '[')
+      elsif scanner.scan(/\]/) then add_token(:rbracket, ']')
+      elsif m = scanner.scan(/[\(\)\{\}\.\,\+\-\/\%\\=\;\!]/) then add_token(:symbol, m)
+      elsif scanner.scan(/:/) then add_token(:colon, ':')
       else
-        error = JunoLexerError.new(
-          "Unexpected character '#{@code[cursor]}'",
-          filename: @filename,
-          line_num: @line,
-          column: @column,
-          source: @source
-        )
-        JunoErrorReporter.report(error)
+        text = scanner.getch
+        JunoErrorReporter.report(JunoLexerError.new("Unexpected character '#{text}'", filename: @filename, line_num: @line, column: @column, source: @source))
       end
     end
     @tokens

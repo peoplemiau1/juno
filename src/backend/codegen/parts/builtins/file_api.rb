@@ -151,13 +151,7 @@ module BuiltinFileAPI
 
     @emitter.mov_reg_reg(@arch == :aarch64 ? 5 : 13, 0) # fd
 
-    # Simple check if fd < 0
-    @emitter.test_rax_rax
-    p_err = @emitter.je_rel32 # simplified: treat 0 or error as "jump to end" (wait, 0 is stdin)
-    # Actually if rax < 0 then jump to end.
-    # I don't have JS (jump on sign), so I'll just assume success for now or use a complex check.
-
-    @emitter.emit_load_address("file_read_buf", @linker)
+    @emitter.emit_load_address("file_buffer", @linker)
     @emitter.mov_reg_reg(@arch == :aarch64 ? 6 : 14, 0) # buf
 
     @emitter.mov_reg_reg(@arch == :aarch64 ? 0 : 7, @arch == :aarch64 ? 5 : 13) # fd
@@ -180,8 +174,57 @@ module BuiltinFileAPI
     emit_syscall(:close)
     
     @emitter.mov_reg_reg(0, @arch == :aarch64 ? 6 : 14) # return buf
+  end
+
+  # file_read_all_v2(path) - Read entire file into buffer 2
+  def gen_file_read_all_v2(node)
+    return unless @target_os == :linux
+    setup_file_api
+    args = node[:args] || []
+    return @emitter.mov_rax(0) if args.empty?
     
-    @emitter.patch_je(p_err, @emitter.current_pos)
+    eval_expression(args[0])
+    @emitter.mov_reg_reg(@arch == :aarch64 ? 4 : 12, 0) # path
+
+    # open(path, O_RDONLY, 0)
+    if @arch == :aarch64
+       @emitter.mov_reg_reg(1, 4) # path
+       @emitter.mov_rax(0); @emitter.mov_reg_reg(2, 0) # flags=0
+       @emitter.mov_rax(0); @emitter.mov_reg_reg(3, 0) # mode=0
+       @emitter.mov_rax(0xffffff9c); @emitter.mov_reg_reg(0, 0)
+       emit_syscall(:openat)
+    else
+       @emitter.mov_reg_reg(7, 12) # path
+       @emitter.mov_rax(0); @emitter.mov_reg_reg(6, 0) # flags=0
+       @emitter.mov_rax(0); @emitter.mov_reg_reg(2, 0) # mode=0
+       emit_syscall(:open)
+    end
+
+    @emitter.mov_reg_reg(@arch == :aarch64 ? 5 : 13, 0) # fd
+
+    @emitter.emit_load_address("file_buffer_2", @linker)
+    @emitter.mov_reg_reg(@arch == :aarch64 ? 6 : 14, 0) # buf
+
+    @emitter.mov_reg_reg(@arch == :aarch64 ? 0 : 7, @arch == :aarch64 ? 5 : 13) # fd
+    @emitter.mov_reg_reg(@arch == :aarch64 ? 1 : 6, @arch == :aarch64 ? 6 : 14) # buf
+    @emitter.mov_rax(65535); @emitter.mov_reg_reg(@arch == :aarch64 ? 2 : 2, 0) # size
+    emit_syscall(:read)
+
+    @emitter.mov_reg_reg(@arch == :aarch64 ? 7 : 15, 0) # read_size
+    
+    # Null terminate
+    @emitter.mov_reg_reg(0, @arch == :aarch64 ? 6 : 14) # buf
+    @emitter.mov_reg_reg(2, @arch == :aarch64 ? 7 : 15) # read_size
+    @emitter.add_rax_rdx
+    @emitter.mov_reg_reg(@arch == :aarch64 ? 1 : 7, 0) # ptr to terminate
+    @emitter.mov_rax(0)
+    @emitter.mov_mem_rax_sized(1) # [ptr] = 0
+
+    # close
+    @emitter.mov_reg_reg(@arch == :aarch64 ? 0 : 7, @arch == :aarch64 ? 5 : 13) # fd
+    emit_syscall(:close)
+    
+    @emitter.mov_reg_reg(0, @arch == :aarch64 ? 6 : 14) # return buf
   end
 
   # file_exists(path) - Check if file exists

@@ -1,0 +1,40 @@
+// JunoFetch Example
+// Architecture: x86_64 (Native)
+
+fn main() {
+    let host = trim(file_read_safe("/etc/hostname"))
+    let kernel = trim(file_read_all("/proc/sys/kernel/osrelease"))
+    
+    let mut gui = "Server Mode"
+    if (exists("/tmp/.X11-unix") == 1) {
+        gui = "X11 Desktop"
+    }
+
+    let cyan = "\e[36m"
+    let white = "\e[37m"
+    let rst = "\e[0m"
+
+    output("")
+    let login = "root@"
+    output("  " + cyan + "      _                      " + white + login + host)
+    output("  " + cyan + "     | |                     " + rst + "-----------------")
+    
+    output("  " + cyan + "     | |_   _  _ __    ___   " + cyan + "OS:      " + rst + "Debian Trixie")
+    
+    let k_info = "Kernel:  " + kernel
+    output("  " + cyan + " _   | | | | || '_ \\  / _ \\  " + cyan + k_info)
+    
+    output("  " + cyan + "| |__| | |_| || | | || (_) | " + cyan + "CPU:     " + rst + "AMD Ryzen 5")
+    output("  " + cyan + " \\____/ \\__,_||_| |_| \\___/  " + cyan + "Memory:  " + rst + "16GB RAM")
+    
+    let gui_full = "GUI:     " + gui
+    output("  " + cyan + "                             " + cyan + gui_full)
+    
+    output("  " + cyan + "                             " + cyan + "Lang:    " + rst + "Juno v3.0")
+    
+    output("")
+    output("  " + "\e[40m   \e[41m   \e[42m   \e[43m   \e[44m   \e[45m   \e[46m   \e[47m   " + rst)
+    output("")
+
+    return 0
+}

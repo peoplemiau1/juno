@@ -233,9 +233,10 @@ module BuiltinStringsV2
     @emitter.emit([0x48, 0x89, 0xc7])  # mov rdi, rax
     @emitter.emit([0x49, 0x89, 0xfb])  # mov r11, rdi (save start)
 
+    l = @emitter.current_pos
     @emitter.emit([0x8a, 0x07])  # mov al, [rdi]
     @emitter.emit([0x84, 0xc0])  # test al, al
-    @emitter.emit([0x74, 0x0f])  # je done
+    p_end = @emitter.je_rel32
     @emitter.emit([0x3c, 0x61])  # cmp al, 'a'
     @emitter.emit([0x72, 0x07])  # jb next
     @emitter.emit([0x3c, 0x7a])  # cmp al, 'z'
@@ -243,7 +244,9 @@ module BuiltinStringsV2
     @emitter.emit([0x2c, 0x20])  # sub al, 32
     @emitter.emit([0x88, 0x07])  # mov [rdi], al
     @emitter.emit([0x48, 0xff, 0xc7])  # inc rdi
-    @emitter.emit([0xeb, 0xe9])  # jmp loop
+    @emitter.emit([0xeb])
+    @emitter.emit([l - (@emitter.current_pos + 1)]) # jmp l (manual)
+    @emitter.patch_je(p_end, @emitter.current_pos)
 
     @emitter.emit([0x4c, 0x89, 0xd8])  # mov rax, r11
   end
@@ -256,9 +259,10 @@ module BuiltinStringsV2
     @emitter.emit([0x48, 0x89, 0xc7])  # mov rdi, rax
     @emitter.emit([0x49, 0x89, 0xfb])  # mov r11, rdi
 
+    l = @emitter.current_pos
     @emitter.emit([0x8a, 0x07])  # mov al, [rdi]
     @emitter.emit([0x84, 0xc0])  # test al, al
-    @emitter.emit([0x74, 0x0f])  # je done
+    p_end = @emitter.je_rel32
     @emitter.emit([0x3c, 0x41])  # cmp al, 'A'
     @emitter.emit([0x72, 0x07])  # jb next
     @emitter.emit([0x3c, 0x5a])  # cmp al, 'Z'
@@ -266,30 +270,66 @@ module BuiltinStringsV2
     @emitter.emit([0x04, 0x20])  # add al, 32
     @emitter.emit([0x88, 0x07])  # mov [rdi], al
     @emitter.emit([0x48, 0xff, 0xc7])  # inc rdi
-    @emitter.emit([0xeb, 0xe9])  # jmp loop
+    @emitter.emit([0xeb])
+    @emitter.emit([l - (@emitter.current_pos + 1)]) # jmp loop
+    @emitter.patch_je(p_end, @emitter.current_pos)
 
     @emitter.emit([0x4c, 0x89, 0xd8])  # mov rax, r11
   end
 
-  # str_trim(s) - Trim whitespace (returns new ptr)
+  # str_trim(s) - Trim leading whitespace and trailing newlines
   def gen_str_trim(node)
     return unless @target_os == :linux
 
     eval_expression(node[:args][0])
-    @emitter.emit([0x48, 0x89, 0xc7])  # mov rdi, rax
-
-    # Skip leading whitespace
-    @emitter.emit([0x8a, 0x07])  # mov al, [rdi]
-    @emitter.emit([0x3c, 0x20])  # cmp al, ' '
-    @emitter.emit([0x74, 0x06])  # je skip
-    @emitter.emit([0x3c, 0x09])  # cmp al, '\t'
-    @emitter.emit([0x74, 0x02])  # je skip
-    @emitter.emit([0xeb, 0x04])  # jmp found_start
+    @emitter.test_rax_rax
+    p_null = @emitter.je_rel32
+    
+    @emitter.mov_reg_reg(7, 0) # rdi = rax
+    
+    l_loop = @emitter.current_pos
+    @emitter.emit([0x0f, 0xb6, 0x07])  # movzx eax, byte [rdi]
+    @emitter.emit([0x3c, 0x20])        # cmp al, 0x20 (space)
+    p_s1 = @emitter.je_rel32
+    @emitter.emit([0x3c, 0x09])        # cmp al, 0x09 (tab)
+    p_s2 = @emitter.je_rel32
+    @emitter.emit([0x3c, 0x0a])        # cmp al, 0x0a (newline)
+    p_s3 = @emitter.je_rel32
+    
+    p_done = @emitter.jmp_rel32
+    
+    @emitter.patch_je(p_s1, @emitter.current_pos)
+    @emitter.patch_je(p_s2, @emitter.current_pos)
+    @emitter.patch_je(p_s3, @emitter.current_pos)
+    
     @emitter.emit([0x48, 0xff, 0xc7])  # inc rdi
-    @emitter.emit([0xeb, 0xef])  # jmp loop
-
-    # Return pointer to first non-space
-    @emitter.emit([0x48, 0x89, 0xf8])  # mov rax, rdi
+    p_loop = @emitter.jmp_rel32
+    @emitter.patch_jmp(p_loop, l_loop)
+    
+    @emitter.patch_jmp(p_done, @emitter.current_pos)
+    
+    # Trim trailing newlines (scan forward)
+    @emitter.mov_reg_reg(6, 7) # rsi = rdi
+    l_scan = @emitter.current_pos
+    @emitter.emit([0x0f, 0xb6, 0x0e])  # movzx ecx, byte [rsi]
+    @emitter.emit([0x84, 0xc9])        # test cl, cl
+    p_end_scan = @emitter.je_rel32
+    @emitter.emit([0x80, 0xf9, 0x0a])  # cmp cl, '\n'
+    p_chomp1 = @emitter.je_rel32
+    @emitter.emit([0x80, 0xf9, 0x0d])  # cmp cl, '\r'
+    p_chomp2 = @emitter.je_rel32
+    @emitter.emit([0x48, 0xff, 0xc6])  # inc rsi
+    p_next_scan = @emitter.jmp_rel32
+    @emitter.patch_jmp(p_next_scan, l_scan)
+    
+    @emitter.patch_je(p_chomp1, @emitter.current_pos)
+    @emitter.patch_je(p_chomp2, @emitter.current_pos)
+    @emitter.emit([0xc6, 0x06, 0x00])  # mov byte [rsi], 0
+    
+    @emitter.patch_je(p_end_scan, @emitter.current_pos)
+    
+    @emitter.mov_reg_reg(0, 7) # return rdi (trimmed start)
+    @emitter.patch_je(p_null, @emitter.current_pos)
   end
 
   # byte_at(ptr, idx)

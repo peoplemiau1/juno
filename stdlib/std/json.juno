@@ -9,7 +9,7 @@ let J_ARR  = 4
 let J_OBJ  = 5
 
 struct JsonNode {
-    let type: int
+    let _type: int
     let key: ptr
     let value: ptr
     let next: ptr
@@ -256,39 +256,39 @@ fn parse_val(s: ptr, pos_ptr: ptr): ptr {
     node.next = 0
 
     if c == 34 {
-        node.type = J_STR
+        node._type = J_STR
         node.value = parse_str(s, pos_ptr)
     }
     if c == 123 {
-        node.type = J_OBJ
+        node._type = J_OBJ
         node.value = parse_obj(s, pos_ptr)
     }
     if c == 91 {
-        node.type = J_ARR
+        node._type = J_ARR
         node.value = parse_arr(s, pos_ptr)
     }
     if c == 45 {
-        node.type = J_NUM
+        node._type = J_NUM
         node.value = parse_num(s, pos_ptr)
     }
     if c >= 48 {
         if c <= 57 {
-            node.type = J_NUM
+            node._type = J_NUM
             node.value = parse_num(s, pos_ptr)
         }
     }
     if c == 116 { // true
-        node.type = J_BOOL
+        node._type = J_BOOL
         node.value = 1
         *pos_ptr = pos + 4
     }
     if c == 102 { // false
-        node.type = J_BOOL
+        node._type = J_BOOL
         node.value = 0
         *pos_ptr = pos + 5
     }
     if c == 110 { // null
-        node.type = J_NULL
+        node._type = J_NULL
         node.value = 0
         *pos_ptr = pos + 4
     }
@@ -310,10 +310,10 @@ fn json_free(node_ptr: ptr) {
 
     if node.key != 0 { free(node.key) }
 
-    if node.type == J_STR {
+    if node._type == J_STR {
         if node.value != 0 { free(node.value) }
     }
-    if node.type == J_OBJ {
+    if node._type == J_OBJ {
         let child_ptr = node.value
         while child_ptr != 0 {
             let child: JsonNode = child_ptr
@@ -322,7 +322,7 @@ fn json_free(node_ptr: ptr) {
             child_ptr = nxt
         }
     }
-    if node.type == J_ARR {
+    if node._type == J_ARR {
         let child_ptr = node.value
         while child_ptr != 0 {
             let child: JsonNode = child_ptr
@@ -337,7 +337,7 @@ fn json_free(node_ptr: ptr) {
 fn json_get(node_ptr: ptr, key: ptr): ptr {
     if node_ptr == 0 { return 0 }
     let parent: JsonNode = node_ptr
-    if parent.type != J_OBJ { return 0 }
+    if parent._type != J_OBJ { return 0 }
 
     let current = parent.value
     while current != 0 {
@@ -351,7 +351,7 @@ fn json_get(node_ptr: ptr, key: ptr): ptr {
 fn json_at(node_ptr: ptr, index: int): ptr {
     if node_ptr == 0 { return 0 }
     let parent: JsonNode = node_ptr
-    if parent.type != J_ARR { return 0 }
+    if parent._type != J_ARR { return 0 }
 
     let current = parent.value
     let i = 0
@@ -368,7 +368,7 @@ fn json_len(node_ptr: ptr): int {
     if node_ptr == 0 { return 0 }
     let parent: JsonNode = node_ptr
     let count = 0
-    if parent.type == J_OBJ {
+    if parent._type == J_OBJ {
         let current = parent.value
         while current != 0 {
             count = count + 1
@@ -376,7 +376,7 @@ fn json_len(node_ptr: ptr): int {
             current = node.next
         }
     }
-    if parent.type == J_ARR {
+    if parent._type == J_ARR {
         let current = parent.value
         while current != 0 {
             count = count + 1
@@ -397,7 +397,7 @@ fn json_get_str(node_ptr: ptr, key: ptr): ptr {
     let child = json_get(node_ptr, key)
     if child == 0 { return 0 }
     let node: JsonNode = child
-    if node.type == J_STR { return node.value }
+    if node._type == J_STR { return node.value }
     return 0
 }
 
@@ -405,7 +405,7 @@ fn json_get_int(node_ptr: ptr, key: ptr): int {
     let child = json_get(node_ptr, key)
     if child == 0 { return 0 }
     let node: JsonNode = child
-    if node.type == J_NUM { return node.value }
+    if node._type == J_NUM { return node.value }
     return 0
 }
 
@@ -413,13 +413,13 @@ fn json_get_bool(node_ptr: ptr, key: ptr): int {
     let child = json_get(node_ptr, key)
     if child == 0 { return 0 }
     let node: JsonNode = child
-    if node.type == J_BOOL { return node.value }
+    if node._type == J_BOOL { return node.value }
     return 0
 }
 
 fn json_is_null(node_ptr: ptr): int {
     if node_ptr == 0 { return 1 }
     let node: JsonNode = node_ptr
-    if node.type == J_NULL { return 1 }
+    if node._type == J_NULL { return 1 }
     return 0
 }

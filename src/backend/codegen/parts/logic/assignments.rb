@@ -20,7 +20,7 @@ module GeneratorAssignments
     end
 
     eval_expression(node[:expression])
-    name = node[:target] ? node[:target][:value] : node[:name]
+    name = node[:target] ? (node[:target][:name] || node[:target][:value]) : node[:name]
 
     if name.include?('.')
        save_member_rax(name)
@@ -37,6 +37,21 @@ module GeneratorAssignments
        end
     else
        type = node[:var_type] || node[:inferred_type]
+       if !type && node[:expression][:type] == :variable
+         # Inherit type from another variable
+         type = @ctx.var_types[node[:expression][:name]]
+       end
+
+       if node[:expression][:type] == :fn_call
+         fn_name = node[:expression][:name]
+         if ["concat", "trim", "file_read_all", "file_read_safe", "str_new", "int_to_str", "substr", "trim_start", "trim_end"].include?(fn_name)
+           @ctx.var_is_ptr[name] = true
+           @ctx.var_types[name] = "str"
+         end
+       elsif node[:expression][:type] == :string_literal
+         @ctx.var_is_ptr[name] = true
+         @ctx.var_types[name] = "str"
+       end
        if type
          @ctx.var_types[name] = type
          @ctx.var_is_ptr[name] = true if ["ptr", "str"].include?(type) || @ctx.structs.key?(type)

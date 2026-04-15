@@ -1,17 +1,16 @@
 require_relative "../errors"
 require_relative "parser/parts/expressions"
 require_relative "parser/parts/statements"
-require_relative "parser/parts/watt"
 
 class Parser
   include ParserExpressions
   include ParserStatements
-  include WattParser
 
   def initialize(tokens, filename = "", source = "")
     @tokens = tokens
     @filename = filename
     @source = source
+    @last_token = nil
   end
 
   def parse
@@ -38,11 +37,20 @@ class Parser
     if type && t[:type] != type
       error_unexpected(t, "Expected #{type}")
     end
+    @last_token = t
     t
   end
 
-  def match?(type); peek && peek[:type] == type; end
-  def match_symbol?(val); peek && (peek[:type] == :symbol || peek[:type] == :operator) && peek[:value] == val; end
+  def on_same_line?
+    return false unless peek && @last_token
+    peek[:line] == @last_token[:line]
+  end
+
+  def match?(type)
+    return false unless peek
+    return (peek[:type] == type) || (type == :ident && peek[:type] == :keyword && peek[:value] == "ptr")
+  end
+  def match_symbol?(val); peek && ([:symbol, :operator, :star, :ampersand, :langle, :rangle, :bitor, :bitxor].include?(peek[:type])) && peek[:value] == val; end
   def match_keyword?(val); peek && peek[:type] == :keyword && peek[:value] == val; end
 
   def with_loc(node, token)
@@ -56,11 +64,12 @@ class Parser
     t = @tokens.shift
     if t.nil?
       error_eof("Expected '#{val}'")
-    elsif t[:type] != :symbol && t[:type] != :operator
-      error_unexpected(t, "Expected symbol '#{val}'")
+    elsif ![:symbol, :operator, :star, :ampersand, :langle, :rangle, :bitor, :bitxor].include?(t[:type])
+      error_unexpected(t, "Expected symbol or operator '#{val}'")
     elsif val && t[:value] != val
       error_unexpected(t, "Expected '#{val}' but got '#{t[:value]}'")
     end
+    @last_token = t
     t
   end
 
@@ -73,6 +82,7 @@ class Parser
     elsif val && t[:value] != val
       error_unexpected(t, "Expected '#{val}' but got '#{t[:value]}'")
     end
+    @last_token = t
     t
   end
 
@@ -80,9 +90,13 @@ class Parser
     t = @tokens.shift
     if t.nil?
       error_eof("Expected identifier")
+    elsif t[:type] == :keyword && t[:value] == "ptr"
+      @last_token = t
+      return "ptr"
     elsif t[:type] != :ident
       error_unexpected(t, "Expected identifier")
     end
+    @last_token = t
     t[:value]
   end
 

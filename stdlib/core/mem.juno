@@ -1,0 +1,37 @@
+// stdlib/core/mem.juno
+// Memory management and raw byte operations
+
+fn os_alloc(size) { return alloc(size) }
+fn os_free(p, size) { free(p, size) }
+
+// Memory block operations (builtins)
+// NOTE: Builtins like memcpy, memset, memcmp are already in the compiler
+// But we provide wrappers for convenience
+
+fn copy_memory(dst, src, n) {
+    memcpy(dst, src, n)
+}
+
+fn fill_memory(ptr, val, n) {
+    memset(ptr, val, n)
+}
+
+fn compare_memory(s1, s2, n) {
+    for (i = 0; i < n; i++) {
+        let p1 = ptr_add(s1, i)
+        let p2 = ptr_add(s2, i)
+        if (*p1 != *p2) { return *p1 - *p2 }
+    }
+    return 0
+}
+
+// Simple dynamic memory allocation
+// In future versions, this should be a real libc-style malloc
+fn mem_malloc(size) {
+    return malloc(size)
+}
+
+fn mem_free(ptr) {
+    // Current NativeGenerator free is simple
+    free(ptr)
+}

@@ -31,10 +31,10 @@ class CodegenContext
     @arrays = {}      # name -> { base_offset: int, size: int, ptr_offset: int }
     @var_registers = {} # name -> register symbol (:rbx, :r12, etc.)
     @used_callee_saved = [] # list of callee-saved regs used in current function
-    @stack_ptr = 64   # Start after shadow space + internal usage
+    @stack_ptr = 16   # Standard alignment
     @stack_depth = 0
     @current_fn = nil
-    @available_scratch = (arch == :aarch64) ? (9..15).to_a : [10, 11]
+    @available_scratch = (arch == :aarch64) ? (9..15).to_a : [10] # R11 clobbered
     @used_scratch = []
   end
 
@@ -79,7 +79,7 @@ class CodegenContext
     @arrays = {}
     @var_registers = {}
     @used_callee_saved = []
-    @stack_ptr = 64
+    @stack_ptr = 16
     @stack_depth = 0
     @current_fn = name
   end
@@ -107,7 +107,6 @@ class CodegenContext
   end
 
   def get_variable_offset(name)
-    # Auto-declare if not exists (bulletproof)
     unless @variables[name]
       declare_variable(name, 8)
     end
@@ -126,15 +125,11 @@ class CodegenContext
     @globals[name] = label_id
   end
 
-  # Declare array: allocates N * 8 bytes on stack
-  # Returns { base_offset, size, ptr_offset }
   def declare_array(name, size)
-    # Allocate space for array elements (N * 8 bytes)
     array_bytes = size * 8
     @stack_ptr += array_bytes
     base_offset = @stack_ptr
     
-    # Allocate space for pointer variable
     @stack_ptr += 8
     ptr_offset = @stack_ptr
     @variables[name] = ptr_offset

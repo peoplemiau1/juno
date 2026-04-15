@@ -10,8 +10,17 @@ module GeneratorAccess
        return
     end
     st = @ctx.var_types[v]
-    return unless st && @ctx.structs[st]
-    f_off = @ctx.structs[st][:fields][f]
+    unless st && @ctx.structs[st]
+      $stderr.puts "[BACKEND ERROR] Type '#{st}' for '#{v}' not found in structs: #{@ctx.structs.keys.join(', ')}"
+      return
+    end
+    
+    fields = @ctx.structs[st][:fields]
+    f_off = fields[f]
+    
+    if f_off.nil?
+      $stderr.puts "[BACKEND ERROR] Field '#{f}' not found in struct '#{st}'. Available fields: #{fields.keys.join(', ')}"
+    end
     if @ctx.in_register?(v)
       @emitter.mov_rax_from_reg(@emitter.class.reg_code(@ctx.get_register(v)))
     else
@@ -72,6 +81,26 @@ module GeneratorAccess
       @emitter.mov_reg_reg(2, 0)
       @emitter.pop_reg(0)
       @emitter.add_rax_rdx
+    elsif operand[:type] == :member_access
+      v = operand[:receiver]
+      f = operand[:member]
+      st = @ctx.var_types[v]
+      if st && @ctx.structs[st]
+        f_off = @ctx.structs[st][:fields][f]
+        if @ctx.in_register?(v)
+           @emitter.mov_rax_from_reg(@emitter.class.reg_code(@ctx.get_register(v)))
+        elsif @ctx.variables.key?(v)
+           @emitter.mov_reg_stack_val(0, @ctx.variables[v])
+        elsif @ctx.globals.key?(v)
+           @emitter.emit_load_address(@ctx.globals[v], @linker)
+           @emitter.mov_rax_mem(0)
+        else
+           # EMERGENCY LOGGING
+           $stderr.puts "[BACKEND ERROR] Variable '#{v}' not found in context. Current vars: #{@ctx.variables.keys.join(', ')}"
+        end
+        # RAX now has the base pointer. Add field offset.
+        @emitter.add_reg_imm(0, f_off) if f_off > 0
+      end
     end
   end
 

@@ -9,7 +9,7 @@ fn mul(a, b) {
 }
 
 fn fact(n) {
-    let res = 1
+    let mut res = 1
     for (i = 1; i <= n; i++) {
         res = res * i
     }
@@ -42,7 +42,7 @@ fn main() {
     if (check != 72) { print("FAIL arith"); return 1 }
 
     // While loop countdown
-    let c = 3
+    let mut c = 3
     while (c != 0) {
         c = c - 1
     }

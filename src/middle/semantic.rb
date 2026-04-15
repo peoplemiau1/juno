@@ -10,6 +10,14 @@ class SemanticAnalyzer
     @unions = {}
   end
 
+  def function_signatures
+    sigs = {}
+    @symbol_table.each do |name, info|
+      sigs[name] = info[:return_type] if info[:type] == :function
+    end
+    sigs
+  end
+
   def analyze
     # Pass 1: Collect globals and definitions
     @ast.each do |node|

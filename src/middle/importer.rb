@@ -41,7 +41,9 @@ class Importer
   def process_import(path, current_file, is_system = false)
     # Resolve path
     if is_system && @system_path
-      full_path = File.join(@system_path, path)
+      # Support 'std/std' pattern by checking base system directory
+      check_path = (path == "std/std") ? "std" : path
+      full_path = File.join(@system_path, check_path)
     elsif current_file
       base_dir = File.dirname(current_file)
       full_path = File.join(base_dir, path)
@@ -52,8 +54,8 @@ class Importer
     # Normalize path
     full_path = File.expand_path(full_path)
 
-    # Support .juno and .wt extensions
-    unless File.exist?(full_path)
+    # Support .juno and .wt extensions (Prefer files over directories)
+    unless File.file?(full_path)
       if File.exist?(full_path + ".juno")
         full_path += ".juno"
       elsif File.exist?(full_path + ".wt")

@@ -83,15 +83,7 @@ module BuiltinIO
     end
   end
 
-  def gen_len(node)
-    arg = node[:args][0]
-    if arg[:type] == :string_literal then @emitter.mov_rax(arg[:value].length)
-    elsif arg[:type] == :variable
-      arr = @ctx.get_array(arg[:name])
-      if arr then @emitter.mov_rax(arr[:size])
-      else eval_expression(arg); @emitter.mov_rax(8) end
-    end
-  end
+  # Removed legacy gen_len proxy to use BuiltinStringsV2 implementation
 
   def gen_syscall(node)
     args = node[:args] || []

@@ -38,7 +38,6 @@ module GeneratorCalls
 
   def gen_fn_call(node)
     name = node[:name]
-
     if @ctx.variables.key?(name) || @ctx.in_register?(name)
       return gen_indirect_fn_call(node)
     end
@@ -60,10 +59,21 @@ module GeneratorCalls
       "i64" => :gen_cast_i64, "u64" => :gen_cast_u64,
       "malloc" => :gen_malloc, "realloc" => :gen_realloc, "free" => :gen_free,
       "ptr_add" => :gen_ptr_add, "ptr_sub" => :gen_ptr_sub,
-      "len" => :gen_str_len, "sizeof" => :gen_sizeof
+      "memcpy" => :gen_memcpy, "memset" => :gen_memset,
+      "len" => :gen_str_len, "sizeof" => :gen_sizeof,
+      "trim" => :gen_str_trim, "exists" => :gen_file_exists,
+      "file_read_safe" => :gen_file_read_all_v2
     }
     return send(aliases[name], node) if aliases.key?(name)
-    return gen_method_call(node) if name.include?('.')
+    
+    if name.include?('.')
+      v = name.split('.')[0]
+      if @ctx.var_types.key?(v)
+        return gen_method_call(node)
+      end
+      # Fallthrough to user fn call for static Type.method() calls
+    end
+    
     gen_user_fn_call(node)
   end
 

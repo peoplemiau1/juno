@@ -1,0 +1,19 @@
+// Тест FFI в Juno
+// Вызываем функции из стандартной библиотеки C
+
+extern fn puts(s: string) -> int from "libc.so.6"
+extern fn sleep(seconds: int) -> int from "libc.so.6"
+
+fn main() {
+    puts("--- Juno FFI Test ---")
+    puts("Juno: calling libc.puts...")
+    
+    let msg = "Hello from Juno via libc!"
+    puts(msg)
+    
+    puts("Juno: sleeping for 1 second...")
+    sleep(1)
+    
+    puts("Juno: test finished successfully.")
+    return 0
+}

@@ -1,5 +1,4 @@
-# Turbo Optimizer - Aggressive optimizations for maximum performance
-# Goal: Beat Rust in speed
+# Turbo Optimizer for Juno AST
 
 require 'set'
 
@@ -15,20 +14,15 @@ class TurboOptimizer
   end
 
   def optimize
-    # Phase 1: Analyze
     analyze_functions
     find_inline_candidates
     
-    # Phase 2: High-level optimizations
     @ast = @ast.map { |node| optimize_node(node) }
     
-    # Phase 3: Inline small functions
     @ast = inline_functions(@ast)
     
-    # Phase 4: Loop optimizations
     @ast = @ast.map { |node| optimize_loops(node) }
     
-    # Phase 5: Final cleanup
     @ast = @ast.map { |node| final_pass(node) }
     
     @ast
@@ -36,8 +30,6 @@ class TurboOptimizer
 
   private
 
-  # === PHASE 1: Analysis ===
-  
   def analyze_functions
     @ast.each do |node|
       if node[:type] == :function_definition
@@ -125,7 +117,6 @@ class TurboOptimizer
     end
   end
 
-  # === PHASE 2: Basic Optimizations ===
 
   def optimize_node(node)
     return node unless node.is_a?(Hash)
@@ -325,7 +316,6 @@ class TurboOptimizer
     Math.log2(n).to_i
   end
 
-  # === PHASE 3: Function Inlining ===
 
   def inline_functions(ast)
     ast.map do |node|
@@ -448,7 +438,6 @@ class TurboOptimizer
     }
   end
 
-  # === PHASE 4: Loop Optimizations ===
 
   def optimize_loops(node)
     return node unless node.is_a?(Hash)
@@ -605,7 +594,6 @@ class TurboOptimizer
     end
   end
 
-  # === PHASE 5: Final Pass ===
 
   def final_pass(node)
     return node unless node.is_a?(Hash)
@@ -663,80 +651,7 @@ class TurboOptimizer
       return { type: :noop }
     end
 
-    # Simulator: Try evaluate loop at compile time
-    evaluated = try_evaluate_loop_at_compile_time(node)
-    return evaluated if evaluated
-    
     node
-  end
-
-  def try_evaluate_loop_at_compile_time(node)
-    return nil unless node[:type] == :for_statement
-
-    init = node[:init]
-    cond = node[:condition]
-    update = node[:update]
-    body = node[:body]
-
-    # 1. Check if loop bounds are constant
-    return nil unless init[:type] == :assignment && init[:expression][:type] == :literal
-    return nil unless cond[:type] == :binary_op && cond[:right][:type] == :literal
-
-    loop_var = init[:name]
-    start_val = init[:expression][:value]
-    limit = cond[:right][:value]
-    op = cond[:op]
-
-    # 2. Ensure body is "pure" enough (no fn calls or complex side effects for now)
-    # We allow simple arithmetic assignments to local variables
-    return nil if has_side_effects_for_simulator?(body)
-
-    # 3. Simulate
-    begin
-      vars = { loop_var => start_val }
-      # Limit simulation to prevent compiler hang
-      max_iterations = 10000
-      iterations = 0
-
-      # We need to find all variables modified in the loop
-      modified_vars = find_written_vars(body).to_a
-      modified_vars.each { |v| vars[v] = 0 unless vars.key?(v) } # Assume 0 init for simplicity or take from outer context?
-      # Actually, we can only safely simulate if we know their initial values.
-      # For now, let's only support loops that only modify variables initialized just before the loop.
-      # This is complex. Let's simplify: only allow the loop variable itself if it's the only one.
-      # No, user wants more.
-
-      # Let's try to find initial values for all variables used in loop
-      # For simplicity of this task, let's only simulate if we can determine all initial values.
-
-      while eval_cond(vars[loop_var], op, limit)
-        iterations += 1
-        return nil if iterations > max_iterations # Too long, let it run at runtime
-
-        body.each do |stmt|
-          simulate_stmt(stmt, vars)
-        end
-
-        # Update
-        if update[:type] == :increment
-          vars[loop_var] += (update[:op] == "++" ? 1 : -1)
-        elsif update[:type] == :assignment
-          vars[loop_var] = eval_simple_expr(update[:expression], vars)
-        end
-      end
-
-      # 4. Replace loop with final assignments
-      assignments = []
-      vars.each do |name, val|
-        next if name == loop_var # loop var is usually dead after loop
-        assignments << { type: :assignment, name: name, expression: { type: :literal, value: val } }
-      end
-
-      return { type: :block, body: assignments }
-    rescue => e
-      # Simulation failed (e.g. division by zero or complex expr)
-      return nil
-    end
   end
 
   def eval_cond(val, op, limit)

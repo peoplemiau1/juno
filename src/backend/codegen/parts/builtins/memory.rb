@@ -54,4 +54,28 @@ module BuiltinMemory
        end
     end
   end
+
+  def gen_memcpy(node)
+    # memcpy(dst, src, n)
+    # x86 args: RDI=dst, RSI=src, RCX=n
+    eval_expression(node[:args][2]); @emitter.push_reg(0) # n
+    eval_expression(node[:args][1]); @emitter.push_reg(0) # src
+    eval_expression(node[:args][0]) # dst (RAX)
+    @emitter.mov_reg_reg(7, 0) # RDI = dst
+    @emitter.pop_reg(6) # RSI = src
+    @emitter.pop_reg(1) # RCX = n
+    @emitter.memcpy
+  end
+
+  def gen_memset(node)
+    # memset(ptr, val, n)
+    # x86 args: RDI=ptr, RAX=val, RCX=n
+    eval_expression(node[:args][2]); @emitter.push_reg(0) # n
+    eval_expression(node[:args][1]); @emitter.push_reg(0) # val
+    eval_expression(node[:args][0]) # ptr (RAX)
+    @emitter.mov_reg_reg(7, 0) # RDI = ptr
+    @emitter.pop_reg(0) # RAX = val
+    @emitter.pop_reg(1) # RCX = n
+    @emitter.memset
+  end
 end

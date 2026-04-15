@@ -9,7 +9,7 @@ module ParserStatements
       name += "<"
       consume(:langle)
       until match?(:rangle)
-        name += consume_type # Рекурсивно для вложенных типа Box<vec<int>>
+        name += consume_type
         if match_symbol?(',')
           consume_symbol(',')
           name += ","
@@ -26,6 +26,9 @@ module ParserStatements
       consume_symbol(";")
     end
     token = peek
+    if token
+      # puts "Parsing at line #{token[:line]}, column #{token[:column]} (#{token[:type]}: #{token[:value]})"
+    end
     if token.nil? || match_symbol?("}")
       return nil
     end

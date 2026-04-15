@@ -14,7 +14,7 @@ require_relative "../../optimizer/register_allocator"
 
 class NativeGenerator
   attr_accessor :hell_mode
-  STACK_SIZE = 1024 # Smaller default stack frame
+  STACK_SIZE = 4096 # Increased for stability
 
   include GeneratorLogic
   include GeneratorCalls
@@ -46,14 +46,15 @@ class NativeGenerator
 
   def setup_data
     @linker.add_bss("int_buffer", 64)
-    @linker.add_bss("file_buffer", 4096)
+    @linker.add_bss("file_buffer", 65536)
+    @linker.add_bss("file_buffer_2", 65536)
     @linker.add_data("concat_buffer_idx", [0].pack("Q<"))
-    @linker.add_bss("concat_buffer_pool", 32768) # 16 * 2048
-    @linker.add_bss("substr_buffer", 1024)
+    @linker.add_bss("concat_buffer_pool", 1048576) # 16 * 65536
+    @linker.add_bss("substr_buffer", 65536)
     @linker.add_bss("chr_buffer", 4)
     @linker.add_bss("input_buffer", 1024)
     @linker.add_data("rand_seed", [12345].pack("Q<"))
-    @linker.add_data("newline_char", "\n")
+    @linker.add_data("newline_char", "\n\x00")
   end
 
   def generate(output_path, ir = nil)
@@ -200,6 +201,7 @@ class NativeGenerator
   end
 
   def gen_function(node, ctx, emitter, linker)
+    # puts "GEN FUNCTION: #{node[:name]}"
     linker.register_function(node[:name], emitter.current_pos); ctx.reset_for_function(node[:name])
     gen_function_internal(node, ctx, emitter, linker)
   end
@@ -210,18 +212,24 @@ class NativeGenerator
     res[:allocations].each { |var, reg| ctx.assign_register(var, reg) }
 
     params = node[:params].map { |p| p.is_a?(Hash) ? p[:name] : p }
+    # Register parameter types
     param_types = node[:param_types] || {}
-    params.each do |p|
-      if param_types[p]
-        @ctx.var_types[p] = param_types[p]
-        @ctx.var_is_ptr[p] = true if param_types[p] == "ptr" || @ctx.structs.key?(param_types[p])
+    node[:params].each do |p|
+      t = param_types[p]
+      if p == "self" && !t && node[:name].include?('.')
+        t = node[:name].split('.')[0]
       end
+      @ctx.var_types[p] = t if t
+      @ctx.var_is_ptr[p] = true if t && (["ptr", "str"].include?(t) || @ctx.structs.key?(t))
     end
 
-    if node[:name].include?('.') then @ctx.var_types["self"] = node[:name].split('.')[0]; @ctx.var_is_ptr["self"] = true end
+    if node[:name].include?('.') && !@ctx.var_types["self"]
+      @ctx.var_types["self"] = node[:name].split('.')[0]
+      @ctx.var_is_ptr["self"] = true
+    end
 
     # Pre-calculate needed stack size based on non-register variables
-    @ctx.stack_ptr = 64
+    @ctx.stack_ptr = 16
     node[:params].each do |p|
       p_name = p.is_a?(Hash) ? p[:name] : p
       @ctx.declare_variable(p_name) unless @ctx.in_register?(p_name)
@@ -237,7 +245,7 @@ class NativeGenerator
 
     needed_stack = (@ctx.stack_ptr > @stack_size) ? @ctx.stack_ptr : @stack_size
     needed_stack = (needed_stack + 15) & ~15
-    @ctx.stack_ptr = 64 # Reset for actual generation
+    @ctx.stack_ptr = 16 # Reset to same base as pre-calculation
     @ctx.current_fn_stack_size = needed_stack
 
     @emitter.emit_prologue(needed_stack)
@@ -285,6 +293,7 @@ class NativeGenerator
     end
 
     unless has_ret
+      @emitter.xor_rax_rax if node[:name] == "main"
       if @arch == :x86_64 && (@emitter.callee_saved_regs.length + 1) % 2 == 0
         @emitter.emit_add_rsp(8)
       end

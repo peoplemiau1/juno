@@ -1,0 +1,84 @@
+// stdlib/ds/collections.juno
+// Data structures: List and Map
+
+struct List {
+    let data
+    let len
+    let cap
+}
+
+fn List.init(self, capacity) {
+    if (capacity <= 0) { capacity = 1 }
+    self.data = malloc(capacity * 8)
+    self.len = 0
+    self.cap = capacity
+}
+
+fn List.add(self, val) {
+    if (self.len == self.cap) {
+        let new_cap = self.cap * 2
+        self.data = realloc(self.data, new_cap * 8)
+        self.cap = new_cap
+    }
+    let p = ptr_add(self.data, self.len)
+    *p = val
+    self.len = self.len + 1
+}
+
+fn List.size(self) {
+    return self.len
+}
+
+fn List.get(self, idx) {
+    if (idx < 0 || idx >= self.len) { return 0 }
+    return *(ptr_add(self.data, idx))
+}
+
+struct Map {
+    let keys
+    let vals
+    let size
+    let cap
+}
+
+fn Map.init(self, capacity) {
+    self.cap = capacity; self.size = 0
+    self.keys = malloc(capacity * 8)
+    self.vals = malloc(capacity * 8)
+    memset(self.keys, 0, capacity * 8)
+}
+
+fn Map.get(self, key) {
+    if (key == 0) { return 0 }
+    let h = key % self.cap
+    let mut i = h
+    while (1) {
+        let pk = ptr_add(self.keys, i)
+        if (*pk == key) { return *(ptr_add(self.vals, i)) }
+        if (*pk == 0) { return 0 }
+        i = (i + 1) % self.cap
+        if (i == h) { return 0 }
+    }
+    return 0
+}
+
+fn Map.put(self, key, val) {
+    if (key == 0) { return 0 }
+    let h = key % self.cap
+    let mut i = h
+    while (1) {
+        let pk = ptr_add(self.keys, i)
+        if (*pk == 0) {
+            *pk = key; *(ptr_add(self.vals, i)) = val
+            self.size = self.size + 1
+            return 1
+        }
+        if (*pk == key) {
+            *(ptr_add(self.vals, i)) = val
+            return 1
+        }
+        i = (i + 1) % self.cap
+        if (i == h) { return 0 } // Full
+    }
+    return 0
+}

@@ -1,8 +1,9 @@
 class RegisterAllocator
   # Callee-saved registers (stable across calls)
   X86_64_CALLEE_SAVED = [:rbx, :r12, :r13, :r14, :r15]
-  # Caller-saved registers that are NOT used as primary scratches by backend
-  X86_64_CALLER_SAVED = [:r8, :r9, :rsi, :rdi]
+  # Caller-saved registers that are NOT used as primary scratches by backend.
+  # We empty this for x86_64 because builtins clobber them without notice.
+  X86_64_CALLER_SAVED = [] 
 
   AARCH64_CALLEE_SAVED = [19, 20, 21, 22, 23, 24, 25, 26, 27, 28]
   AARCH64_CALLER_SAVED = (0..18).to_a - [0, 1, 2, 3, 4, 5, 6, 7] # Exclude arg/scratch regs
@@ -36,7 +37,8 @@ class RegisterAllocator
     # 1.5 Identify variables that cross calls
     crosses_call = []
     variables.each do |v|
-      first_def = nodes.index { |n| find_defined_vars(n).include?(v) }
+      # Check if it's a parameter (defined at start) or look for first assignment
+      first_def = nodes.index { |n| find_defined_vars(n).include?(v) } || 0
       last_u = last_use[v]
       if first_def && last_u
         (first_def..last_u).each do |i|
@@ -210,9 +212,16 @@ class RegisterAllocator
       case node[:type]
       when :address_of
         op = node[:operand]
-        return [op[:name]] if op[:type] == :variable
+        if op[:type] == :variable
+          return [op[:name]]
+        elsif op[:type] == :member_access
+          return [op[:receiver]]
+        elsif op[:type] == :array_access
+          return [op[:name]]
+        end
         []
-      when :binary_op then find_addressed_vars(node[:left]) + find_addressed_vars(node[:right])
+      when :binary_op
+        find_addressed_vars(node[:left]) + find_addressed_vars(node[:right])
       when :fn_call then (node[:args] || []).flat_map { |a| find_addressed_vars(a) }
       when :if_statement
         find_addressed_vars(node[:condition]) +

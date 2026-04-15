@@ -51,9 +51,11 @@ class Linker
     return existing[:id] if existing
     label = "str_#{@string_counter}"
     @string_counter += 1
-    data_with_null = content + "\0"
+    
+    # Standard null-terminated strings for strlen compatibility
+    add_data(label, content + "\x00")
+    
     @strings[label] = { content: content, id: label }
-    add_data(label, data_with_null)
     label
   end
 

@@ -1,0 +1,59 @@
+#!/usr/bin/env ruby
+# Juno Language CLI
+
+require 'optparse'
+require 'fileutils'
+require_relative "../src/compiler"
+
+options = {
+  arch: :x86_64,
+  os: :linux,
+  output: nil,
+  run: false
+}
+
+parser = OptionParser.new do |opts|
+  opts.banner = "Usage: juno [options] <input_file>"
+  opts.on("-a", "--arch ARCH", [:x86_64, :aarch64], "Target architecture") { |a| options[:arch] = a }
+  opts.on("-o", "--output FILE", "Output binary path") { |o| options[:output] = o }
+  opts.on("-t", "--target OS", [:linux, :flat], "Target OS") { |t| options[:os] = t }
+  opts.on("-r", "--run", "Run after compilation") { options[:run] = true }
+end
+
+parser.parse!
+
+if ARGV.empty?
+  puts parser
+  exit
+end
+
+input_file = ARGV[0]
+output_path = options[:output] || "build/output"
+FileUtils.mkdir_p("build")
+
+begin
+  compiler = Juno::Compiler.new(
+    arch: options[:arch],
+    os: options[:os],
+    output: output_path
+  )
+  
+  final_output = compiler.compile(input_file)
+
+  puts "Success! Compiled to #{final_output}"
+
+  if options[:run] && options[:os] == :linux
+    puts "Executing..."
+    exec("./#{final_output}")
+  end
+
+rescue JunoError => e
+  e.display
+  exit 1
+rescue Interrupt
+  exit 1
+rescue => e
+  puts "Internal Compiler Error: #{e.message}"
+  puts e.backtrace
+  exit 1
+end
