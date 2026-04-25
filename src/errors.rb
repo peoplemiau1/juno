@@ -26,15 +26,12 @@ class JunoError < StandardError
   end
 
   def display
-    puts ""
     puts "#{RED}#{BOLD}error[#{@error_type}]#{RESET}: #{BOLD}#{@message}#{RESET}"
     puts "  #{CYAN}-->#{RESET} #{@filename}:#{@line_num || '?'}:#{@column || '?'}"
     
     if @source && @line_num
       display_source_context
     end
-    
-    puts ""
   end
 
   private
@@ -42,34 +39,24 @@ class JunoError < StandardError
   def display_source_context
     lines = @source.lines
     
-    # Show 2 lines before, the error line, and 1 line after
-    start_line = [@line_num - 2, 1].max
+    # Show 1 line before, the error line, and 1 line after
+    start_line = [@line_num - 1, 1].max
     end_line = [@line_num + 1, lines.length].min
-    
-    puts "   #{GRAY}|#{RESET}"
     
     (start_line..end_line).each do |ln|
       line_content = lines[ln - 1]&.chomp || ""
       line_num_str = ln.to_s.rjust(3)
       
       if ln == @line_num
-        # Error line - highlight
         puts " #{RED}#{line_num_str}#{RESET} #{GRAY}|#{RESET} #{line_content}"
-        
-        # Show caret pointing to error
         if @column
           padding = " " * (@column - 1)
-          puts "   #{GRAY}|#{RESET} #{padding}#{RED}^#{RESET}"
-        else
-          puts "   #{GRAY}|#{RESET} #{RED}^~~~#{RESET}"
+          puts "     #{GRAY}|#{RESET} #{padding}#{RED}#{BOLD}^#{@message.length > 0 ? '' : '~~~'}#{RESET}"
         end
       else
-        # Context line
         puts " #{GRAY}#{line_num_str} |#{RESET} #{line_content}"
       end
     end
-    
-    puts "   #{GRAY}|#{RESET}"
   end
 end
 

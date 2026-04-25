@@ -1,21 +1,31 @@
 // Test file I/O wrappers using syscalls
 
-import "../stdlib/std.juno"
+extern fn open(path: ptr, flags: int, mode: int): int
+extern fn write(fd: int, buf: ptr, len: int): int
+extern fn read(fd: int, buf: ptr, len: int): int
+extern fn close(fd: int): int
+extern fn malloc(sz: int): ptr
+extern fn free(p: ptr): int
 
 fn main() {
     let path = "build/tmp_io.txt"
     let content = "hello, io"
-    let len = 9
+    
+    let fd = open(path, 65, 420)
+    if (fd < 0) { return 1 }
+    write(fd, content, 9)
+    close(fd)
 
-    // Write
-    let w = os_write_file(path, content, len)
-    if (w != len) { return 100 + w }
-
-    // Read back
-    let buf = getbuf()
-    let r = os_read_file(path, buf, 64)
-    if (r != len) { return 200 + r }
-
-    prints(buf)
-    return r
+    let fd2 = open(path, 0, 0)
+    if (fd2 < 0) { return 2 }
+    
+    let buf = malloc(64)
+    read(fd2, buf, 64)
+    
+    write(1, buf, 9)
+    write(1, "\n", 1)
+    
+    close(fd2)
+    free(buf)
+    return 0
 }

@@ -99,7 +99,8 @@ class ResourceAuditor
       end
     when :return
       if node[:expression][:type] == :variable
-         consume_var(node[:expression][:name])
+         res_id = @var_to_res[node[:expression][:name]]
+         @res_status[res_id] = :consumed if res_id
       else
          process_node(node[:expression], true)
       end
@@ -157,13 +158,9 @@ class ResourceAuditor
   end
 
   def consumes_resource?(name)
-    return true if name == 'free' || name == 'close' || name.include?('.free')
-    
-    exempt_prefixes = ['print', 'is_', 'has_', 'get_', 'check_', 'use_', 'str_', 'len']
-    return false if exempt_prefixes.any? { |p| name.start_with?(p) }
-    
-    exempt = ['memcpy', 'memset', 'ptr_add', 'init', 'add', 'push', 'pop', 'sleep', 'os_sleep', 'thread_create', 'write', 'read']
-    !exempt.include?(name) && !name.include?('.get') && !name.include?('.size')
+    # Only these functions actually "kill" (move/destroy) the resource
+    # Everything else is now a "Borrow" by default
+    ['free', 'close', 'os_close', 'delete'].include?(name) || name.include?('.free')
   end
 end
 
