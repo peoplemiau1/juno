@@ -1,0 +1,21 @@
+import "std.juno"
+
+fn use_buffer(b: ptr) {
+    // Просто печатаем. print_s есть в списке исключений аудитора, 
+    // поэтому внутри этой функции всё будет ок.
+    print_s(b)
+}
+
+fn main() {
+    let buf = malloc(64)
+    
+    // Но сама функция use_buffer НЕ в списке исключений.
+    // Аудитор пометит buf как "consumed".
+    use_buffer(buf) 
+    
+    // Тут должна быть ошибка "Use after consumption"
+    print_s(buf) 
+    
+    free(buf)
+    return 0
+}

@@ -1,0 +1,9 @@
+fn main() {
+    let fd = open("test.txt", 0, 0)
+    
+    write(fd, "hello", 5)
+    
+    // ОШИБКА: Мы забыли вызвать close(fd)! 
+    // Аудитор должен это заметить.
+    return 0
+}

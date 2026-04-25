@@ -1,0 +1,11 @@
+fn main() {
+    let fd = open("test.txt", 0, 0)
+    
+    close(fd)
+    
+    // ОШИБКА: Повторное закрытие! 
+    // Rust 2024 (и Juno) такое не пропустит.
+    close(fd)
+    
+    return 0
+}

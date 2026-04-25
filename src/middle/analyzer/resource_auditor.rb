@@ -79,27 +79,22 @@ class ResourceAuditor
       fn_name = node[:name]
       args = node[:args] || []
       should_consume = consumes_resource?(fn_name)
-      forced_free = fn_name == 'free' || fn_name.include?('.free')
       
-      # Handle receiver in method calls
-      if fn_name.include?('.')
-        recv = fn_name.split('.').first
-        consume_var(recv) if (should_consume && !sync_resource?(recv)) || forced_free
-      end
-
-      # Handle thread_create specially
-      if fn_name == 'thread_create'
-        arg_node = args[1]
-        if arg_node && arg_node[:type] == :variable
-          consume_var(arg_node[:name]) unless sync_resource?(arg_node[:name])
-        end
-      else
-        args.each do |arg|
-          if arg[:type] == :variable
-            consume_var(arg[:name]) if (should_consume && !sync_resource?(arg[:name])) || forced_free
+      args.each do |arg|
+        if arg[:type] == :variable
+          name = arg[:name]
+          if should_consume && @var_to_res.key?(name)
+            res_id = @var_to_res[name]
+            if @res_status[res_id] == :consumed
+              report_double_consume(name, arg)
+            else
+              consume_var(name)
+            end
           else
-            process_node(arg, should_consume)
+            process_node(arg)
           end
+        else
+          process_node(arg, should_consume)
         end
       end
     when :return
@@ -134,7 +129,17 @@ class ResourceAuditor
   end
 
   def report_use_after_consume(name, node)
-    @errors << JunoResourceError.new("Use after consumption: variable '#{name}' was already consumed",
+    @errors << JunoResourceError.new("Use after consumption: variable '#{name}' was already consumed (Move Semantics)",
+      filename: @filename, line_num: node[:line] || 0, column: node[:column] || 0, source: @source)
+  end
+
+  def report_leak(name, node)
+    @errors << JunoResourceError.new("Resource leak: overwriting variable '#{name}' which still holds an active resource",
+      filename: @filename, line_num: node[:line] || 0, column: node[:column] || 0, source: @source)
+  end
+
+  def report_double_consume(name, node)
+    @errors << JunoResourceError.new("Double free/consume: variable '#{name}' is being closed/freed again",
       filename: @filename, line_num: node[:line] || 0, column: node[:column] || 0, source: @source)
   end
 
@@ -146,11 +151,18 @@ class ResourceAuditor
 
   def produces_resource?(node)
     return false unless node.is_a?(Hash) && node[:type] == :fn_call
-    ['malloc', 'os_alloc', 'alloc_stack'].include?(node[:name]) || node[:name].start_with?('create_') || node[:name].start_with?('new_')
+    name = node[:name]
+    ['malloc', 'os_alloc', 'alloc_stack', 'open', 'socket', 'epoll_create'].include?(name) || 
+      name.start_with?('create_') || name.start_with?('new_')
   end
 
   def consumes_resource?(name)
-    exempt = ['print', 'print_i', 'println', 'print_s', 'print_hex', 'memcpy', 'memset', 'ptr_add', 'len', 'init', 'add', 'get', 'set', 'push', 'pop', 'sleep', 'os_sleep', 'thread_create']
+    return true if name == 'free' || name == 'close' || name.include?('.free')
+    
+    exempt_prefixes = ['print', 'is_', 'has_', 'get_', 'check_', 'use_', 'str_', 'len']
+    return false if exempt_prefixes.any? { |p| name.start_with?(p) }
+    
+    exempt = ['memcpy', 'memset', 'ptr_add', 'init', 'add', 'push', 'pop', 'sleep', 'os_sleep', 'thread_create', 'write', 'read']
     !exempt.include?(name) && !name.include?('.get') && !name.include?('.size')
   end
 end
