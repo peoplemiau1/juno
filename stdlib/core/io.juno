@@ -68,3 +68,23 @@ fn print_hex(val) {
 
 fn print_newline() { print("\n") }
 fn print_space() { print(" ") }
+
+fn os_write_file(path, content, len) {
+    let fd = open(path, 65, 420) // O_WRONLY | O_CREAT, 0644
+    if (fd < 0) { return fd }
+    let res = write(fd, content, len)
+    close(fd)
+    return res
+}
+
+fn os_read_file(path, buf, sz) {
+    let fd = open(path, 0, 0) // O_RDONLY
+    if (fd < 0) { return fd }
+    let res = read(fd, buf, sz)
+    close(fd)
+    return res
+}
+
+fn getbuf() {
+    return malloc(1024)
+}
