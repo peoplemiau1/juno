@@ -1,69 +1,105 @@
 #!/usr/bin/env ruby
-# Juno Language CLI - Minimalist GCC/Cargo style
-
 require 'optparse'
 require 'fileutils'
-require_relative "../src/compiler"
 
-# Colors for CLI
+PROJECT_ROOT = File.expand_path("..", File.dirname(__FILE__))
+
 GREEN = "\e[32m"
 BOLD = "\e[1m"
 RESET = "\e[0m"
 RED = "\e[31m"
 
-options = {
-  arch: :x86_64,
-  os: :linux,
-  output: nil,
-  run: false
-}
+def run_tool(tool, args)
+  tool_path = File.join(PROJECT_ROOT, "tools", "#{tool}.juno")
+  compiler_path = File.join(PROJECT_ROOT, "bin", "juno")
+  system("JUNO_NO_AUDIT=1 #{compiler_path} -r #{tool_path} #{args.join(' ')}")
+end
 
+case ARGV[0]
+when "fmt"
+  file = ARGV[1]
+  if file && File.exist?(file)
+    system("ruby #{File.join(PROJECT_ROOT, 'tools', 'jfmt.rb')} #{file}")
+    exit 0
+  end
+  puts "Usage: juno fmt <file>"
+  exit 1
+when "disasm"
+  file = ARGV[1]
+  if file && File.exist?(file)
+    system("objdump -d #{file} | head -n 50")
+    exit 0
+  end
+  puts "Usage: juno disasm <binary>"
+  exit 1
+when "hex"
+  file = ARGV[1]
+  if file && File.exist?(file)
+    system("hexdump -C #{file} | head -n 50")
+    exit 0
+  end
+  puts "Usage: juno hex <binary>"
+  exit 1
+when "-h", "--help", "help"
+  puts <<~HELP
+    Juno Language CLI
+    Usage: juno [command] [options] <input_file>
+
+    Commands:
+      fmt <file>    Format Juno source code
+      disasm <bin>  Disassemble binary (objdump)
+      hex <bin>     Show hex dump (hexdump)
+      help          Show this help
+
+    Options:
+      -a, --arch    Target architecture (x86_64, aarch64)
+      -o, --output  Output path
+      -r, --run     Run after compilation
+      --asm         Show generated assembly log
+  HELP
+  exit 0
+end
+
+require_relative "../src/compiler"
+
+options = { arch: :x86_64, os: :linux, output: nil, run: false, show_asm: false }
 parser = OptionParser.new do |opts|
-  opts.banner = "Usage: juno [options] <input_file>"
-  opts.on("-a", "--arch ARCH", [:x86_64, :aarch64], "Target architecture (x86_64, aarch64)") { |a| options[:arch] = a }
-  opts.on("-o", "--output FILE", "Output binary path") { |o| options[:output] = o }
-  opts.on("-t", "--target OS", [:linux, :flat], "Target OS (linux, flat)") { |t| options[:os] = t }
-  opts.on("-r", "--run", "Run after compilation") { options[:run] = true }
-end
-
-parser.parse!
-
-if ARGV.empty?
-  puts parser
-  exit
-end
-
-input_file = ARGV[0]
-output_path = options[:output] || "build/output"
-FileUtils.mkdir_p("build")
-
-begin
-  puts "   #{GREEN}#{BOLD}Compiling#{RESET} #{input_file} (#{options[:arch]})"
-  
-  compiler = Juno::Compiler.new(
-    arch: options[:arch],
-    os: options[:os],
-    output: output_path
-  )
-  
-  start_time = Time.now
-  final_output = compiler.compile(input_file)
-  elapsed = (Time.now - start_time).round(2)
-
-  puts "    #{GREEN}#{BOLD}Finished#{RESET} in #{elapsed}s"
-
-  if options[:run] && options[:os] == :linux
-    puts "     #{GREEN}#{BOLD}Running#{RESET} `./#{final_output}`"
-    exec("./#{final_output}")
+  opts.on("-a", "--arch ARCH", [:x86_64, :aarch64]) { |a| options[:arch] = a }
+  opts.on("-o", "--output FILE") { |o| options[:output] = o }
+  opts.on("-r", "--run") { options[:run] = true }
+  opts.on("--asm") { options[:show_asm] = true }
+  opts.on("--no-audit") { options[:no_audit] = true }
   end
 
-rescue JunoError => e
-  e.display
+  parser.parse!
+
+  input_file = ARGV[0]
+  if !input_file
+  puts "Usage: juno [options] <input_file>"
   exit 1
-rescue Interrupt
-  puts "\nAborted."
-  exit 1
+  end
+
+  output_path = options[:output] || File.join(PROJECT_ROOT, "build", "output")
+  FileUtils.mkdir_p(File.dirname(output_path))
+
+  begin
+  puts "   #{GREEN}#{BOLD}Compiling#{RESET} #{input_file} (#{options[:arch]})"
+
+  compiler = Juno::Compiler.new(arch: options[:arch], os: options[:os], output: output_path, audit: !options[:no_audit])
+
+  compiler.compile(input_file)
+  
+  puts "    #{GREEN}#{BOLD}Finished#{RESET}"
+
+  if options[:show_asm]
+    puts "\n#{BOLD}Generated Assembly (#{options[:arch]}):#{RESET}"
+    puts compiler.asm_log.join("\n")
+  end
+
+  if options[:run]
+    exec(output_path)
+  end
 rescue => e
-  puts "\n#{RED}#{BOLD}internal error#{RESET}: #{e.message}"
+  puts "\n#{RED}#{BOLD}error#{RESET}: #{e.message}"
   exit 1
 end

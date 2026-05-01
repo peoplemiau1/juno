@@ -1,0 +1,13 @@
+import "../stdlib/std.juno"
+
+fn main() {
+    let x = 100
+    let y = 200
+    
+    // Наш встроенный дебаггер
+    breakpoint
+    
+    let z = x + y
+    print_i(z)
+    return 0
+}

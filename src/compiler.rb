@@ -16,6 +16,7 @@ module Juno
         arch: :x86_64,
         os: :linux,
         output: "build/output",
+        audit: true,
         stdlib_path: ENV['JUNO_STDLIB'] || File.expand_path("../stdlib", __dir__)
       }.merge(options)
     end

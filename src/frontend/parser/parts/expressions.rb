@@ -174,6 +174,9 @@ module ParserExpressions
     if match?(:number)
       return with_loc({ type: :literal, value: consume(:number)[:value] }, t)
     end
+    if match?(:float_literal)
+      return with_loc({ type: :float_literal, value: consume(:float_literal)[:value] }, t)
+    end
     if match?(:string)
       return with_loc({ type: :string_literal, value: consume(:string)[:value] }, t)
     end

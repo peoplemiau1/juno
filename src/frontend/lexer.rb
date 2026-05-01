@@ -24,7 +24,7 @@ class Lexer
         @column = 1
       elsif scanner.scan(/[ \t\r]+/)
       elsif scanner.scan(/(\/\/|#).*$/)
-      elsif m = scanner.scan(/(struct|union|fn|func|def|if|elif|else|return|while|loop|break|continue|let|for|import|use|packed|extern|from|match|todo|panic|as|true|false|mut|type|enum|real|int|string|bool|ptr)\b/)
+      elsif m = scanner.scan(/(struct|union|fn|func|def|if|elif|else|return|while|loop|break|continue|let|for|import|use|packed|extern|from|match|todo|panic|as|true|false|mut|type|enum|real|float|int|string|bool|ptr)\b/)
         kw = m; kw = "fn" if kw == "func" || kw == "def"
         add_token(:keyword, kw)
       elsif scanner.scan(/"/)
@@ -57,6 +57,7 @@ class Lexer
       elsif m = scanner.scan(/0x[0-9a-fA-F]+/) then add_token(:number, m[2..-1].to_i(16))
       elsif m = scanner.scan(/0b[01]+/) then add_token(:number, m[2..-1].to_i(2))
       elsif m = scanner.scan(/0o[0-7]+/) then add_token(:number, m[2..-1].to_i(8))
+      elsif m = scanner.scan(/\d+\.\d+/) then add_token(:float_literal, m.to_f)
       elsif m = scanner.scan(/\d+/) then add_token(:number, m.to_i)
       elsif m = scanner.scan(/[a-zA-Z_]\w*/) then add_token(:ident, m)
       elsif m = scanner.scan(/==|!=|<=|>=|<<|>>|<>|->|\+\+|\-\-|\|\||&&/)

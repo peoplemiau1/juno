@@ -1,0 +1,6 @@
+fn main() {
+    let x: float = 3.14
+    let p = malloc(16)
+    // p is not freed
+    return 0
+}

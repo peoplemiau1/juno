@@ -4,6 +4,9 @@ module GeneratorExpressions
   def eval_expression(expr)
     case expr[:type]
     when :literal then @emitter.mov_rax(expr[:value])
+    when :float_literal 
+      int_val = [expr[:value].to_f].pack("E").unpack1("Q<")
+      @emitter.mov_rax(int_val)
     when :variable
       name = expr[:name]
       if @ctx.in_register?(name)

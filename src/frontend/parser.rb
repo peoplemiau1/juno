@@ -48,7 +48,7 @@ class Parser
 
   def match?(type)
     return false unless peek
-    return (peek[:type] == type) || (type == :ident && peek[:type] == :keyword && peek[:value] == "ptr")
+    return (peek[:type] == type) || (type == :ident && peek[:type] == :keyword && (peek[:value] == "ptr" || peek[:value] == "float"))
   end
   def match_symbol?(val); peek && ([:symbol, :operator, :star, :ampersand, :langle, :rangle, :bitor, :bitxor].include?(peek[:type])) && peek[:value] == val; end
   def match_keyword?(val); peek && peek[:type] == :keyword && peek[:value] == val; end
@@ -90,9 +90,9 @@ class Parser
     t = @tokens.shift
     if t.nil?
       error_eof("Expected identifier")
-    elsif t[:type] == :keyword && t[:value] == "ptr"
+    elsif t[:type] == :keyword && (t[:value] == "ptr" || t[:value] == "float")
       @last_token = t
-      return "ptr"
+      return t[:value]
     elsif t[:type] != :ident
       error_unexpected(t, "Expected identifier")
     end
