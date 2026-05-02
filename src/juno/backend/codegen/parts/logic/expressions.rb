@@ -22,11 +22,15 @@ module GeneratorExpressions
       else
         # Try to find if it's a known function or global in linker
         if @linker.functions.key?(name)
-           # Load function pointer using fn_patch
-           @emitter.log_asm "lea rax, [rel #{name}] ; func ptr"
-           @emitter.emit([0x48, 0x8d, 0x05])
-           @linker.add_fn_patch(@emitter.current_pos, name, :rel32)
-           @emitter.emit([0, 0, 0, 0])
+           # Load function pointer
+           if @arch == :aarch64
+             @emitter.emit_load_address(name, @linker)
+           else
+             @emitter.log_asm "lea rax, [rel #{name}] ; func ptr"
+             @emitter.emit([0x48, 0x8d, 0x05])
+             @linker.add_fn_patch(@emitter.current_pos, name, :rel32)
+             @emitter.emit([0, 0, 0, 0])
+           end
         elsif @linker.data_pool.any?{|d| d[:id] == name} || @linker.bss_pool.any?{|b| b[:id] == name}
            @emitter.emit_load_address(name, @linker)
         else
@@ -146,7 +150,7 @@ module GeneratorExpressions
       end
 
       @emitter.mov_reg_imm(6, variant_info[:tag]) # RSI = target tag
-      @emitter.cmp_rax_rsi("==")
+      @emitter.cmp_reg_reg(0, 6) # RAX vs RSI (or X0 vs X6)
 
       # If match, bind fields
       # We need a conditional jump to bind only if tag matches
@@ -349,7 +353,11 @@ module GeneratorExpressions
     eval_expression(node[:right])
     @emitter.test_rax_rax
     @emitter.mov_rax(0)
-    @emitter.emit([0x0f, 0x95, 0xc0]) # setne al
+    if @arch == :aarch64
+      @emitter.emit32(0x1a9f17e0) # CSET X0, NE -> CSINC X0, XZR, XZR, EQ
+    else
+      @emitter.emit([0x0f, 0x95, 0xc0]) # setne al
+    end
     @emitter.patch_je(exit_patch, @emitter.current_pos)
   end
 
@@ -360,7 +368,11 @@ module GeneratorExpressions
     eval_expression(node[:right])
     @emitter.test_rax_rax
     @emitter.mov_rax(0)
-    @emitter.emit([0x0f, 0x95, 0xc0]) # setne al
+    if @arch == :aarch64
+      @emitter.emit32(0x1a9f17e0) # CSET X0, NE
+    else
+      @emitter.emit([0x0f, 0x95, 0xc0]) # setne al
+    end
     @emitter.patch_jne(success_patch, @emitter.current_pos)
   end
 

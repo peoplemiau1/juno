@@ -49,8 +49,9 @@ class AArch64Emitter
 
   def emit_sub_rsp(size)
     return if size <= 0
+    size = (size + 15) & ~15 # Ensure size is 16-aligned
     while size > 0
-      chunk = [size, 0xfff].min
+      chunk = [size, 4080].min
       emit_sub_imm(31, 31, chunk)
       size -= chunk
     end
@@ -58,8 +59,9 @@ class AArch64Emitter
 
   def emit_add_rsp(size)
     return if size <= 0
+    size = (size + 15) & ~15 # Ensure size is 16-aligned
     while size > 0
-      chunk = [size, 0xfff].min
+      chunk = [size, 4080].min
       emit_add_imm(31, 31, chunk)
       size -= chunk
     end

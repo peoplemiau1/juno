@@ -16,13 +16,13 @@ module BuiltinStrings
        @emitter.mov_mem_reg_idx(10, 0, 0, 8) # save new idx
 
        @emitter.mov_reg_reg(0, 9)
-       @emitter.mov_reg_imm(1, 15); @emitter.and_rax_rdx # X0 = idx & 15
+       @emitter.mov_reg_imm(1, 15); @emitter.and_rax_reg(1) # X0 = idx & 15
 
        # buffer = pool + idx * 65536
        @emitter.shl_rax_imm(16) # X0 *= 65536
        @emitter.mov_reg_reg(9, 0) # X9 = offset
        @emitter.emit_load_address("concat_buffer_pool", @linker)
-       @emitter.add_rax_rdx # X0 = pool + offset
+       @emitter.add_rax_reg(9) # X0 = pool + offset
 
        @emitter.mov_reg_reg(10, 0) # X10 = result buffer
        @emitter.mov_reg_reg(11, 0) # X11 = cursor

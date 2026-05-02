@@ -32,11 +32,10 @@ module PrintUtils
        # Print
        @emitter.mov_reg_reg(1, 4) # X1 = buffer start
        @emitter.emit_load_address("int_buffer", @linker)
-       @emitter.mov_reg_reg(2, 0)
+       @emitter.mov_reg_reg(2, 0) # X2 = buf base
        @emitter.emit_add_imm(2, 2, 63) # X2 = buf + 63
-       # sub x2, x2, x1
-       @emitter.emit32(0xcb010042)
-
+       @emitter.sub_rax_reg(1) # X0 = (buf+63) - X1
+       @emitter.mov_reg_reg(2, 0) # X2 = len
        @emitter.mov_reg_imm(0, 1) # fd = 1
        @emitter.mov_x8(64) # write
        @emitter.syscall

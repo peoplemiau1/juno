@@ -154,20 +154,24 @@ module BuiltinFileAPI
     @emitter.emit_load_address("file_buffer", @linker)
     @emitter.mov_reg_reg(@arch == :aarch64 ? 6 : 14, 0) # buf
 
-    @emitter.mov_reg_reg(@arch == :aarch64 ? 0 : 7, @arch == :aarch64 ? 5 : 13) # fd
+    @emitter.mov_reg_imm(@arch == :aarch64 ? 2 : 2, 65535) # size
     @emitter.mov_reg_reg(@arch == :aarch64 ? 1 : 6, @arch == :aarch64 ? 6 : 14) # buf
-    @emitter.mov_rax(65535); @emitter.mov_reg_reg(@arch == :aarch64 ? 2 : 2, 0) # size
+    @emitter.mov_reg_reg(@arch == :aarch64 ? 0 : 7, @arch == :aarch64 ? 5 : 13) # fd
     emit_syscall(:read)
 
-    @emitter.mov_reg_reg(@arch == :aarch64 ? 7 : 15, 0) # read_size
+    @emitter.mov_reg_reg(@arch == :aarch64 ? 9 : 15, 0) # read_size
     
     # Null terminate
     @emitter.mov_reg_reg(0, @arch == :aarch64 ? 6 : 14) # buf
-    @emitter.mov_reg_reg(2, @arch == :aarch64 ? 7 : 15) # read_size
-    @emitter.add_rax_rdx
-    @emitter.mov_reg_reg(@arch == :aarch64 ? 1 : 7, 0) # ptr to terminate
+    @emitter.mov_reg_reg(2, @arch == :aarch64 ? 9 : 15) # read_size
+    if @arch == :aarch64
+      @emitter.add_rax_reg(2)
+    else
+      @emitter.add_rax_rdx
+    end
+    @emitter.mov_reg_reg(7, 0) # ptr to terminate (X7/RDI)
     @emitter.mov_rax(0)
-    @emitter.mov_mem_rax_sized(1) # [ptr] = 0
+    @emitter.mov_mem_rax_sized(1) # [X7] = X0
 
     # close
     @emitter.mov_reg_reg(@arch == :aarch64 ? 0 : 7, @arch == :aarch64 ? 5 : 13) # fd
@@ -205,20 +209,24 @@ module BuiltinFileAPI
     @emitter.emit_load_address("file_buffer_2", @linker)
     @emitter.mov_reg_reg(@arch == :aarch64 ? 6 : 14, 0) # buf
 
-    @emitter.mov_reg_reg(@arch == :aarch64 ? 0 : 7, @arch == :aarch64 ? 5 : 13) # fd
+    @emitter.mov_reg_imm(@arch == :aarch64 ? 2 : 2, 65535) # size
     @emitter.mov_reg_reg(@arch == :aarch64 ? 1 : 6, @arch == :aarch64 ? 6 : 14) # buf
-    @emitter.mov_rax(65535); @emitter.mov_reg_reg(@arch == :aarch64 ? 2 : 2, 0) # size
+    @emitter.mov_reg_reg(@arch == :aarch64 ? 0 : 7, @arch == :aarch64 ? 5 : 13) # fd
     emit_syscall(:read)
 
-    @emitter.mov_reg_reg(@arch == :aarch64 ? 7 : 15, 0) # read_size
+    @emitter.mov_reg_reg(@arch == :aarch64 ? 9 : 15, 0) # read_size
     
     # Null terminate
     @emitter.mov_reg_reg(0, @arch == :aarch64 ? 6 : 14) # buf
-    @emitter.mov_reg_reg(2, @arch == :aarch64 ? 7 : 15) # read_size
-    @emitter.add_rax_rdx
-    @emitter.mov_reg_reg(@arch == :aarch64 ? 1 : 7, 0) # ptr to terminate
+    @emitter.mov_reg_reg(2, @arch == :aarch64 ? 9 : 15) # read_size
+    if @arch == :aarch64
+      @emitter.add_rax_reg(2)
+    else
+      @emitter.add_rax_rdx
+    end
+    @emitter.mov_reg_reg(7, 0) # ptr to terminate (X7/RDI)
     @emitter.mov_rax(0)
-    @emitter.mov_mem_rax_sized(1) # [ptr] = 0
+    @emitter.mov_mem_rax_sized(1) # [X7] = X0
 
     # close
     @emitter.mov_reg_reg(@arch == :aarch64 ? 0 : 7, @arch == :aarch64 ? 5 : 13) # fd

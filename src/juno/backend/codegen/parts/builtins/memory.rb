@@ -9,7 +9,8 @@ module BuiltinMemory
       @emitter.mov_reg_imm(0, 0)             # X0 = addr
       @emitter.mov_reg_imm(2, 3)             # X2 = prot (PROT_READ|PROT_WRITE)
       @emitter.mov_reg_imm(3, 0x22)          # X3 = flags (MAP_PRIVATE|MAP_ANONYMOUS)
-      @emitter.mov_reg_imm(4, 0xffffffffffffffff) # X4 = fd (-1)
+      # fd = -1
+      @emitter.mov_reg_imm(4, 0xffffffff)
       @emitter.mov_reg_imm(5, 0)             # X5 = offset
       @emitter.mov_x8(222)                   # X8 = syscall mmap
       @emitter.syscall

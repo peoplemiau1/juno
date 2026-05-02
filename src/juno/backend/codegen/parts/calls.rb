@@ -110,7 +110,7 @@ module GeneratorCalls
     end
 
     num_pop = [args.length, regs.length].min
-    num_pop.times { |i| @emitter.pop_reg(regs[i]); @ctx.stack_depth -= 8 }
+    num_pop.times { |i| @emitter.pop_reg(regs[i]); @ctx.stack_depth -= (@arch == :aarch64 ? 16 : 8) }
 
     if @target_os == :windows
       @emitter.emit_sub_rsp(32)
@@ -181,7 +181,7 @@ module GeneratorCalls
     @ctx.stack_depth += 8
 
     num_pop = [args.length + 1, regs.length].min
-    num_pop.times { |i| @emitter.pop_reg(regs[i]); @ctx.stack_depth -= 8 }
+    num_pop.times { |i| @emitter.pop_reg(regs[i]); @ctx.stack_depth -= (@arch == :aarch64 ? 16 : 8) }
 
     if @target_os == :windows
       @emitter.emit_sub_rsp(32)
@@ -248,18 +248,17 @@ module GeneratorCalls
     end
 
     num_pop = [args.length, regs.length].min
-    num_pop.times { |i| @emitter.pop_reg(regs[i]); @ctx.stack_depth -= 8 }
+    num_pop.times { |i| @emitter.pop_reg(regs[i]); @ctx.stack_depth -= (@arch == :aarch64 ? 16 : 8) }
 
-    # Load saved fn ptr back to R11. It is now at [RSP + num_stack*8 + padding]
+    # Load saved fn ptr back to R11.
     offset = num_stack * (@arch == :aarch64 ? 16 : 8) + padding
-    # Using mov_reg_mem_idx(11, REG_RSP, offset)
-    @emitter.mov_reg_mem_idx(11, 4, offset)
+    @emitter.mov_reg_mem_idx(11, @arch == :aarch64 ? 31 : 4, offset)
 
     @emitter.call_reg(11)
 
     byte_size = num_stack * (@arch == :aarch64 ? 16 : 8) + padding
-    @ctx.stack_depth -= (byte_size + 8)
-    @emitter.emit_add_rsp(byte_size + 8) # +8 for the pushed R11
+    @ctx.stack_depth -= (byte_size + (@arch == :aarch64 ? 16 : 8))
+    @emitter.emit_add_rsp(byte_size + (@arch == :aarch64 ? 16 : 8))
   end
 
   def gen_enum_variant_init(enum_name, variant_name, args)
