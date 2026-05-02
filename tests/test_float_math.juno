@@ -1,0 +1,20 @@
+fn main() {
+    let a: float = 10.5
+    let b: float = 2.0
+    let c = a + b
+    let d = a * b
+    let e = a / b
+    
+    // We can't print floats yet because print() expects int
+    // But we can check results if we cast or use bit patterns
+    if c == 12.5 {
+        print(1)
+    }
+    if d == 21.0 {
+        print(2)
+    }
+    if e == 5.25 {
+        print(3)
+    }
+    return 0
+}

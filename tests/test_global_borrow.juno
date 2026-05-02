@@ -1,0 +1,11 @@
+fn consume_ptr(p: ptr) {
+    free(p)
+}
+
+fn main() {
+    let p = malloc(64)
+    consume_ptr(p)      // p is moved into consume_ptr
+    
+    print(*p)           // ERROR: Use of moved value
+    return 0
+}

@@ -1,0 +1,11 @@
+fn logger(p: ptr) {
+    print(1)
+}
+
+fn main() {
+    let p = malloc(64)
+    logger(p)
+    print(*p)
+    free(p)
+    return 0
+}

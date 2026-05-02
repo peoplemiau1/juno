@@ -159,6 +159,8 @@ class SemanticAnalyzer
         end
       elsif node[:op] == "<>"
         "str"
+      elsif left_type == "float" || right_type == "float"
+        "float"
       else
         "int"
       end
@@ -167,9 +169,13 @@ class SemanticAnalyzer
         "bool"
       elsif node[:value].is_a?(Integer)
         "int"
+      elsif node[:value].is_a?(Float)
+        "float"
       else
-        "ptr" # String literals
+        "int"
       end
+    when :float_literal
+      "float"
     when :string_literal
       "ptr"
     when :variable

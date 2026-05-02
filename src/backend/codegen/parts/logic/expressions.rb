@@ -256,20 +256,89 @@ module GeneratorExpressions
       @ctx.stack_depth -= 8
     end
 
-    case expr[:op]
-    when "+" then @emitter.add_rax_rdx
-    when "-" then @emitter.sub_rax_rdx
-    when "*" then @emitter.imul_rax_rdx
-    when "/" then @emitter.div_rax_by_rdx
-    when "%" then @emitter.mod_rax_by_rdx
-    when "&" then @emitter.and_rax_rdx
-    when "|" then @emitter.or_rax_rdx
-    when "^" then @emitter.xor_rax_rdx
-    when "<<" then @emitter.shl_rax_cl
-    when ">>" then @emitter.shr_rax_cl
-    when "==", "!=", "<", ">", "<=", ">=" then @emitter.cmp_rax_rdx(expr[:op])
-    when "&&" then gen_logical_and(expr)
-    when "||" then gen_logical_or(expr)
+    if expr[:inferred_type] == "float"
+      gen_float_binary_op(expr)
+    else
+      case expr[:op]
+      when "+" then @emitter.add_rax_rdx
+      when "-" then @emitter.sub_rax_rdx
+      when "*" then @emitter.imul_rax_rdx
+      when "/" then @emitter.div_rax_by_rdx
+      when "%" then @emitter.mod_rax_by_rdx
+      when "&" then @emitter.and_rax_rdx
+      when "|" then @emitter.or_rax_rdx
+      when "^" then @emitter.xor_rax_rdx
+      when "<<" then @emitter.shl_rax_cl
+      when ">>" then @emitter.shr_rax_cl
+      when "==", "!=", "<", ">", "<=", ">=" then @emitter.cmp_rax_rdx(expr[:op])
+      when "&&" then gen_logical_and(expr)
+      when "||" then gen_logical_or(expr)
+      end
+    end
+  end
+
+  def gen_float_binary_op(node)
+    # 1. Evaluate left side into RAX
+    eval_expression(node[:left])
+    # 2. Move RAX to float reg 0
+    if @arch == :aarch64
+      @emitter.fmov_d_x(0, 0)
+    else
+      @emitter.movq_xmm_rax(0) 
+    end
+    
+    # 3. Save state and evaluate right side
+    @emitter.push_reg(0) # Keep RAX copy
+    eval_expression(node[:right])
+    
+    if @arch == :aarch64
+      @emitter.fmov_d_x(1, 0) # Right side in D1
+      @emitter.pop_reg(0)
+      @emitter.fmov_d_x(0, 0) # Restore left in D0
+    else
+      @emitter.movq_xmm_rax(1) # Right side in XMM1
+      @emitter.pop_reg(0)
+      @emitter.movq_xmm_rax(0) # Restore left in XMM0
+    end
+
+    case node[:op]
+    when "+"
+      @arch == :aarch64 ? @emitter.fadd_d_d(0, 0, 1) : @emitter.addsd_xmm_xmm(0, 1)
+    when "-"
+      @arch == :aarch64 ? @emitter.fsub_d_d(0, 0, 1) : @emitter.subsd_xmm_xmm(0, 1)
+    when "*"
+      @arch == :aarch64 ? @emitter.fmul_d_d(0, 0, 1) : @emitter.mulsd_xmm_xmm(0, 1)
+    when "/"
+      @arch == :aarch64 ? @emitter.fdiv_d_d(0, 0, 1) : @emitter.divsd_xmm_xmm(0, 1)
+    when "==", "!=", "<", ">", "<=", ">="
+      if @arch == :aarch64
+        @emitter.fcmp_d_d(0, 1)
+        @emitter.mov_rax(0)
+        # CSET x0, cond
+        cond = case node[:op]
+               when "==" then 0 when "!=" then 1
+               when "<"  then 3 when ">"  then 12 # hi, lo (unordered/nan handled later)
+               when "<=" then 13 when ">=" then 10 # ls, ge
+               end
+        @emitter.emit32(0x1a9f07e0 | (cond << 12))
+      else
+        @emitter.ucomisd_xmm_xmm(0, 1)
+        @emitter.mov_rax(0)
+        cond_op = case node[:op]
+                  when "==" then 0x94 when "!=" then 0x95
+                  when "<"  then 0x92 when ">"  then 0x97
+                  when "<=" then 0x96 when ">=" then 0x93
+                  end
+        @emitter.emit([0x0f, cond_op, 0xc0])
+      end
+      return
+    end
+
+    # Move result back to RAX
+    if @arch == :aarch64
+      @emitter.fmov_x_d(0, 0)
+    else
+      @emitter.movq_rax_xmm(0)
     end
   end
 

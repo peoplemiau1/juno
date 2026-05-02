@@ -599,6 +599,84 @@ class CodeEmitter
   end
 
   def syscall; log_asm "syscall"; emit([0x0f, 0x05]); end
+  
+  # --- SSE/Floating Point (x86_64) ---
+  
+  def movsd_xmm_mem(xmm_reg, base_reg, disp)
+    log_asm "movsd xmm#{xmm_reg}, [#{REG_NAMES[base_reg]} + #{disp}]"
+    # F2 0F 10 /r
+    rex = rex_prefix(r: xmm_reg >= 8, b: base_reg >= 8)
+    modrm = modrm_byte(1, xmm_reg, base_reg)
+    emit([0xf2, rex, 0x0f, 0x10, modrm, disp & 0xff].compact)
+  end
+
+  def movsd_mem_xmm(base_reg, disp, xmm_reg)
+    log_asm "movsd [#{REG_NAMES[base_reg]} + #{disp}], xmm#{xmm_reg}"
+    # F2 0F 11 /r
+    rex = rex_prefix(r: xmm_reg >= 8, b: base_reg >= 8)
+    modrm = modrm_byte(1, xmm_reg, base_reg)
+    emit([0xf2, rex, 0x0f, 0x11, modrm, disp & 0xff].compact)
+  end
+
+  def movsd_xmm_xmm(dst, src)
+    log_asm "movsd xmm#{dst}, xmm#{src}"
+    # F2 0F 10 /r (if src is reg) or F2 0F 11 /r (if dst is reg)?
+    # Actually F2 0F 10 is MOVSD xmm1, xmm2/m64
+    rex = rex_prefix(r: dst >= 8, b: src >= 8)
+    modrm = modrm_byte(3, dst, src)
+    emit([0xf2, rex, 0x0f, 0x10, modrm].compact)
+  end
+
+  def movq_xmm_rax(xmm_reg)
+    log_asm "movq xmm#{xmm_reg}, rax"
+    # 66 REX.W 0F 6E /r
+    rex = rex_prefix(w: true, r: xmm_reg >= 8)
+    modrm = modrm_byte(3, xmm_reg, 0)
+    emit([0x66, rex, 0x0f, 0x6e, modrm].compact)
+  end
+
+  def movq_rax_xmm(xmm_reg)
+    log_asm "movq rax, xmm#{xmm_reg}"
+    # 66 REX.W 0F 7E /r
+    rex = rex_prefix(w: true, r: xmm_reg >= 8)
+    modrm = modrm_byte(3, xmm_reg, 0)
+    emit([0x66, rex, 0x0f, 0x7e, modrm].compact)
+  end
+
+  def addsd_xmm_xmm(dst, src)
+    log_asm "addsd xmm#{dst}, xmm#{src}"
+    rex = rex_prefix(r: dst >= 8, b: src >= 8)
+    modrm = modrm_byte(3, dst, src)
+    emit([0xf2, rex, 0x0f, 0x58, modrm].compact)
+  end
+
+  def subsd_xmm_xmm(dst, src)
+    log_asm "subsd xmm#{dst}, xmm#{src}"
+    rex = rex_prefix(r: dst >= 8, b: src >= 8)
+    modrm = modrm_byte(3, dst, src)
+    emit([0xf2, rex, 0x0f, 0x5c, modrm].compact)
+  end
+
+  def mulsd_xmm_xmm(dst, src)
+    log_asm "mulsd xmm#{dst}, xmm#{src}"
+    rex = rex_prefix(r: dst >= 8, b: src >= 8)
+    modrm = modrm_byte(3, dst, src)
+    emit([0xf2, rex, 0x0f, 0x59, modrm].compact)
+  end
+
+  def divsd_xmm_xmm(dst, src)
+    log_asm "divsd xmm#{dst}, xmm#{src}"
+    rex = rex_prefix(r: dst >= 8, b: src >= 8)
+    modrm = modrm_byte(3, dst, src)
+    emit([0xf2, rex, 0x0f, 0x5e, modrm].compact)
+  end
+
+  def ucomisd_xmm_xmm(r1, r2)
+    log_asm "ucomisd xmm#{r1}, xmm#{r2}"
+    rex = rex_prefix(r: r1 >= 8, b: r2 >= 8)
+    modrm = modrm_byte(3, r1, r2)
+    emit([0x66, rex, 0x0f, 0x2e, modrm].compact)
+  end
 
   def memcpy
     # dest=RDI, src=RSI, n=RCX

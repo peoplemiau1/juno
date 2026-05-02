@@ -404,4 +404,41 @@ class AArch64Emitter
   def dup_v4s_w(vd, rn)
     emit32(0x4e040c00 | (rn << 5) | vd)
   end
+
+  # --- AArch64 Scalar Floating Point (Double Precision) ---
+
+  def fmov_d_x(dd, rn)
+    log_asm "fmov d#{dd}, x#{rn}"
+    emit32(0x9e670000 | (rn << 5) | dd)
+  end
+
+  def fmov_x_d(rd, dn)
+    log_asm "fmov x#{rd}, d#{dn}"
+    emit32(0x9e660000 | (dn << 5) | rd)
+  end
+
+  def fadd_d_d(dd, dn, dm)
+    log_asm "fadd d#{dd}, d#{dn}, d#{dm}"
+    emit32(0x1e602800 | (dm << 16) | (dn << 5) | dd)
+  end
+
+  def fsub_d_d(dd, dn, dm)
+    log_asm "fsub d#{dd}, d#{dn}, d#{dm}"
+    emit32(0x1e603800 | (dm << 16) | (dn << 5) | dd)
+  end
+
+  def fmul_d_d(dd, dn, dm)
+    log_asm "fmul d#{dd}, d#{dn}, d#{dm}"
+    emit32(0x1e600800 | (dm << 16) | (dn << 5) | dd)
+  end
+
+  def fdiv_d_d(dd, dn, dm)
+    log_asm "fdiv d#{dd}, d#{dn}, d#{dm}"
+    emit32(0x1e601800 | (dm << 16) | (dn << 5) | dd)
+  end
+
+  def fcmp_d_d(dn, dm)
+    log_asm "fcmp d#{dn}, d#{dm}"
+    emit32(0x1e602000 | (dm << 16) | (dn << 5))
+  end
 end

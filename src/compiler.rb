@@ -7,6 +7,7 @@ require_relative "optimizer/turbo"
 require_relative "middle/analyzer/resource_auditor"
 require_relative "backend/codegen/native_generator"
 require_relative "frontend/preprocessor"
+require_relative "middle/analyzer/borrow_checker"
 require_relative "errors"
 
 module Juno
@@ -45,6 +46,9 @@ module Juno
 
       analyzer = SemanticAnalyzer.new(ast, input_file, code)
       ast = analyzer.analyze
+
+      borrow_checker = BorrowChecker.new(ast, code, input_file)
+      borrow_checker.check
 
       optimizer = TurboOptimizer.new(ast)
       ast = optimizer.optimize
