@@ -1,0 +1,105 @@
+#!/usr/bin/env ruby
+require 'json'
+require 'fileutils'
+require 'optparse'
+
+PROJECT_ROOT = File.expand_path("..", File.dirname(__FILE__))
+JPM_DIR = File.join(Dir.home, ".jpm")
+VENDOR_DIR = File.join(Dir.pwd, "vendor")
+
+FileUtils.mkdir_p(JPM_DIR)
+
+def install_package(pkg_name)
+  puts "   Installing #{pkg_name}..."
+  
+  # Format: github.com/user/repo or just repo (assumes juno-lang org)
+  url = if pkg_name.include?("/")
+          "https://#{pkg_name}.git"
+        else
+          "https://github.com/junolangdev/#{pkg_name}.git"
+        end
+        
+  dest = File.join(VENDOR_DIR, pkg_name.split("/").last)
+  FileUtils.mkdir_p(VENDOR_DIR)
+  
+  if Dir.exist?(dest)
+    puts "   Package already exists, updating..."
+    system("git -C #{dest} pull")
+  else
+    system("git clone #{url} #{dest}")
+  end
+end
+
+def build_project
+  unless File.exist?("jpm.json")
+    puts "error: jpm.json not found"
+    exit 1
+  end
+  
+  config = JSON.parse(File.read("jpm.json"))
+  main_file = config["main"] || "src/main.juno"
+  output = config["name"] || "output"
+  
+  puts "   Building #{config["name"]}..."
+  
+  # Construct library paths
+  lib_paths = [VENDOR_DIR]
+  cmd = "#{File.join(PROJECT_ROOT, "bin", "juno")} #{main_file} -o #{output}"
+  
+  # In the future, pass lib_paths to juno
+  system(cmd)
+end
+
+options = {}
+parser = OptionParser.new do |opts|
+  opts.banner = "Usage: jpm [command] [options]"
+  
+  opts.on("-h", "--help", "Show help") do
+    puts opts
+    exit
+  end
+end
+
+parser.parse!
+command = ARGV.shift
+
+case command
+when "init"
+  name = File.basename(Dir.pwd)
+  config = {
+    name: name,
+    version: "0.1.0",
+    main: "src/main.juno",
+    dependencies: {}
+  }
+  File.write("jpm.json", JSON.pretty_generate(config))
+  FileUtils.mkdir_p("src")
+  puts "   Initialized Juno project in #{Dir.pwd}"
+
+when "install"
+  pkg = ARGV.shift
+  if pkg
+    install_package(pkg)
+    # Update jpm.json
+    if File.exist?("jpm.json")
+      config = JSON.parse(File.read("jpm.json"))
+      config["dependencies"] ||= {}
+      config["dependencies"][pkg] = "latest"
+      File.write("jpm.json", JSON.pretty_generate(config))
+    end
+  else
+    # Install all from jpm.json
+    if File.exist?("jpm.json")
+      config = JSON.parse(File.read("jpm.json"))
+      (config["dependencies"] || {}).each { |k, v| install_package(k) }
+    end
+  end
+
+when "build"
+  build_project
+
+else
+  puts "Juno Package Manager (JPM)"
+  puts "Usage: jpm <command> [args]"
+  puts "Commands: init, install, build"
+end
