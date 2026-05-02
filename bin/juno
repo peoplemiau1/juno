@@ -60,7 +60,7 @@ when "-h", "--help", "help"
   exit 0
 end
 
-require_relative "../src/compiler"
+require_relative "../src/juno/compiler"
 
 options = { arch: :x86_64, os: :linux, output: nil, run: false, show_asm: false }
 parser = OptionParser.new do |opts|
