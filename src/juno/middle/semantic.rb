@@ -122,8 +122,13 @@ class SemanticAnalyzer
       else
         # Reassignment
         var_info = local_vars[node[:name]] || @symbol_table[node[:name]]
-        if var_info && !var_info[:mut]
-           error_at(node, "Cannot reassign to non-mutable variable '#{node[:name]}'")
+        if var_info
+          if !var_info[:mut]
+            error_at(node, "Cannot reassign to non-mutable variable '#{node[:name]}'")
+          end
+        else
+          # First assignment without let
+          local_vars[node[:name]] = { type: type, mut: true }
         end
       end
       type
@@ -177,17 +182,20 @@ class SemanticAnalyzer
     when :float_literal
       "float"
     when :string_literal
-      "ptr"
+      "str"
     when :variable
       name = node[:name]
       if local_vars.key?(name) && local_vars[name].is_a?(Hash)
-        local_vars[name][:type]
+        node[:inferred_type] = local_vars[name][:type]
       elsif @symbol_table.key?(name)
         sym = @symbol_table[name]
-        sym[:type] == :function ? "fn_ptr" : sym[:type].to_s
+        node[:inferred_type] = sym[:type] == :function ? "fn_ptr" : sym[:type].to_s
+      elsif @structs.key?(name) || @unions.key?(name)
+        node[:inferred_type] = name
       else
-        "int"
+        node[:inferred_type] = "int"
       end
+      node[:inferred_type]
     when :fn_call
       (node[:args] || []).each { |a| analyze_node(a, local_vars) }
 
@@ -197,10 +205,10 @@ class SemanticAnalyzer
       # Handle methods
       if name.include?('.') && !sym
         receiver, method = name.split('.')
-        receiver_type = nil
         if local_vars.key?(receiver)
            receiver_type = local_vars[receiver][:type]
         end
+        node[:receiver_type] = receiver_type
 
         if receiver_type && @symbol_table.key?("#{receiver_type}.#{method}")
            sym = @symbol_table["#{receiver_type}.#{method}"]
@@ -216,17 +224,17 @@ class SemanticAnalyzer
       end
 
       if sym && sym[:type] == :function
-        # Check argument count
-        expected = sym[:params].length
-        actual = (node[:args] || []).length
-        # actual += 1 if name.include?('.') # Account for implicit self
-        if expected != actual
-          # error_at(node, "Function '#{name}' expects #{expected} arguments, but got #{actual}")
+        if name.end_with?(".init")
+          name.split('.')[0]
+        else
+          sym[:return_type]
         end
-        sym[:return_type]
       else
-        # Allow unknown for now (could be built-in not in symbol table)
-        "int"
+        if name.end_with?(".init")
+          name.split('.')[0]
+        else
+          "int"
+        end
       end
     when :if_statement
       analyze_node(node[:condition], local_vars)

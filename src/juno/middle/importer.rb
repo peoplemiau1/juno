@@ -18,14 +18,19 @@ class Importer
 
     ast.each do |node|
       if node[:type] == :import || node[:type] == :use_statement
-        if node[:type] == :use_statement || node[:system]
-          begin
-            imported_ast = process_import(node[:path], current_file, true)
-          rescue JunoImportError
-            imported_ast = process_import(node[:path], current_file, false)
+        begin
+          imported_ast = process_import(node[:path], current_file, node[:system] || node[:type] == :use_statement)
+        rescue JunoImportError => e
+          if !node[:system] && node[:type] != :use_statement
+            # Fallback to system path if local failed
+            begin
+              imported_ast = process_import(node[:path], current_file, true)
+            rescue JunoImportError
+              raise e # Raise original error if both fail
+            end
+          else
+            raise e
           end
-        else
-          imported_ast = process_import(node[:path], current_file, false)
         end
         result.concat(imported_ast)
       else

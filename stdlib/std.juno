@@ -4,8 +4,11 @@
 import "core/math.juno"
 import "core/mem.juno"
 import "core/io.juno"
+import "core/string.juno"
 import "sync/spinlock.juno"
 import "ds/collections.juno"
+import "std/format.juno"
+import "std/fs.juno"
 
 // Global constants for convenience
 fn OS_CLONE_THREAD() { return 0x10000 }

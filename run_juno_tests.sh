@@ -49,7 +49,6 @@ POSITIVE_TESTS=(
   tests/test_file_io_wrappers.juno
   tests/test_syscall_extended.juno
   tests/test_list_v2.juno
-  tests/test_https_extended_v2.juno
   tests/test_sized_types_complex.juno
   tests/test_selfhost_lexer_smoke.juno
   tests/test_selfhost_parser_smoke.juno

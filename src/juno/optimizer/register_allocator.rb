@@ -138,8 +138,20 @@ class RegisterAllocator
 
   def contains_call?(node)
     if node.is_a?(Hash)
-      return true if node[:type] == :fn_call
-      return node.any? { |k, v| v.is_a?(Hash) ? contains_call?(v) : (v.is_a?(Array) ? v.any?{|i| contains_call?(i)} : false) }
+      return true if [:fn_call, :method_call, :syscall].include?(node[:type])
+      if node[:type] == :binary_op && (node[:op] == "+" || node[:op] == "<>")
+        # String concatenation is a function call
+        return true
+      end
+      return node.any? { |k, v| 
+        if v.is_a?(Hash)
+          contains_call?(v)
+        elsif v.is_a?(Array)
+          v.any? { |i| contains_call?(i) }
+        else
+          false
+        end
+      }
     elsif node.respond_to?(:op)
       return node.op == :CALL || node.op == :CALL_IND
     end

@@ -175,6 +175,8 @@ class CodeEmitter
   def mov_rax_mem_idx(reg, offset, size = 8); mov_reg_mem_idx(0, reg, offset, size); end
   def mov_rcx_mem_idx(reg, offset, size = 8); mov_reg_mem_idx(1, reg, offset, size); end
 
+  def movzx_rax_mem_rax; log_asm "movzx rax, byte [rax]"; emit([0x48, 0x0f, 0xb6, 0x00]); end
+
   def mov_r11_rax; log_asm "mov r11, rax"; emit([0x49, 0x89, 0xc3]); end
 
   def mov_rax_rbp_disp32(disp)
@@ -324,6 +326,10 @@ class CodeEmitter
   def mod_rax_by_rdx
     div_rax_by_rdx
     mov_reg_reg(0, 2) # mov rax, rdx (remainder is in RDX)
+    test_rax_rax
+    p_skip = jns_rel32
+    add_rax_reg(1) # rax += rcx (divisor is in RCX from div_rax_by_rdx)
+    patch_jns(p_skip, current_pos)
   end
 
   def cmp_rax_rdx(op)
@@ -415,6 +421,7 @@ class CodeEmitter
   def jg_rel32; log_asm "jg <rel32>"; pos = current_pos; emit([0x0f, 0x8f, 0, 0, 0, 0]); pos; end
   def jle_rel32; log_asm "jle <rel32>"; pos = current_pos; emit([0x0f, 0x8e, 0, 0, 0, 0]); pos; end
   def jge_rel32; log_asm "jge <rel32>"; pos = current_pos; emit([0x0f, 0x8d, 0, 0, 0, 0]); pos; end
+  def jns_rel32; log_asm "jns <rel32>"; pos = current_pos; emit([0x0f, 0x89, 0, 0, 0, 0]); pos; end
 
   def cld; emit([0xfc]); end
   def rep_movsb; emit([0xf3, 0xa4]); end
@@ -462,6 +469,11 @@ class CodeEmitter
 
   def patch_jge(pos, target)
     @internal_patches << { pos: pos, target: target, type: :jge_rel32 }
+    offset = target - (pos + 6)
+    @bytes[pos+2..pos+5] = [offset].pack("l<").bytes
+  end
+  def patch_jns(pos, target)
+    @internal_patches << { pos: pos, target: target, type: :jns_rel32 }
     offset = target - (pos + 6)
     @bytes[pos+2..pos+5] = [offset].pack("l<").bytes
   end

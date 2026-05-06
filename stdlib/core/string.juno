@@ -1,0 +1,122 @@
+// stdlib/core/string.juno
+// String utilities for Juno
+
+// Get string length
+fn strlen(s) {
+    let mut i = 0
+    while (*(byte_add(s, i)) != 0) {
+        i = i + 1
+    }
+    return i
+}
+
+// Compare two strings
+// Returns 1 if equal, 0 otherwise
+fn streq(s1, s2) {
+    let mut i = 0
+    while (1) {
+        let c1 = *(byte_add(s1, i))
+        let c2 = *(byte_add(s2, i))
+        if (c1 != c2) { return 0 }
+        if (c1 == 0) { return 1 }
+        i = i + 1
+    }
+    return 0
+}
+
+// DJB2 Hash algorithm for strings
+fn str_hash(s) {
+    let mut hash = 5381
+    let mut i = 0
+    while (1) {
+        let c = *(byte_add(s, i))
+        if (c == 0) { break }
+        // hash = ((hash << 5) + hash) + c
+        hash = (hash * 33) + c
+        i = i + 1
+    }
+    return hash
+}
+
+// Find substring
+// Returns index or -1
+fn str_find(s, sub) {
+    let len1 = strlen(s)
+    let len2 = strlen(sub)
+    if (len2 == 0) { return 0 }
+    if (len2 > len1) { return -1 }
+
+    let mut i = 0
+    while (i <= (len1 - len2)) {
+        let mut j = 0
+        let mut is_match = 1
+        while (j < len2) {
+            if (*(byte_add(s, i + j)) != *(byte_add(sub, j))) {
+                is_match = 0
+                break
+            }
+            j = j + 1
+        }
+        if (is_match == 1) { return i }
+        i = i + 1
+    }
+    return -1
+}
+
+// Get substring from start with length
+fn str_substring(s, start, len) {
+    let buf = malloc(len + 1)
+    let mut i = 0
+    while (i < len) {
+        *(byte_add(buf, i)) = *(byte_add(s, start + i))
+        i = i + 1
+    }
+    *(byte_add(buf, len)) = 0
+    return buf
+}
+
+// Check if string contains substring
+fn str_contains(s, sub) {
+    if (str_find(s, sub) != -1) { return 1 }
+    return 0
+}
+
+// Convert integer to string (returns new buffer)
+fn itoa(n) {
+    if (n == 0) {
+        let b = malloc(2)
+        *(byte_add(b, 0)) = 48; *(byte_add(b, 1)) = 0
+        return b
+    }
+    
+    let mut neg = 0
+    let mut val = n
+    if (n < 0) { neg = 1; val = 0 - n }
+    
+    let buf = malloc(32)
+    let mut i = 0
+    while (val > 0) {
+        *(byte_add(buf, i)) = (val % 10) + 48
+        val = val / 10
+        i = i + 1
+    }
+    if (neg == 1) { *(byte_add(buf, i)) = 45; i = i + 1 }
+    
+    // Reverse
+    let res = malloc(i + 1)
+    let mut j = 0
+    while (j < i) {
+        *(byte_add(res, j)) = *(byte_add(buf, i - j - 1))
+        j = j + 1
+    }
+    *(byte_add(res, i)) = 0
+    free(buf)
+    return res
+}
+
+// Convert float to string
+// Convert float to string
+fn ftoa(f) {
+    let mut int_part = i32(f)
+    return itoa(int_part) // Temporary stub until full float parsing
+}

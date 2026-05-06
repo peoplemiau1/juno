@@ -105,7 +105,16 @@ module GeneratorAccess
   end
 
   def gen_dereference(expr)
-    eval_expression(expr[:operand])
-    @emitter.mov_rax_mem(0)
+    # Check if we are dereferencing a byte_add call
+    if expr[:operand][:type] == :fn_call && (expr[:operand][:name] == "byte_add" || expr[:operand][:name] == "gen_byte_add")
+      eval_expression(expr[:operand][:args][0]); @emitter.push_reg(0)
+      eval_expression(expr[:operand][:args][1])
+      @emitter.pop_reg(2) # RDX = base
+      @emitter.add_rax_rdx
+      @emitter.movzx_rax_mem_rax # Load 1 byte from [rax]
+    else
+      eval_expression(expr[:operand])
+      @emitter.mov_rax_mem(0)
+    end
   end
 end

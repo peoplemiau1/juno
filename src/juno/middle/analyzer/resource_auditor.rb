@@ -31,6 +31,16 @@ class ResourceAuditor
     ['malloc', 'open', 'os_open', 'fopen'].include?(name)
   end
 
+  # Check if a function is a constructor (.init method)
+  def constructor?(fn_name)
+    fn_name.end_with?('.init')
+  end
+
+  # Check if the assignment target is a struct field (e.g., self.data)
+  def field_assignment?(name)
+    name.include?('.')
+  end
+
   def process_node(node)
     return unless node.is_a?(Hash)
     
@@ -40,26 +50,46 @@ class ResourceAuditor
       @var_to_res = {}
       @res_status = {}
       @res_node = {}
+      @current_fn = node[:name]
       (node[:body] || []).each { |n| process_node(n) }
       
       # Check for leaks at the end of the function
-      @res_status.each do |id, status|
-        if status == :allocated
-          n = @res_node[id]
-          JunoErrorReporter.warn("Resource leak in function '#{node[:name]}': Resource never freed.", filename: @filename, line_num: n[:line] || 0)
-          @res_status[id] = :leaked # Mark to avoid double warning
+      # Skip leak checks for constructors — they allocate for the caller
+      unless constructor?(@current_fn || "")
+        @res_status.each do |id, status|
+          if status == :allocated
+            n = @res_node[id]
+            JunoErrorReporter.warn("Resource leak in function '#{node[:name]}': Resource never freed.", filename: @filename, line_num: n[:line] || 0)
+            @res_status[id] = :leaked # Mark to avoid double warning
+          end
         end
       end
     when :assignment
-      if node[:expression][:type] == :fn_call && allocates_resource?(node[:expression][:name])
-        res_id = @next_res_id += 1
-        @var_to_res[node[:name]] = res_id
-        @res_status[res_id] = :allocated
-        @res_node[res_id] = node
-      elsif node[:expression][:type] == :variable && @var_to_res.key?(node[:expression][:name])
+      name = node[:name] || ""
+      expr = node[:expression]
+
+      if expr.is_a?(Hash) && expr[:type] == :fn_call && allocates_resource?(expr[:name])
+        # If assigning to a struct field (self.data = malloc(...)),
+        # consider the resource as "transferred" to the struct, not leaked
+        if field_assignment?(name)
+          # Resource is owned by the struct — no tracking needed
+        else
+          res_id = @next_res_id += 1
+          @var_to_res[name] = res_id
+          @res_status[res_id] = :allocated
+          @res_node[res_id] = node
+        end
+      elsif expr.is_a?(Hash) && expr[:type] == :variable && @var_to_res.key?(expr[:name])
         # Track aliasing
-        @var_to_res[node[:name]] = @var_to_res[node[:expression][:name]]
+        @var_to_res[name] = @var_to_res[expr[:name]]
       end
+
+      # If we're assigning a tracked resource to a field, mark it as transferred
+      if field_assignment?(name) && expr.is_a?(Hash) && expr[:type] == :variable && @var_to_res.key?(expr[:name])
+        res_id = @var_to_res[expr[:name]]
+        @res_status[res_id] = :transferred if @res_status[res_id] == :allocated
+      end
+
     when :fn_call
       fn_name = node[:name]
       if consumes_resource?(fn_name)
@@ -73,6 +103,25 @@ class ResourceAuditor
           end
         end
       end
+
+      # If a tracked resource is passed to a .init constructor, consider it transferred
+      if constructor?(fn_name)
+        (node[:args] || []).each do |arg|
+          if arg[:type] == :variable && @var_to_res.key?(arg[:name])
+            res_id = @var_to_res[arg[:name]]
+            @res_status[res_id] = :transferred
+          end
+        end
+      end
+
+    when :return
+      # If we return a tracked resource, it's not a leak
+      expr = node[:expression]
+      if expr.is_a?(Hash) && expr[:type] == :variable && @var_to_res.key?(expr[:name])
+        res_id = @var_to_res[expr[:name]]
+        @res_status[res_id] = :returned
+      end
+
     when :if_statement
       (node[:body] || []).each { |n| process_node(n) }
       (node[:else_body] || []).each { |n| process_node(n) }

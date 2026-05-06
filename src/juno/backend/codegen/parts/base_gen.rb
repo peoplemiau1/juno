@@ -29,7 +29,7 @@ module BaseGenerator
 
     callee_saved = @emitter.callee_saved_regs
     @emitter.push_callee_saved(callee_saved)
-    if @arch == :x86_64 && (callee_saved.length + 1) % 2 == 1
+    if @arch == :x86_64 && (callee_saved.length + 1) % 2 == 0
       @emitter.emit_sub_rsp(8)
     end
 
@@ -43,7 +43,7 @@ module BaseGenerator
     end
 
     unless has_ret
-      if @arch == :x86_64 && (@emitter.callee_saved_regs.length + 1) % 2 == 1
+      if @arch == :x86_64 && (@emitter.callee_saved_regs.length + 1) % 2 == 0
         @emitter.emit_add_rsp(8)
       end
       @emitter.pop_callee_saved(@emitter.callee_saved_regs)

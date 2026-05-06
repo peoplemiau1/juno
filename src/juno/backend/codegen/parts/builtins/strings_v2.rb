@@ -23,11 +23,13 @@ module BuiltinStringsV2
     @emitter.emit([0x48, 0x31, 0xc0])  # xor rax, rax (counter)
 
     # Loop
+    l_loop = @emitter.current_pos
     @emitter.emit([0x80, 0x3c, 0x07, 0x00])  # cmp byte [rdi+rax], 0
-    @emitter.emit([0x74, 0x04])  # je done
+    p_done = @emitter.je_rel32
     @emitter.emit([0x48, 0xff, 0xc0])  # inc rax
-    @emitter.emit([0xeb, 0xf5])  # jmp loop
-    # done - rax has length
+    p_loop = @emitter.jmp_rel32
+    @emitter.patch_jmp(p_loop, l_loop)
+    @emitter.patch_je(p_done, @emitter.current_pos)
   end
 
   # str_copy(dst, src) - Copy string
@@ -41,13 +43,16 @@ module BuiltinStringsV2
     @emitter.push_reg(7)       # save original dst for return
 
     # Copy loop
+    l_loop = @emitter.current_pos
     @emitter.emit([0x8a, 0x06])  # mov al, [rsi]
     @emitter.emit([0x88, 0x07])  # mov [rdi], al
     @emitter.emit([0x84, 0xc0])  # test al, al
-    @emitter.emit([0x74, 0x06])  # je done
+    p_done = @emitter.je_rel32
     @emitter.emit([0x48, 0xff, 0xc6])  # inc rsi
     @emitter.emit([0x48, 0xff, 0xc7])  # inc rdi
-    @emitter.emit([0xeb, 0xf2])  # jmp loop
+    p_loop = @emitter.jmp_rel32
+    @emitter.patch_jmp(p_loop, l_loop)
+    @emitter.patch_je(p_done, @emitter.current_pos)
 
     @emitter.pop_reg(0) # return dst
   end
@@ -63,19 +68,25 @@ module BuiltinStringsV2
     @emitter.push_reg(7)        # save original dst for return
 
     # Find end of dst
+    l_find = @emitter.current_pos
     @emitter.emit([0x80, 0x3f, 0x00])  # cmp byte [rdi], 0
-    @emitter.emit([0x74, 0x04])  # je found_end
+    p_found = @emitter.je_rel32
     @emitter.emit([0x48, 0xff, 0xc7])  # inc rdi
-    @emitter.emit([0xeb, 0xf6])  # jmp find_loop
+    p_find_loop = @emitter.jmp_rel32
+    @emitter.patch_jmp(p_find_loop, l_find)
+    @emitter.patch_je(p_found, @emitter.current_pos)
 
     # Copy src to end
+    l_copy = @emitter.current_pos
     @emitter.emit([0x8a, 0x06])  # mov al, [rsi]
     @emitter.emit([0x88, 0x07])  # mov [rdi], al
     @emitter.emit([0x84, 0xc0])  # test al, al
-    @emitter.emit([0x74, 0x06])  # je done
+    p_done = @emitter.je_rel32
     @emitter.emit([0x48, 0xff, 0xc6])  # inc rsi
     @emitter.emit([0x48, 0xff, 0xc7])  # inc rdi
-    @emitter.emit([0xeb, 0xf2])  # jmp copy_loop
+    p_copy_loop = @emitter.jmp_rel32
+    @emitter.patch_jmp(p_copy_loop, l_copy)
+    @emitter.patch_je(p_done, @emitter.current_pos)
 
     @emitter.pop_reg(0) # return original dst
   end
@@ -90,25 +101,30 @@ module BuiltinStringsV2
     @emitter.pop_reg(7)        # RDI = s1
 
     # Compare loop
+    l_loop = @emitter.current_pos
     @emitter.emit([0x8a, 0x07])  # mov al, [rdi]
     @emitter.emit([0x44, 0x8a, 0x16])  # mov r10b, [rsi]
     @emitter.emit([0x44, 0x38, 0xd0])  # cmp al, r10b
-    @emitter.emit([0x75, 0x0c])  # jne not_equal
+    p_ne = @emitter.jne_rel32
     @emitter.emit([0x84, 0xc0])  # test al, al
-    @emitter.emit([0x74, 0x0c])  # je equal (both 0)
+    p_eq = @emitter.je_rel32
     @emitter.emit([0x48, 0xff, 0xc7])  # inc rdi
     @emitter.emit([0x48, 0xff, 0xc6])  # inc rsi
-    @emitter.emit([0xeb, 0xeb])  # jmp loop (offset adjusted -2)
+    p_loop = @emitter.jmp_rel32
+    @emitter.patch_jmp(p_loop, l_loop)
 
     # not_equal:
+    @emitter.patch_jne(p_ne, @emitter.current_pos)
     @emitter.emit([0x0f, 0xb6, 0xc0])  # movzx eax, al
     @emitter.emit([0x45, 0x0f, 0xb6, 0xd2])  # movzx r10d, r10b
     @emitter.emit([0x44, 0x29, 0xd0])  # sub eax, r10d
-    @emitter.emit([0xeb, 0x02])  # jmp done
+    p_done = @emitter.jmp_rel32
 
     # equal:
+    @emitter.patch_je(p_eq, @emitter.current_pos)
     @emitter.emit([0x31, 0xc0])  # xor eax, eax
-    # done
+    
+    @emitter.patch_jmp(p_done, @emitter.current_pos)
   end
 
   # str_find(haystack, needle) - Find first char of needle in haystack
@@ -132,16 +148,22 @@ module BuiltinStringsV2
     @emitter.emit([0x48, 0x31, 0xff])  # xor rdi, rdi (index)
 
     # loop:
+    l_loop = @emitter.current_pos
     @emitter.emit([0x44, 0x0f, 0xb6, 0x14, 0x3e])  # movzx r10d, byte [rsi+rdi]
     @emitter.emit([0x45, 0x85, 0xd2])  # test r10d, r10d
-    @emitter.emit([0x74, 0x0b])  # je end
+    p_end = @emitter.je_rel32
     @emitter.emit([0x44, 0x39, 0xca])  # cmp r10d, ecx
-    @emitter.emit([0x74, 0x05])  # je found
+    p_found = @emitter.je_rel32
     @emitter.emit([0x48, 0xff, 0xc7])  # inc rdi
-    @emitter.emit([0xeb, 0xef])  # jmp loop
+    p_loop = @emitter.jmp_rel32
+    @emitter.patch_jmp(p_loop, l_loop)
+
     # found:
+    @emitter.patch_je(p_found, @emitter.current_pos)
     @emitter.emit([0x48, 0x89, 0xf8])  # mov rax, rdi
+    
     # end:
+    @emitter.patch_je(p_end, @emitter.current_pos)
   end
 
   # str_to_int(s) - Parse string to integer
@@ -158,27 +180,33 @@ module BuiltinStringsV2
 
     # Check for minus sign
     @emitter.emit([0x80, 0x3e, 0x2d])  # cmp byte [rsi], '-'
-    @emitter.emit([0x75, 0x05])  # jne parse
+    p_parse = @emitter.jne_rel32
     @emitter.emit([0x48, 0xff, 0xc1])  # inc rcx (set negative)
     @emitter.emit([0x48, 0xff, 0xc6])  # inc rsi
 
     # Parse digits
+    @emitter.patch_jne(p_parse, @emitter.current_pos)
+    l_loop = @emitter.current_pos
     @emitter.emit([0x44, 0x0f, 0xb6, 0x16])  # movzx r10d, byte [rsi]
     @emitter.emit([0x41, 0x80, 0xfa, 0x30])  # cmp r10b, '0'
-    @emitter.emit([0x72, 0x12])  # jb done
+    p_done1 = @emitter.jl_rel32
     @emitter.emit([0x41, 0x80, 0xfa, 0x39])  # cmp r10b, '9'
-    @emitter.emit([0x77, 0x0d])  # ja done
+    p_done2 = @emitter.jg_rel32
+    
     @emitter.emit([0x41, 0x80, 0xea, 0x30])  # sub r10b, '0'
     @emitter.emit([0x48, 0x6b, 0xc0, 0x0a])  # imul rax, 10
     @emitter.emit([0x4c, 0x01, 0xd0])  # add rax, r10
     @emitter.emit([0x48, 0xff, 0xc6])  # inc rsi
-    @emitter.emit([0xeb, 0xe7])  # jmp parse_loop
+    p_loop = @emitter.jmp_rel32
+    @emitter.patch_jmp(p_loop, l_loop)
 
     # done - apply sign
+    @emitter.patch_jl(p_done1, @emitter.current_pos)
+    @emitter.patch_jg(p_done2, @emitter.current_pos)
     @emitter.emit([0x48, 0x85, 0xc9])  # test rcx, rcx
-    @emitter.emit([0x74, 0x03])  # jz positive
+    p_pos = @emitter.je_rel32
     @emitter.emit([0x48, 0xf7, 0xd8])  # neg rax
-    # positive/done
+    @emitter.patch_je(p_pos, @emitter.current_pos)
   end
 
   # int_to_str(n) - Convert integer to string
@@ -195,7 +223,7 @@ module BuiltinStringsV2
     eval_expression(args[0])
     # rax = number to convert
 
-    # Get buffer address using lea (like concat does)
+    # Get buffer address
     @emitter.emit([0x4c, 0x8d, 0x15])  # lea r10, [rip+offset]
     @linker.add_data_patch(@emitter.current_pos, "itoa_buffer")
     @emitter.emit([0x00, 0x00, 0x00, 0x00])
@@ -205,23 +233,26 @@ module BuiltinStringsV2
 
     # Handle zero case
     @emitter.emit([0x48, 0x85, 0xc0])  # test rax, rax
-    @emitter.emit([0x75, 0x08])  # jnz not_zero
+    p_nz = @emitter.jne_rel32
     @emitter.emit([0x49, 0xff, 0xca])  # dec r10
     @emitter.emit([0x41, 0xc6, 0x02, 0x30])  # mov byte [r10], '0'
-    @emitter.emit([0xeb, 0x18])  # jmp done
+    p_done = @emitter.jmp_rel32
 
     # not_zero: convert loop
+    @emitter.patch_jne(p_nz, @emitter.current_pos)
     @emitter.emit([0xb9, 0x0a, 0x00, 0x00, 0x00])  # mov ecx, 10
-    # loop:
+    l_loop = @emitter.current_pos
     @emitter.emit([0x48, 0x31, 0xd2])  # xor rdx, rdx
     @emitter.emit([0x48, 0xf7, 0xf1])  # div rcx
     @emitter.emit([0x80, 0xc2, 0x30])  # add dl, '0'
     @emitter.emit([0x49, 0xff, 0xca])  # dec r10
     @emitter.emit([0x41, 0x88, 0x12])  # mov [r10], dl
     @emitter.emit([0x48, 0x85, 0xc0])  # test rax, rax
-    @emitter.emit([0x75, 0xed])  # jnz loop
+    p_loop = @emitter.jne_rel32
+    @emitter.patch_jne(p_loop, l_loop)
 
     # done:
+    @emitter.patch_jmp(p_done, @emitter.current_pos)
     @emitter.emit([0x4c, 0x89, 0xd0])  # mov rax, r10
   end
 
@@ -233,21 +264,26 @@ module BuiltinStringsV2
     @emitter.emit([0x48, 0x89, 0xc7])  # mov rdi, rax
     @emitter.emit([0x49, 0x89, 0xfb])  # mov r11, rdi (save start)
 
-    l = @emitter.current_pos
+    l_loop = @emitter.current_pos
     @emitter.emit([0x8a, 0x07])  # mov al, [rdi]
     @emitter.emit([0x84, 0xc0])  # test al, al
     p_end = @emitter.je_rel32
+    
     @emitter.emit([0x3c, 0x61])  # cmp al, 'a'
-    @emitter.emit([0x72, 0x07])  # jb next
+    p_next1 = @emitter.jl_rel32
     @emitter.emit([0x3c, 0x7a])  # cmp al, 'z'
-    @emitter.emit([0x77, 0x03])  # ja next
+    p_next2 = @emitter.jg_rel32
+    
     @emitter.emit([0x2c, 0x20])  # sub al, 32
     @emitter.emit([0x88, 0x07])  # mov [rdi], al
+    
+    @emitter.patch_jl(p_next1, @emitter.current_pos)
+    @emitter.patch_jg(p_next2, @emitter.current_pos)
     @emitter.emit([0x48, 0xff, 0xc7])  # inc rdi
-    @emitter.emit([0xeb])
-    @emitter.emit([l - (@emitter.current_pos + 1)]) # jmp l (manual)
+    p_loop = @emitter.jmp_rel32
+    @emitter.patch_jmp(p_loop, l_loop)
+    
     @emitter.patch_je(p_end, @emitter.current_pos)
-
     @emitter.emit([0x4c, 0x89, 0xd8])  # mov rax, r11
   end
 
@@ -259,21 +295,26 @@ module BuiltinStringsV2
     @emitter.emit([0x48, 0x89, 0xc7])  # mov rdi, rax
     @emitter.emit([0x49, 0x89, 0xfb])  # mov r11, rdi
 
-    l = @emitter.current_pos
+    l_loop = @emitter.current_pos
     @emitter.emit([0x8a, 0x07])  # mov al, [rdi]
     @emitter.emit([0x84, 0xc0])  # test al, al
     p_end = @emitter.je_rel32
+    
     @emitter.emit([0x3c, 0x41])  # cmp al, 'A'
-    @emitter.emit([0x72, 0x07])  # jb next
+    p_next1 = @emitter.jl_rel32
     @emitter.emit([0x3c, 0x5a])  # cmp al, 'Z'
-    @emitter.emit([0x77, 0x03])  # ja next
+    p_next2 = @emitter.jg_rel32
+    
     @emitter.emit([0x04, 0x20])  # add al, 32
     @emitter.emit([0x88, 0x07])  # mov [rdi], al
+    
+    @emitter.patch_jl(p_next1, @emitter.current_pos)
+    @emitter.patch_jg(p_next2, @emitter.current_pos)
     @emitter.emit([0x48, 0xff, 0xc7])  # inc rdi
-    @emitter.emit([0xeb])
-    @emitter.emit([l - (@emitter.current_pos + 1)]) # jmp loop
+    p_loop = @emitter.jmp_rel32
+    @emitter.patch_jmp(p_loop, l_loop)
+    
     @emitter.patch_je(p_end, @emitter.current_pos)
-
     @emitter.emit([0x4c, 0x89, 0xd8])  # mov rax, r11
   end
 
@@ -296,7 +337,7 @@ module BuiltinStringsV2
     @emitter.emit([0x3c, 0x0a])        # cmp al, 0x0a (newline)
     p_s3 = @emitter.je_rel32
     
-    p_done = @emitter.jmp_rel32
+    p_scan = @emitter.jmp_rel32
     
     @emitter.patch_je(p_s1, @emitter.current_pos)
     @emitter.patch_je(p_s2, @emitter.current_pos)
@@ -306,7 +347,7 @@ module BuiltinStringsV2
     p_loop = @emitter.jmp_rel32
     @emitter.patch_jmp(p_loop, l_loop)
     
-    @emitter.patch_jmp(p_done, @emitter.current_pos)
+    @emitter.patch_jmp(p_scan, @emitter.current_pos)
     
     # Trim trailing newlines (scan forward)
     @emitter.mov_reg_reg(6, 7) # rsi = rdi
@@ -318,6 +359,7 @@ module BuiltinStringsV2
     p_chomp1 = @emitter.je_rel32
     @emitter.emit([0x80, 0xf9, 0x0d])  # cmp cl, '\r'
     p_chomp2 = @emitter.je_rel32
+    
     @emitter.emit([0x48, 0xff, 0xc6])  # inc rsi
     p_next_scan = @emitter.jmp_rel32
     @emitter.patch_jmp(p_next_scan, l_scan)

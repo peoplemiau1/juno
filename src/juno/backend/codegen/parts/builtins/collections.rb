@@ -96,18 +96,20 @@ module BuiltinCollections
 
     @emitter.emit([0x49, 0x8b, 0x44, 0x24, 0x08])  # rax = len
     @emitter.emit([0x48, 0x85, 0xc0])  # test
-    @emitter.emit([0x75, 0x05])  # jnz ok
+    p_ok = @emitter.jne_rel32
     @emitter.emit([0x48, 0x31, 0xc0])  # return 0
-    @emitter.emit([0xeb, 0x13])  # jmp end
+    p_end = @emitter.jmp_rel32
 
     # Decrement len, get value
+    @emitter.patch_jne(p_ok, @emitter.current_pos)
     @emitter.emit([0x48, 0xff, 0xc8])  # dec rax
     @emitter.emit([0x49, 0x89, 0x44, 0x24, 0x08])  # [r12+8] = rax
     @emitter.emit([0x48, 0xc1, 0xe0, 0x03])
     @emitter.emit([0x48, 0x83, 0xc0, 0x10])
     @emitter.emit([0x4c, 0x01, 0xe0])
     @emitter.emit([0x48, 0x8b, 0x00])  # rax = [rax]
-    # end
+    
+    @emitter.patch_jmp(p_end, @emitter.current_pos)
   end
 
   # vec_get(vec, index)
@@ -126,17 +128,19 @@ module BuiltinCollections
     # Bounds check
     @emitter.emit([0x49, 0x8b, 0x4c, 0x24, 0x08])  # rcx = len
     @emitter.emit([0x4c, 0x39, 0xe9])  # cmp rcx, r13
-    @emitter.emit([0x77, 0x05])  # ja ok
+    p_ok = @emitter.ja_rel32
     @emitter.emit([0x48, 0x31, 0xc0])  # return 0
-    @emitter.emit([0xeb, 0x0c])  # jmp end
+    p_end = @emitter.jmp_rel32
 
     # Get value at 16 + index*8
+    @emitter.patch_ja(p_ok, @emitter.current_pos)
     @emitter.emit([0x4c, 0x89, 0xe8])  # rax = r13
     @emitter.emit([0x48, 0xc1, 0xe0, 0x03])
     @emitter.emit([0x48, 0x83, 0xc0, 0x10])
     @emitter.emit([0x4c, 0x01, 0xe0])
     @emitter.emit([0x48, 0x8b, 0x00])
-    # end
+    
+    @emitter.patch_jmp(p_end, @emitter.current_pos)
   end
 
   # vec_set(vec, index, value)

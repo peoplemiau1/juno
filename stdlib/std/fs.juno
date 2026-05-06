@@ -1,23 +1,50 @@
-// std/fs.juno - File System module
-import std/str
+// stdlib/std/fs.juno
+// File System utilities
 
-fn fs_read_text(path: ptr) -> ptr {
-    let fd = file_open(path, 0)
-    let size = file_size(path)
+import "core/io.juno"
+import "core/mem.juno"
+import "core/string.juno"
 
-    let res: String = malloc(sizeof(String))
-    res.len = size
-    res.capacity = size + 1
-    res.data = malloc(res.capacity)
-    file_read(fd, res.data, size)
-    byte_set(res.data, size, 0)
-    file_close(fd)
-    return res
+struct File {
+    let fd
+    let path
 }
 
-fn fs_write_text(path: ptr, content: String) -> int {
-    let fd = file_open(path, 1)
-    file_write(fd, content.data, content.len)
-    file_close(fd)
-    return 1
+fn File.open(path, mode) -> File {
+    let mut m = 0
+    if (streq(mode, "r")) { m = 0 }
+    if (streq(mode, "w")) { m = 1 }
+    if (streq(mode, "a")) { m = 2 }
+    
+    let fd = open(path, m, 0)
+    if (fd < 0) { return 0 }
+    
+    let self: File = malloc(16)
+    self.fd = fd
+    self.path = path
+    return self
+}
+
+fn File.read(self, buf, sz) {
+    let fd = *(ptr_add(self, 0))
+    return read(fd, buf, sz)
+}
+
+fn File.write(self, buf, sz) {
+    let fd = *(ptr_add(self, 0))
+    return write(fd, buf, sz)
+}
+
+fn File.close(self) {
+    let fd = *(ptr_add(self, 0))
+    close(fd)
+    free(self)
+}
+
+fn File.read_all(self) {
+    let buf = malloc(65536)
+    let sz = self.read(buf, 65535)
+    if (sz < 0) { free(buf); return 0 }
+    *(byte_add(buf, sz)) = 0
+    return buf
 }

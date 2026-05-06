@@ -4,17 +4,17 @@
 fn square(x) { return x * x }
 fn cube(x) { return x * x * x }
 
-fn abs_val(x) {
+fn abs(x) {
     if (x < 0) { return 0 - x }
     return x
 }
 
-fn min_val(a, b) {
+fn min(a, b) {
     if (a < b) { return a }
     return b
 }
 
-fn max_val(a, b) {
+fn max(a, b) {
     if (a > b) { return a }
     return b
 }

@@ -458,9 +458,13 @@ class TurboOptimizer
       cloned = deep_clone(stmt)
       substituted = substitute_vars(cloned, subst)
       
-      if substituted[:type] == :return && result_var
-        inlined << { type: :assignment, name: result_var, expression: substituted[:expression] }
-      elsif substituted[:type] != :return
+      if substituted[:type] == :return
+        if result_var
+          inlined << { type: :assignment, name: result_var, expression: substituted[:expression] }
+        elsif has_side_effects?(substituted[:expression])
+          inlined << substituted[:expression]
+        end
+      else
         inlined << substituted
       end
     end

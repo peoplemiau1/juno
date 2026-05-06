@@ -40,66 +40,108 @@ when "hex"
   end
   puts "Usage: juno hex <binary>"
   exit 1
-when "-h", "--help", "help"
-  puts <<~HELP
-    Juno Language CLI
-    Usage: juno [command] [options] <input_file>
-
-    Commands:
-      fmt <file>    Format Juno source code
-      disasm <bin>  Disassemble binary (objdump)
-      hex <bin>     Show hex dump (hexdump)
-      help          Show this help
-
-    Options:
-      -a, --arch    Target architecture (x86_64, aarch64)
-      -o, --output  Output path
-      -r, --run     Run after compilation
-      --asm         Show generated assembly log
-  HELP
-  exit 0
-end
-
-require_relative "../src/juno/compiler"
-
-options = { arch: :x86_64, os: :linux, output: nil, run: false, show_asm: false }
-parser = OptionParser.new do |opts|
-  opts.on("-a", "--arch ARCH", [:x86_64, :aarch64]) { |a| options[:arch] = a }
-  opts.on("-o", "--output FILE") { |o| options[:output] = o }
-  opts.on("-r", "--run") { options[:run] = true }
-  opts.on("--asm") { options[:show_asm] = true }
-  opts.on("--no-audit") { options[:no_audit] = true }
-  end
-
-  parser.parse!
-
-  input_file = ARGV[0]
-  if !input_file
-  puts "Usage: juno [options] <input_file>"
-  exit 1
-  end
-
-  output_path = options[:output] || File.join(PROJECT_ROOT, "build", "output")
-  FileUtils.mkdir_p(File.dirname(output_path))
-
-  begin
-  puts "   #{GREEN}#{BOLD}Compiling#{RESET} #{input_file} (#{options[:arch]})"
-
-  compiler = Juno::Compiler.new(arch: options[:arch], os: options[:os], output: output_path, audit: !options[:no_audit])
-
-  compiler.compile(input_file)
-  
-  puts "    #{GREEN}#{BOLD}Finished#{RESET}"
-
-  if options[:show_asm]
-    puts "\n#{BOLD}Generated Assembly (#{options[:arch]}):#{RESET}"
-    puts compiler.asm_log.join("\n")
-  end
-
-  if options[:run]
-    exec(output_path)
-  end
-rescue => e
-  puts "\n#{RED}#{BOLD}error#{RESET}: #{e.message}"
-  exit 1
-end
+    when "-h", "--help", "help"
+      puts <<~HELP
+        #{BOLD}Juno Language Toolchain#{RESET}
+        #{BOLD}Usage:#{RESET} juno [command] [options] <input_file>
+    
+        #{BOLD}Commands:#{RESET}
+          fmt <file>        Format Juno source code
+          disasm <bin>      Disassemble binary (objdump)
+          hex <bin>         Show hex dump (hexdump)
+          help              Show this help
+    
+        #{BOLD}Options:#{RESET}
+          -a, --arch ARCH   Target architecture:
+                            #{GREEN}x86_64, aarch64, arm, riscv32, riscv64#{RESET} (default: x86_64)
+          -t, --target TYPE Compilation target:
+                            #{GREEN}exe, flat, obj#{RESET} (default: exe)
+          -o, --output FILE Specify output binary path
+          -r, --run         Execute the binary after successful compilation
+          --asm             Dump generated LLVM/Assembly to log
+          --no-audit        Disable resource safety auditing
+          --native          Enable experimental native backend (non-LLVM)
+    
+        #{BOLD}Examples:#{RESET}
+          juno main.juno                         # Compile for host
+          juno -a aarch64 -t flat kernel.juno    # Compile raw ARM binary
+          juno -r tests/test_simple.juno         # Compile and run
+      HELP
+      exit 0
+    end
+    
+    require_relative "../src/juno/compiler"
+    
+    options = { arch: :x86_64, os: :linux, output: nil, run: false, show_asm: false, target: :exe }
+    begin
+      parser = OptionParser.new do |opts|
+        opts.on("-a", "--arch ARCH", [:x86_64, :aarch64, :arm, :riscv32, :riscv64]) { |a| options[:arch] = a }
+        opts.on("-t", "--target TARGET", [:exe, :flat, :obj]) { |t| options[:target] = t }
+        opts.on("-o", "--output FILE") { |o| options[:output] = o }
+        opts.on("-r", "--run") { options[:run] = true }
+        opts.on("--asm") { options[:show_asm] = true }
+        opts.on("--no-audit") { options[:no_audit] = true }
+        opts.on("--native") { options[:native] = true }
+      end
+    
+      parser.parse!
+    rescue OptionParser::ParseError => e
+      puts "#{RED}#{BOLD}error#{RESET}: #{e.message}"
+      puts "Run 'juno --help' for usage information."
+      exit 1
+    end
+    
+    input_file = ARGV[0]
+    if !input_file
+      puts "#{RED}#{BOLD}error#{RESET}: no input file specified"
+      puts "Usage: juno [options] <input_file>"
+      exit 1
+    end
+    
+    if !File.exist?(input_file)
+      puts "#{RED}#{BOLD}error#{RESET}: file not found: #{input_file}"
+      exit 1
+    end
+    
+    output_path = options[:output] || File.join(PROJECT_ROOT, "build", "output")
+    FileUtils.mkdir_p(File.dirname(output_path))
+    
+    begin
+      puts "   #{GREEN}#{BOLD}Compiling#{RESET} #{input_file} (#{options[:arch]} -> #{options[:target]})"
+    
+      compiler = Juno::Compiler.new(
+        arch: options[:arch], 
+        os: options[:os], 
+        output: output_path, 
+        audit: !options[:no_audit],
+        native: options[:native],
+        target: options[:target]
+      )
+    
+      compiler.compile(input_file)
+      
+      puts "    #{GREEN}#{BOLD}Finished#{RESET} #{options[:target]} output at #{output_path}"
+    
+      if options[:show_asm]
+        puts "\n#{BOLD}Generated Log (#{options[:arch]}):#{RESET}"
+        puts (compiler.asm_log || ["No log generated."]).join("\n")
+      end
+    
+      if options[:run]
+        if options[:target] != :exe
+          puts "#{RED}#{BOLD}warning#{RESET}: cannot run non-executable target: #{options[:target]}"
+        else
+          puts "     #{GREEN}#{BOLD}Running#{RESET} #{output_path}..."
+          exec(output_path)
+        end
+      end
+    rescue => e
+      puts "\n#{RED}#{BOLD}error#{RESET}: #{e.message}"
+      # Only show backtrace for internal compiler errors, not user/cli errors
+      if e.message.include?("Linker") || e.message.include?("failed")
+        # Keep it clean
+      else
+        puts e.backtrace.join("\n") if ENV['JUNO_DEBUG']
+      end
+      exit 1
+    end

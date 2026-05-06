@@ -7,11 +7,13 @@ struct List {
     let cap
 }
 
-fn List.init(self, capacity) {
+fn List.init(capacity) -> List {
+    let self: List = malloc(24)
     if (capacity <= 0) { capacity = 1 }
     self.data = malloc(capacity * 8)
     self.len = 0
     self.cap = capacity
+    return self
 }
 
 fn List.add(self, val) {
@@ -34,6 +36,16 @@ fn List.get(self, idx) {
     return *(ptr_add(self.data, idx))
 }
 
+fn List.pop(self) {
+    if (self.len == 0) { return 0 }
+    self.len = self.len - 1
+    return *(ptr_add(self.data, self.len))
+}
+
+fn List.clear(self) {
+    self.len = 0
+}
+
 struct Map {
     let keys
     let vals
@@ -41,16 +53,19 @@ struct Map {
     let cap
 }
 
-fn Map.init(self, capacity) {
+fn Map.init(capacity) -> Map {
+    let self: Map = malloc(32)
     self.cap = capacity; self.size = 0
     self.keys = malloc(capacity * 8)
     self.vals = malloc(capacity * 8)
     memset(self.keys, 0, capacity * 8)
+    return self
 }
 
 fn Map.get(self, key) {
     if (key == 0) { return 0 }
-    let h = key % self.cap
+    let mut h = key % self.cap
+    if (h < 0) { h = h + self.cap }
     let mut i = h
     while (1) {
         let pk = ptr_add(self.keys, i)
@@ -64,7 +79,8 @@ fn Map.get(self, key) {
 
 fn Map.put(self, key, val) {
     if (key == 0) { return 0 }
-    let h = key % self.cap
+    let mut h = key % self.cap
+    if (h < 0) { h = h + self.cap }
     let mut i = h
     while (1) {
         let pk = ptr_add(self.keys, i)
@@ -79,6 +95,61 @@ fn Map.put(self, key, val) {
         }
         i = (i + 1) % self.cap
         if (i == h) { return 0 } // Full
+    }
+    return 0
+}
+
+struct StringMap {
+    let keys
+    let vals
+    let size
+    let cap
+}
+
+fn StringMap.init(capacity) -> StringMap {
+    let self: StringMap = malloc(32)
+    self.cap = capacity; self.size = 0
+    self.keys = malloc(capacity * 8)
+    self.vals = malloc(capacity * 8)
+    memset(self.keys, 0, capacity * 8)
+    return self
+}
+
+fn StringMap.get(self, key_str) {
+    let hash = str_hash(key_str)
+    let mut h = hash % self.cap
+    if (h < 0) { h = h + self.cap }
+    let mut i = h
+    while (1) {
+        let pk = ptr_add(self.keys, i)
+        let k = *pk
+        if (k == 0) { return 0 }
+        if (streq(k, key_str)) { return *(ptr_add(self.vals, i)) }
+        i = (i + 1) % self.cap
+        if (i == h) { return 0 }
+    }
+    return 0
+}
+
+fn StringMap.put(self, key_str, val) {
+    let hash = str_hash(key_str)
+    let mut h = hash % self.cap
+    if (h < 0) { h = h + self.cap }
+    let mut i = h
+    while (1) {
+        let pk = ptr_add(self.keys, i)
+        let k = *pk
+        if (k == 0) {
+            *pk = key_str; *(ptr_add(self.vals, i)) = val
+            self.size = self.size + 1
+            return 1
+        }
+        if (streq(k, key_str)) {
+            *(ptr_add(self.vals, i)) = val
+            return 1
+        }
+        i = (i + 1) % self.cap
+        if (i == h) { return 0 }
     }
     return 0
 }

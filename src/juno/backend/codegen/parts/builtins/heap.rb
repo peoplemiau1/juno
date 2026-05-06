@@ -28,11 +28,19 @@ module BuiltinHeap
       @emitter.mov_rax(0xffffffffffffffff); @emitter.mov_reg_reg(8, 0) # r8 = -1
       @emitter.mov_rax(0); @emitter.mov_reg_reg(9, 0) # r9 = 0
       @emitter.mov_rax(9); @emitter.emit([0x0f, 0x05]) # mmap
+      
+      # Check for mmap error (-1)
+      @emitter.cmp_reg_imm(0, -1)
+      p_ok = @emitter.jne_rel32
+      @emitter.pop_reg(2) # Clean up saved size from stack
+      @emitter.xor_rax_rax
+      p_end = @emitter.jmp_rel32
 
+      @emitter.patch_jne(p_ok, @emitter.current_pos)
       @emitter.pop_reg(2) # restore total size to rdx
       @emitter.emit([0x48, 0x89, 0x10]) # mov [rax], rdx
-      @emitter.mov_reg_reg(0, 0) # rax = rax (to be sure)
       @emitter.emit([0x48, 0x83, 0xc0, 0x08]) # return rax+8
+      @emitter.patch_jmp(p_end, @emitter.current_pos)
     end
   end
 

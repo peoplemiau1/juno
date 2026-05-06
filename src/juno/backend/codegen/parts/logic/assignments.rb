@@ -69,10 +69,14 @@ module GeneratorAssignments
   def process_deref_assign(node)
     eval_expression(node[:value]); @emitter.push_reg(0)
     eval_expression(node[:target])
+    
+    # Check if target is a byte_add
+    is_byte = node[:target][:type] == :fn_call && (node[:target][:name] == "byte_add" || node[:target][:name] == "gen_byte_add")
+    
     target_reg = (@arch == :aarch64 ? 1 : 7)
     @emitter.mov_reg_reg(target_reg, 0) # RDI or X1 = target
     @emitter.pop_reg(0)        # RAX or X0 = value
-    @emitter.mov_mem_reg_idx(target_reg, 0, 0, 8)
+    @emitter.mov_mem_reg_idx(target_reg, 0, 0, is_byte ? 1 : 8)
   end
 
   def gen_array_assign(node)

@@ -1,0 +1,49 @@
+// stdlib/std/format.juno
+// Formatted output for Juno
+
+import "core/string.juno"
+import "core/io.juno"
+import "ds/collections.juno"
+
+// Simple formatted print
+// Supports {} for strings and numbers
+fn format_print(fmt, args: List) {
+    let mut i = 0
+    let mut arg_idx = 0
+    let fmt_len = strlen(fmt)
+    
+    while (i < fmt_len) {
+        let c = *(byte_add(fmt, i))
+        
+        if (c == 123) { // '{'
+            if (i + 1 < fmt_len) {
+                if (*(byte_add(fmt, i + 1)) == 125) { // '}'
+                    if (arg_idx < args.len) {
+                        let val = args.get(arg_idx)
+                        // For now, assume integer or string
+                        // We need a way to detect type, but for now 
+                        // let's just try to treat as string if high address, 
+                        // or number if small. (Very hacky, will improve later)
+                        if (val > 65536) {
+                            print_s(val)
+                        } else {
+                            print_i(val)
+                        }
+                        arg_idx = arg_idx + 1
+                        i = i + 2
+                        continue
+                    }
+                }
+            }
+        }
+        
+        // Just print the character
+        let buf = malloc(2)
+        *(byte_add(buf, 0)) = c
+        *(byte_add(buf, 1)) = 0
+        print_s(buf)
+        free(buf)
+        
+        i = i + 1
+    }
+}
