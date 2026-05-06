@@ -98,7 +98,8 @@ module Juno
         raise "llc tool not found. Please install llvm." unless llc_cmd
         
         # 2. Compile IR to object file
-        unless system("#{llc_cmd} -mtriple=#{target_triple} -relocation-model=pic -filetype=obj -o #{obj_file} #{ir_file}")
+        opt_flag = "-O#{@options[:opt_level] || 2}"
+        unless system("#{llc_cmd} #{opt_flag} -mtriple=#{target_triple} -relocation-model=pic -filetype=obj -o #{obj_file} #{ir_file}")
           raise "llc failed to compile IR. Check #{ir_file} for errors."
         end
         

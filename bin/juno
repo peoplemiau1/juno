@@ -40,43 +40,46 @@ when "hex"
   end
   puts "Usage: juno hex <binary>"
   exit 1
-    when "-h", "--help", "help"
-      puts <<~HELP
-        #{BOLD}Juno Language Toolchain#{RESET}
-        #{BOLD}Usage:#{RESET} juno [command] [options] <input_file>
-    
-        #{BOLD}Commands:#{RESET}
-          fmt <file>        Format Juno source code
-          disasm <bin>      Disassemble binary (objdump)
-          hex <bin>         Show hex dump (hexdump)
-          help              Show this help
-    
-        #{BOLD}Options:#{RESET}
-          -a, --arch ARCH   Target architecture:
-                            #{GREEN}x86_64, aarch64, arm, riscv32, riscv64#{RESET} (default: x86_64)
-          -t, --target TYPE Compilation target:
-                            #{GREEN}exe, flat, obj#{RESET} (default: exe)
-          -o, --output FILE Specify output binary path
-          -r, --run         Execute the binary after successful compilation
-          --asm             Dump generated LLVM/Assembly to log
-          --no-audit        Disable resource safety auditing
-          --native          Enable experimental native backend (non-LLVM)
-    
-        #{BOLD}Examples:#{RESET}
-          juno main.juno                         # Compile for host
-          juno -a aarch64 -t flat kernel.juno    # Compile raw ARM binary
-          juno -r tests/test_simple.juno         # Compile and run
-      HELP
-      exit 0
-    end
+when "-h", "--help", "help"
+  puts <<~HELP
+    #{BOLD}Juno Language Toolchain#{RESET}
+    #{BOLD}Usage:#{RESET} juno [command] [options] <input_file>
+
+    #{BOLD}Commands:#{RESET}
+      fmt <file>        Format Juno source code
+      disasm <bin>      Disassemble binary (objdump)
+      hex <bin>         Show hex dump (hexdump)
+      help              Show this help
+
+    #{BOLD}Options:#{RESET}
+      -a, --arch ARCH   Target architecture:
+                        #{GREEN}x86_64, aarch64, arm, riscv32, riscv64#{RESET} (default: x86_64)
+      -t, --target TYPE Compilation target:
+                        #{GREEN}exe, flat, obj#{RESET} (default: exe)
+      -o, --output FILE Specify output binary path
+      -O, --opt LEVEL   Optimization level (0, 1, 2, 3) (default: 2)
+      -r, --run         Execute the binary after successful compilation
+      --asm             Dump generated LLVM/Assembly to log
+      --no-audit        Disable resource safety auditing
+      --native          Enable experimental native backend (non-LLVM)
+
+    #{BOLD}Examples:#{RESET}
+      juno main.juno                         # Compile for host
+      juno -O3 main.juno                      # Compile with max optimization
+      juno -a aarch64 -t flat kernel.juno    # Compile raw ARM binary
+      juno -r tests/test_simple.juno         # Compile and run
+  HELP
+  exit 0
+end
     
     require_relative "../src/juno/compiler"
     
-    options = { arch: :x86_64, os: :linux, output: nil, run: false, show_asm: false, target: :exe }
+    options = { arch: :x86_64, os: :linux, output: nil, run: false, show_asm: false, target: :exe, opt_level: 2 }
     begin
       parser = OptionParser.new do |opts|
         opts.on("-a", "--arch ARCH", [:x86_64, :aarch64, :arm, :riscv32, :riscv64]) { |a| options[:arch] = a }
         opts.on("-t", "--target TARGET", [:exe, :flat, :obj]) { |t| options[:target] = t }
+        opts.on("-O", "--opt LEVEL", Integer) { |o| options[:opt_level] = o }
         opts.on("-o", "--output FILE") { |o| options[:output] = o }
         opts.on("-r", "--run") { options[:run] = true }
         opts.on("--asm") { options[:show_asm] = true }
@@ -115,7 +118,8 @@ when "hex"
         output: output_path, 
         audit: !options[:no_audit],
         native: options[:native],
-        target: options[:target]
+        target: options[:target],
+        opt_level: options[:opt_level]
       )
     
       compiler.compile(input_file)
