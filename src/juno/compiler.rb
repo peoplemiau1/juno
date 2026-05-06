@@ -19,7 +19,7 @@ module Juno
         os: :linux,
         output: "build/output",
         audit: true,
-        stdlib_path: ENV['JUNO_STDLIB'] || File.expand_path("../stdlib", __dir__)
+        stdlib_path: ENV['JUNO_STDLIB'] || File.expand_path("../../../stdlib", __dir__)
       }.merge(options)
     end
 

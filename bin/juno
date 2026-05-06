@@ -112,6 +112,8 @@ end
     begin
       puts "   #{GREEN}#{BOLD}Compiling#{RESET} #{input_file} (#{options[:arch]} -> #{options[:target]})"
     
+      stdlib_path = ENV['JUNO_STDLIB'] || File.join(PROJECT_ROOT, "stdlib")
+    
       compiler = Juno::Compiler.new(
         arch: options[:arch], 
         os: options[:os], 
@@ -119,7 +121,8 @@ end
         audit: !options[:no_audit],
         native: options[:native],
         target: options[:target],
-        opt_level: options[:opt_level]
+        opt_level: options[:opt_level],
+        stdlib_path: stdlib_path
       )
     
       compiler.compile(input_file)
