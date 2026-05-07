@@ -70,9 +70,9 @@ class LLVMGenerator
     @output << "declare void @llvm.memcpy.p0i8.p0i8.i64(i8*, i8*, i64, i1)\n"
     @output << "declare void @llvm.memset.p0i8.i64(i8*, i8, i64, i1)\n"
 
-    @output << "@fmt_s = private unnamed_addr constant [4 x i8] c\"%s\\0A\\00\"\n"
-    @output << "@fmt_i = private unnamed_addr constant [5 x i8] c\"%ld\\0A\\00\"\n"
-    @output << "@fmt_out = private unnamed_addr constant [4 x i8] c\"%s\\0A\\00\"\n\n"
+    @output << "@fmt_s = private unnamed_addr constant [3 x i8] c\"%s\\00\"\n"
+    @output << "@fmt_i = private unnamed_addr constant [4 x i8] c\"%ld\\00\"\n"
+    @output << "@fmt_out = private unnamed_addr constant [3 x i8] c\"%s\\00\"\n\n"
   end
 
   def collect_metadata(node)

@@ -23,7 +23,7 @@ module LLVMExpressionGenerator
         # Array decays to pointer
         size = @current_arrays[node[:name]]
         gep = next_tmp
-        @output << "  %#{gep} = getelementptr inbounds [#{size} x i64], [#{size} x i64]* %#{node[:name]}, i64 0, i64 0\n"
+        @output << "  %#{gep} = getelementptr inbounds [#{size} x i64], [#{size} x i64]* %#{node[:name]}, i64 0, i64 #{idx}\n"
         tmp_ptr = next_tmp
         @output << "  %#{tmp_ptr} = ptrtoint i64* %#{gep} to i64\n"
         "%#{tmp_ptr}"
@@ -75,7 +75,7 @@ module LLVMExpressionGenerator
         # Similar for struct fields
         receiver_name = operand[:receiver]
         member = operand[:member]
-        struct_name = find_struct_for_field(member)
+        struct_name = operand[:struct_name] || find_struct_for_field(member)
         if struct_name
           ptr = next_tmp
           @output << "  %#{ptr} = load i64, i64* %#{receiver_name}\n"
@@ -186,7 +186,7 @@ module LLVMExpressionGenerator
   def gen_member_access(node)
     receiver_name = node[:receiver]
     member = node[:member]
-    struct_name = find_struct_for_field(member)
+    struct_name = node[:struct_name] || find_struct_for_field(member)
     if struct_name
       ptr = next_tmp
       @output << "  %#{ptr} = load i64, i64* %#{receiver_name}\n"

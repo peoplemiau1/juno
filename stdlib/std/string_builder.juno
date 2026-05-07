@@ -1,0 +1,62 @@
+// String Builder for efficient string concatenation
+import "std.juno"
+
+struct StringBuilder {
+    buffer: ptr
+    length: int
+    capacity: int
+}
+
+fn StringBuilder.new(initial_capacity: int): StringBuilder {
+    // StringBuilder has 3 fields = 24 bytes
+    let mut sb: StringBuilder = malloc(24)
+    if initial_capacity < 16 { initial_capacity = 16 }
+    sb.capacity = initial_capacity
+    sb.length = 0
+    sb.buffer = malloc(sb.capacity)
+    return sb
+}
+
+fn StringBuilder.append(self: StringBuilder, s: string) {
+    let s_len = strlen(s)
+    if self.length + s_len >= self.capacity {
+        let mut new_cap = self.capacity * 2
+        while new_cap <= self.length + s_len {
+            new_cap = new_cap * 2
+        }
+        let new_buf = malloc(new_cap)
+        memcpy(new_buf, self.buffer, self.length)
+        free(self.buffer)
+        self.buffer = new_buf
+        self.capacity = new_cap
+    }
+    
+    // Use byte_add for byte-level buffer access
+    let dest = byte_add(self.buffer, self.length)
+    memcpy(dest, s, s_len)
+    self.length = self.length + s_len
+    
+    // Add null terminator
+    let term = byte_add(self.buffer, self.length)
+    store_i8(term, 0)
+}
+
+fn StringBuilder.append_int(self: StringBuilder, n: int) {
+    let s = itoa(n)
+    self.append(s)
+    free(s) 
+}
+
+fn StringBuilder.to_string(self: StringBuilder): string {
+    return self.buffer
+}
+
+fn StringBuilder.clear(self: StringBuilder) {
+    self.length = 0
+    store_i8(self.buffer, 0)
+}
+
+fn StringBuilder.free(self: StringBuilder) {
+    free(self.buffer)
+    free(self)
+}

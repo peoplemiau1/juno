@@ -1,9 +1,10 @@
 class ResourceAuditor
-  def initialize(ast, functions = {}, source = "", filename = "")
+  def initialize(ast, functions = {}, source = "", filename = "", fn_effects = {})
     @ast = ast
     @functions = functions
     @source = source
     @filename = filename
+    @fn_effects = fn_effects
     @errors = []
     @var_to_res = {}
     @res_status = {}
@@ -24,11 +25,16 @@ class ResourceAuditor
   end
 
   def consumes_resource?(name)
-    ['free', 'close', 'os_close', 'delete'].include?(name) || name.include?('.free')
+    return true if ['free', 'close', 'os_close', 'os_free', 'mem_free', 'delete'].include?(name)
+    return true if name.include?('.free') || name.include?('.close')
+    # If the BorrowChecker analyzed this function and found it consumes its first argument,
+    # consider it a consuming call.
+    return true if @fn_effects[name] && !@fn_effects[name].empty?
+    false
   end
 
   def allocates_resource?(name)
-    ['malloc', 'open', 'os_open', 'fopen'].include?(name)
+    ['malloc', 'open', 'os_open', 'os_alloc', 'mem_malloc', 'fopen'].include?(name)
   end
 
   # Check if a function is a constructor (.init method)

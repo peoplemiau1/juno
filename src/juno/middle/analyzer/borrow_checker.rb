@@ -9,6 +9,8 @@ class BorrowChecker
     @aliases = {}    # name => set of names
   end
 
+  attr_reader :fn_effects
+
   # Functions that are known to NEVER consume (free/close) their arguments
   SAFE_FUNCTIONS = %w[
     print print_s println print_i print_hex print_newline print_space
@@ -20,12 +22,26 @@ class BorrowChecker
     square cube abs_val min_val max_val factorial gcd ipow
   ].freeze
 
+
+  # Functions that are known to ALWAYS consume (free/close) their arguments
+  CONSUMING_FUNCTIONS = %w[free close os_free mem_free os_close].freeze
+
   def check
-    # Pass 1: Global analysis of function effects
+    # Pass 1: Global analysis of function effects (Iterate until fixed point)
     @fn_effects = {}
-    @ast.each do |node|
-      if node[:type] == :function_definition
-        @fn_effects[node[:name]] = analyze_fn_effects(node)
+    changed = true
+    while changed
+      changed = false
+      @ast.each do |node|
+        if node[:type] == :function_definition
+          old_effects = @fn_effects[node[:name]]
+          new_effects = analyze_fn_effects(node)
+          if new_effects != old_effects
+            @fn_effects[node[:name]] = new_effects
+            changed = true
+            puts "DEBUG: Function '#{node[:name]}' consumes: #{new_effects.inspect}" if ENV['JUNO_DEBUG_BORROW']
+          end
+        end
       end
     end
 
@@ -37,13 +53,26 @@ class BorrowChecker
     consumed_params = []
     params = (fn_node[:params] || []).map { |p| p.is_a?(Hash) ? p[:name] : p }
     
-    # Check: does the function call free()/close() on a parameter?
     walker = ->(node) {
+      if node.is_a?(Array)
+        node.each { |i| walker.call(i) }
+        return
+      end
       return unless node.is_a?(Hash)
+      
       if node[:type] == :fn_call
-        if ["free", "close"].include?(node[:name])
-          arg = node[:args][0]
-          consumed_params << arg[:name] if arg && arg[:type] == :variable && params.include?(arg[:name])
+        fn_name = node[:name]
+        if CONSUMING_FUNCTIONS.include?(fn_name) || (@fn_effects[fn_name] && !@fn_effects[fn_name].empty?)
+          node[:args]&.each_with_index do |arg, idx|
+            if arg[:type] == :variable && params.include?(arg[:name])
+              # Does this call at this index consume the variable?
+              if CONSUMING_FUNCTIONS.include?(fn_name) && idx == 0
+                consumed_params << arg[:name]
+              elsif @fn_effects[fn_name]
+                consumed_params << arg[:name] if idx == 0 
+              end
+            end
+          end
         end
       end
       node.values.each { |v| v.is_a?(Array) ? v.each { |i| walker.call(i) } : walker.call(v) }
@@ -126,18 +155,19 @@ class BorrowChecker
       else
         # Check each argument
         args.each_with_index do |arg, idx|
+          # 1. First check if we can use this expression
+          check_expression(arg)
+
+          # 2. Then update state if it's a move
           if arg[:type] == :variable
             v_name = arg[:name]
             if @var_states.key?(v_name) && @var_states[v_name][:state] == :owned
-              # Determine if this function consumes the argument
               is_consumed = function_consumes_arg?(fn_name, idx)
-              
               if is_consumed
                 @var_states[v_name] = { state: :moved, line: node[:line], moved_to: fn_name }
               end
             end
           end
-          check_expression(arg)
         end
       end
 

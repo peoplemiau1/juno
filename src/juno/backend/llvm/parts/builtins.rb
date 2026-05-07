@@ -7,7 +7,6 @@ module LLVMBuiltinGenerator
     when "syscall"
       args = node[:args].map { |a| eval_expr(a) }
       num = args.shift
-      # LLVM varargs call needs explicit types for the varargs part
       args_str = args.map { |a| "i64 #{a}" }.join(", ")
       r = next_tmp
       @output << "  %#{r} = call i64 (i64, ...) @syscall(i64 #{num}, #{args_str})\n"
@@ -17,24 +16,6 @@ module LLVMBuiltinGenerator
       r = next_tmp
       @output << "  %#{r} = call i64 @juno_strlen(i64 #{arg})\n"
       return "%#{r}"
-    when "println", "output", "prints", "print_s"
-      arg = eval_expr(node[:args][0])
-      tmp_ptr = next_tmp
-      @output << "  %#{tmp_ptr} = inttoptr i64 #{arg} to i8*\n"
-      @output << "  call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @fmt_out, i32 0, i32 0), i8* %#{tmp_ptr})\n"
-      return "0"
-    when "print"
-      arg_node = node[:args][0]
-      arg = eval_expr(arg_node)
-      arg_type = arg_node[:inferred_type] || "int"
-      if arg_type == "int" || arg_type == "bool" || arg_node[:type] == :literal
-        @output << "  call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([5 x i8], [5 x i8]* @fmt_i, i32 0, i32 0), i64 #{arg})\n"
-      else
-        tmp_ptr = next_tmp
-        @output << "  %#{tmp_ptr} = inttoptr i64 #{arg} to i8*\n"
-        @output << "  call i32 (i8*, ...) @printf(i8* getelementptr inbounds ([4 x i8], [4 x i8]* @fmt_out, i32 0, i32 0), i8* %#{tmp_ptr})\n"
-      end
-      return "0"
     when "concat"
       a = eval_expr(node[:args][0])
       b = eval_expr(node[:args][1])
@@ -58,67 +39,6 @@ module LLVMBuiltinGenerator
       r = next_tmp
       @output << "  %#{r} = sext i32 %#{r_int} to i64\n"
       return "%#{r}"
-    when "trim"
-      arg = eval_expr(node[:args][0])
-      r = next_tmp
-      @output << "  %#{r} = call i64 @trim(i64 #{arg})\n"
-      return "%#{r}"
-    when "file_read_all"
-      arg = eval_expr(node[:args][0])
-      r = next_tmp
-      @output << "  %#{r} = call i64 @file_read_all(i64 #{arg})\n"
-      return "%#{r}"
-    when "file_read_safe"
-      arg = eval_expr(node[:args][0])
-      r = next_tmp
-      @output << "  %#{r} = call i64 @file_read_safe(i64 #{arg})\n"
-      return "%#{r}"
-    when "exists"
-      arg = eval_expr(node[:args][0])
-      r = next_tmp
-      @output << "  %#{r} = call i64 @exists(i64 #{arg})\n"
-      return "%#{r}"
-    when "getpid"
-      r = next_tmp
-      @output << "  %#{r} = call i32 @getpid()\n"
-      res = next_tmp
-      @output << "  %#{res} = zext i32 %#{r} to i64\n"
-      return "%#{res}"
-    when "byte_add"
-      p = eval_expr(node[:args][0])
-      off = eval_expr(node[:args][1])
-      r = next_tmp
-      @output << "  %#{r} = add i64 #{p}, #{off}\n"
-      return "%#{r}"
-    when "ptr_add"
-      p = eval_expr(node[:args][0])
-      off = eval_expr(node[:args][1])
-      tmp_off = next_tmp
-      @output << "  %#{tmp_off} = mul i64 #{off}, 8\n"
-      r = next_tmp
-      @output << "  %#{r} = add i64 #{p}, %#{tmp_off}\n"
-      return "%#{r}"
-    when "i8", "u8"
-      val = eval_expr(node[:args][0])
-      r = next_tmp
-      @output << "  %#{r} = trunc i64 #{val} to i8\n"
-      res = next_tmp
-      @output << "  %#{res} = zext i8 %#{r} to i64\n"
-      return "%#{res}"
-    when "i16", "u16"
-      val = eval_expr(node[:args][0])
-      r = next_tmp
-      @output << "  %#{r} = trunc i64 #{val} to i16\n"
-      res = next_tmp
-      @output << "  %#{res} = zext i16 %#{r} to i64\n"
-      return "%#{res}"
-    when "i32", "u32"
-      val = eval_expr(node[:args][0])
-      r = next_tmp
-      @output << "  %#{r} = trunc i64 #{val} to i32\n"
-      res = next_tmp
-      @output << "  %#{res} = zext i32 %#{r} to i64\n"
-      return "%#{res}"
     when "max", "min"
       a = eval_expr(node[:args][0])
       b = eval_expr(node[:args][1])
@@ -127,12 +47,6 @@ module LLVMBuiltinGenerator
       r = next_tmp
       @output << "  %#{r} = select i1 %#{cmp}, i64 #{a}, i64 #{b}\n"
       return "%#{r}"
-    when "getpid"
-      r_pid = next_tmp
-      @output << "  %#{r_pid} = call i32 @getpid()\n"
-      res = next_tmp
-      @output << "  %#{res} = sext i32 %#{r_pid} to i64\n"
-      return "%#{res}"
     when "abs"
       arg = eval_expr(node[:args][0])
       neg = next_tmp
@@ -157,11 +71,23 @@ module LLVMBuiltinGenerator
       res = next_tmp
       @output << "  %#{res} = zext i8 %#{tmp_val} to i64\n"
       return "%#{res}"
+    when "chr"
+      arg = eval_expr(node[:args][0])
+      buf = next_tmp
+      @output << "  %#{buf} = call i64 @malloc(i64 2)\n"
+      ptr0 = next_tmp
+      @output << "  %#{ptr0} = inttoptr i64 %#{buf} to i8*\n"
+      val_b = next_tmp
+      @output << "  %#{val_b} = trunc i64 #{arg} to i8\n"
+      @output << "  store i8 %#{val_b}, i8* %#{ptr0}\n"
+      ptr1 = next_tmp
+      @output << "  %#{ptr1} = getelementptr i8, i8* %#{ptr0}, i64 1\n"
+      @output << "  store i8 0, i8* %#{ptr1}\n"
+      return "%#{buf}"
     when "i8", "u8", "i16", "u16", "i32", "u32"
       arg = eval_expr(node[:args][0])
       bits = name[1..-1].to_i
       is_signed = name.start_with?("i")
-      
       t1 = next_tmp
       @output << "  %#{t1} = trunc i64 #{arg} to i#{bits}\n"
       r = next_tmp
@@ -180,19 +106,6 @@ module LLVMBuiltinGenerator
         @output << "  %#{r} = add i64 #{ptr}, #{off}\n"
       end
       return "%#{r}"
-    when "chr"
-      arg = eval_expr(node[:args][0])
-      buf = next_tmp
-      @output << "  %#{buf} = call i64 @malloc(i64 2)\n"
-      ptr0 = next_tmp
-      @output << "  %#{ptr0} = inttoptr i64 %#{buf} to i8*\n"
-      val_b = next_tmp
-      @output << "  %#{val_b} = trunc i64 #{arg} to i8\n"
-      @output << "  store i8 %#{val_b}, i8* %#{ptr0}\n"
-      ptr1 = next_tmp
-      @output << "  %#{ptr1} = getelementptr i8, i8* %#{ptr0}, i64 1\n"
-      @output << "  store i8 0, i8* %#{ptr1}\n"
-      return "%#{buf}"
     when "memcpy", "memset"
       args = node[:args].map { |a| eval_expr(a) }
       dst_p = next_tmp
@@ -207,7 +120,7 @@ module LLVMBuiltinGenerator
         @output << "  call void @llvm.memset.p0i8.i64(i8* %#{dst_p}, i8 %#{val_b}, i64 #{args[2]}, i1 false)\n"
       end
       return "0"
-    when "alloc", "malloc"
+    when "malloc"
       arg = eval_expr(node[:args][0])
       r = next_tmp
       @output << "  %#{r} = call i64 @malloc(i64 #{arg})\n"
@@ -277,6 +190,38 @@ module LLVMBuiltinGenerator
       @output << "  %#{tmp_p} = inttoptr i64 #{ptr} to i64*\n"
       @output << "  store atomic i64 0, i64* %#{tmp_p} release, align 8\n"
       return "0"
+    when "store_i64", "store_ptr"
+      p = eval_expr(node[:args][0])
+      v = eval_expr(node[:args][1])
+      tmp_p = next_tmp
+      @output << "  %#{tmp_p} = inttoptr i64 #{p} to i64*\n"
+      @output << "  store i64 #{v}, i64* %#{tmp_p}, align 8\n"
+      return "0"
+    when "load_i64", "load_ptr"
+      p = eval_expr(node[:args][0])
+      tmp_p = next_tmp
+      @output << "  %#{tmp_p} = inttoptr i64 #{p} to i64*\n"
+      r = next_tmp
+      @output << "  %#{r} = load i64, i64* %#{tmp_p}, align 8\n"
+      return "%#{r}"
+    when "store_i8"
+      p = eval_expr(node[:args][0])
+      v = eval_expr(node[:args][1])
+      tmp_p = next_tmp
+      @output << "  %#{tmp_p} = inttoptr i64 #{p} to i8*\n"
+      tmp_v = next_tmp
+      @output << "  %#{tmp_v} = trunc i64 #{v} to i8\n"
+      @output << "  store i8 %#{tmp_v}, i8* %#{tmp_p}, align 1\n"
+      return "0"
+    when "load_i8"
+      p = eval_expr(node[:args][0])
+      tmp_p = next_tmp
+      @output << "  %#{tmp_p} = inttoptr i64 #{p} to i8*\n"
+      tmp_v = next_tmp
+      @output << "  %#{tmp_v} = load i8, i8* %#{tmp_p}, align 1\n"
+      r = next_tmp
+      @output << "  %#{r} = zext i8 %#{tmp_v} to i64\n"
+      return "%#{r}"
     end
 
     # Method calls and custom functions

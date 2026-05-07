@@ -1,0 +1,29 @@
+import "ds/vector.juno"
+import "std/string_builder.juno"
+
+fn main() {
+    output("--- Vector Test ---")
+    let vec = Vector.new()
+    vec.add(10)
+    vec.add(20)
+    vec.add(30)
+    
+    output_int(vec.get(0))
+    output_int(vec.get(1))
+    output_int(vec.get(2))
+    
+    output("--- StringBuilder Test ---")
+    let sb = StringBuilder.new(32)
+    sb.append("Hello ")
+    sb.append("Juno ")
+    sb.append_int(3)
+    sb.append(".0")
+    
+    output(sb.to_string())
+    
+    vec.free()
+    sb.free()
+    
+    output("Done.")
+    return 0
+}

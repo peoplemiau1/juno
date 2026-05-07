@@ -118,7 +118,15 @@ class SemanticAnalyzer
         local_vars[node[:name]] = { type: node[:var_type] || type, mut: node[:mut] }
         @local_vars_count += 1
       elsif node[:name].include?('.')
-        # Method call or member access in assignment, ignore count
+        # Field assignment: receiver.field = expression
+        parts = node[:name].split('.', 2)
+        receiver_name = parts[0]
+        field_name = parts[1]
+        receiver_info = local_vars[receiver_name] || @symbol_table[receiver_name]
+        if receiver_info
+          receiver_type = receiver_info[:type]
+          node[:struct_name] = receiver_type if @structs.key?(receiver_type)
+        end
       else
         # Reassignment
         var_info = local_vars[node[:name]] || @symbol_table[node[:name]]
@@ -205,6 +213,7 @@ class SemanticAnalyzer
       # Handle methods
       if name.include?('.') && !sym
         receiver, method = name.split('.')
+        receiver_type = "int"
         if local_vars.key?(receiver)
            receiver_type = local_vars[receiver][:type]
         end
@@ -265,6 +274,21 @@ class SemanticAnalyzer
     when :cast
       analyze_node(node[:expression], local_vars)
       node[:target_type] || "int"
+    when :member_access
+      receiver_type = analyze_node({type: :variable, name: node[:receiver]}, local_vars)
+      node[:receiver_type] = receiver_type
+      if @structs.key?(receiver_type)
+        node[:struct_name] = receiver_type
+        struct_def = @structs[receiver_type]
+        field_idx = struct_def[:fields].index(node[:member])
+        if field_idx
+          struct_def[:field_types] ? (struct_def[:field_types][node[:member]] || "int") : "int"
+        else
+          "int"
+        end
+      else
+        "int"
+      end
     when :array_access
       analyze_node(node[:index], local_vars)
       "int" # Simplified

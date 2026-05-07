@@ -13,6 +13,8 @@ require_relative "errors"
 
 module Juno
   class Compiler
+    attr_reader :asm_log
+
     def initialize(options = {})
       @options = {
         arch: :x86_64,
@@ -60,8 +62,8 @@ module Juno
       optimizer = TurboOptimizer.new(ast)
       ast = optimizer.optimize
 
-      # Resource auditing using signatures from SemanticAnalyzer
-      auditor = ResourceAuditor.new(ast, analyzer.function_signatures, code, input_file)
+      # Resource auditing using signatures from SemanticAnalyzer and effects from BorrowChecker
+      auditor = ResourceAuditor.new(ast, analyzer.function_signatures, code, input_file, borrow_checker.fn_effects)
       auditor.audit
 
       # 4. Backend
@@ -79,6 +81,7 @@ module Juno
           filename: input_file
         )
         llvm_ir = generator.generate
+        @asm_log = [llvm_ir]
         ir_file = @options[:output] + ".ll"
         obj_file = @options[:output] + ".o"
         File.write(ir_file, llvm_ir)

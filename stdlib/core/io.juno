@@ -1,5 +1,6 @@
 // stdlib/core/io.juno
 // Input/Output and terminal operations
+import "core/string.juno"
 
 fn os_open(path) { return open(path) }
 fn os_close(fd) { close(fd) }
@@ -8,10 +9,7 @@ fn os_write(fd, buf, sz) { return write(fd, buf, sz) }
 
 fn print_s(s) {
     if (s == 0) { return 0 }
-    let mut len = 0
-    while (*(byte_add(s, len)) != 0) {
-        len = len + 1
-    }
+    let len = strlen(s)
     write(1, s, len)
     return 0
 }
@@ -24,30 +22,24 @@ fn println(s) {
 
 fn print_i(n) {
     if (n == 0) { write(1, "0", 1); return 0 }
-    if (n < 0) { write(1, "-", 1); n = 0 - n }
-    
-    let buf = malloc(24)
-    let mut i = 0
-    let mut v = n
-    while (v > 0) {
-        let p = byte_add(buf, i)
-        *p = (v % 10) + 48
-        v = v / 10
-        i = i + 1
-    }
-    
-    while (i > 0) {
-        i = i - 1
-        let p = byte_add(buf, i)
-        write(1, p, 1)
-    }
-    free(buf)
+    let s = itoa(n)
+    print_s(s)
+    free(s)
     return 0
 }
 
-fn output_int(n) { return print_i(n) }
+fn output_int(n) { 
+    print_i(n)
+    write(1, "\n", 1)
+    return 0
+}
+
 fn print(n) { return print_i(n) }
-fn output(s) { return print_s(s) }
+fn output(s) { 
+    print_s(s)
+    write(1, "\n", 1)
+    return 0
+}
 
 fn print_hex(val) {
     write(1, "0x", 2)
@@ -60,7 +52,7 @@ fn print_hex(val) {
         let digit = v % 16
         let p_char = byte_add(chars, digit)
         let p_s = byte_add(s, i)
-        *p_s = *p_char
+        store_i8(p_s, load_i8(p_char))
         v = v / 16
         i = i - 1
     }
@@ -68,13 +60,12 @@ fn print_hex(val) {
     free(s)
 }
 
-fn print_newline() { print_s("\n") }
-fn print_space() { print_s(" ") }
+fn print_newline() { write(1, "\n", 1) }
+fn print_space() { write(1, " ", 1) }
 
 fn os_write_file(path, content, len) {
     let fd = open(path, 65, 420)
-    if (fd < 0) { return fd } // Просто возвращаем код ошибки. Аудитор видит это как "передачу владения".
-    
+    if (fd < 0) { return fd }
     write(fd, content, len)
     close(fd)
     return len
@@ -83,7 +74,6 @@ fn os_write_file(path, content, len) {
 fn os_read_file(path, buf, sz) {
     let fd = open(path, 0, 0)
     if (fd < 0) { return fd }
-    
     let res = read(fd, buf, sz)
     close(fd)
     return res

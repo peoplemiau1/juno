@@ -4,7 +4,7 @@
 // Get string length
 fn strlen(s) {
     let mut i = 0
-    while (*(byte_add(s, i)) != 0) {
+    while (load_i8(byte_add(s, i)) != 0) {
         i = i + 1
     }
     return i
@@ -15,8 +15,8 @@ fn strlen(s) {
 fn streq(s1, s2) {
     let mut i = 0
     while (1) {
-        let c1 = *(byte_add(s1, i))
-        let c2 = *(byte_add(s2, i))
+        let c1 = load_i8(byte_add(s1, i))
+        let c2 = load_i8(byte_add(s2, i))
         if (c1 != c2) { return 0 }
         if (c1 == 0) { return 1 }
         i = i + 1
@@ -29,9 +29,8 @@ fn str_hash(s) {
     let mut hash = 5381
     let mut i = 0
     while (1) {
-        let c = *(byte_add(s, i))
+        let c = load_i8(byte_add(s, i))
         if (c == 0) { break }
-        // hash = ((hash << 5) + hash) + c
         hash = (hash * 33) + c
         i = i + 1
     }
@@ -51,7 +50,7 @@ fn str_find(s, sub) {
         let mut j = 0
         let mut is_match = 1
         while (j < len2) {
-            if (*(byte_add(s, i + j)) != *(byte_add(sub, j))) {
+            if (load_i8(byte_add(s, i + j)) != load_i8(byte_add(sub, j))) {
                 is_match = 0
                 break
             }
@@ -68,10 +67,10 @@ fn str_substring(s, start, len) {
     let buf = malloc(len + 1)
     let mut i = 0
     while (i < len) {
-        *(byte_add(buf, i)) = *(byte_add(s, start + i))
+        store_i8(byte_add(buf, i), load_i8(byte_add(s, start + i)))
         i = i + 1
     }
-    *(byte_add(buf, len)) = 0
+    store_i8(byte_add(buf, len), 0)
     return buf
 }
 
@@ -85,7 +84,8 @@ fn str_contains(s, sub) {
 fn itoa(n) {
     if (n == 0) {
         let b = malloc(2)
-        *(byte_add(b, 0)) = 48; *(byte_add(b, 1)) = 0
+        store_i8(byte_add(b, 0), 48)
+        store_i8(byte_add(b, 1), 0)
         return b
     }
     
@@ -96,27 +96,28 @@ fn itoa(n) {
     let buf = malloc(32)
     let mut i = 0
     while (val > 0) {
-        *(byte_add(buf, i)) = (val % 10) + 48
+        store_i8(byte_add(buf, i), (val % 10) + 48)
         val = val / 10
         i = i + 1
     }
-    if (neg == 1) { *(byte_add(buf, i)) = 45; i = i + 1 }
+    if (neg == 1) { 
+        store_i8(byte_add(buf, i), 45)
+        i = i + 1 
+    }
     
     // Reverse
     let res = malloc(i + 1)
     let mut j = 0
     while (j < i) {
-        *(byte_add(res, j)) = *(byte_add(buf, i - j - 1))
+        store_i8(byte_add(res, j), load_i8(byte_add(buf, i - j - 1)))
         j = j + 1
     }
-    *(byte_add(res, i)) = 0
+    store_i8(byte_add(res, i), 0)
     free(buf)
     return res
 }
 
-// Convert float to string
-// Convert float to string
 fn ftoa(f) {
-    let mut int_part = i32(f)
-    return itoa(int_part) // Temporary stub until full float parsing
+    let int_part = i32(f)
+    return itoa(int_part)
 }
