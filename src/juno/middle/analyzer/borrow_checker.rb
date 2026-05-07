@@ -39,7 +39,6 @@ class BorrowChecker
           if new_effects != old_effects
             @fn_effects[node[:name]] = new_effects
             changed = true
-            puts "DEBUG: Function '#{node[:name]}' consumes: #{new_effects.inspect}" if ENV['JUNO_DEBUG_BORROW']
           end
         end
       end

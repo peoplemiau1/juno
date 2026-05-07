@@ -1,4 +1,0 @@
-fn main() {
-    output_int(123)
-    output("Done")
-}

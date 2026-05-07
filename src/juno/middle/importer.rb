@@ -56,8 +56,6 @@ class Importer
       full_path = File.join(@base_path, path)
     end
     
-    puts "DEBUG: Importing '#{path}' (system: #{is_system}) -> #{full_path}" if ENV['JUNO_DEBUG_IMPORT']
-
     # Normalize path
     full_path = File.expand_path(full_path)
 
