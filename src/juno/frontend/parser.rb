@@ -57,6 +57,7 @@ class Parser
     return node unless node.is_a?(Hash) && token
     node[:line] = token[:line]
     node[:column] = token[:column]
+    node[:filename] = @filename
     node
   end
 

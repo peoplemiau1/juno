@@ -19,7 +19,7 @@ class ResourceAuditor
     @res_status.each do |id, status|
       if status == :allocated
         node = @res_node[id]
-        JunoErrorReporter.warn("Resource leak detected: Resource allocated but never freed/closed.", filename: @filename, line_num: node[:line] || 0)
+        JunoErrorReporter.warn("Resource leak detected: Resource allocated but never freed/closed.", filename: node[:filename] || @filename, line_num: node[:line] || 0)
       end
     end
   end
@@ -65,7 +65,7 @@ class ResourceAuditor
         @res_status.each do |id, status|
           if status == :allocated
             n = @res_node[id]
-            JunoErrorReporter.warn("Resource leak in function '#{node[:name]}': Resource never freed.", filename: @filename, line_num: n[:line] || 0)
+            JunoErrorReporter.warn("Resource leak in function '#{node[:name]}': Resource never freed.", filename: n[:filename] || @filename, line_num: n[:line] || 0)
             @res_status[id] = :leaked # Mark to avoid double warning
           end
         end

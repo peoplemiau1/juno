@@ -53,6 +53,10 @@ POSITIVE_TESTS=(
   tests/test_selfhost_lexer_smoke.juno
   tests/test_selfhost_parser_smoke.juno
   tests/test_selfhost_codegen_smoke.juno
+  tests/test_float_audit.juno
+  tests/test_float_math.juno
+  tests/test_new_features.juno
+  tests/test_predictive_borrow.juno
 )
 
 FLAT_TESTS=(

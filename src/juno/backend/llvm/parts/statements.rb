@@ -58,7 +58,8 @@ module LLVMStatementGenerator
       struct_name = node[:struct_name] || find_struct_for_field(field_name)
       if struct_name
         ptr = next_tmp
-        @output << "  %#{ptr} = load i64, i64* %#{receiver}\n"
+        ptr_sigil = (@globals && @globals.key?(receiver)) ? "@" : "%"
+        @output << "  %#{ptr} = load i64, i64* #{ptr_sigil}#{receiver}\n"
         struct_ptr = next_tmp
         @output << "  %#{struct_ptr} = inttoptr i64 %#{ptr} to %struct.#{struct_name}*\n"
         field_idx = @structs[struct_name][:fields].index(field_name)
@@ -69,7 +70,8 @@ module LLVMStatementGenerator
       end
     else
       val = eval_expr(node[:expression])
-      @output << "  store i64 #{val}, i64* %#{node[:name]}\n"
+      ptr_sigil = (@globals && @globals.key?(node[:name])) ? "@" : "%"
+      @output << "  store i64 #{val}, i64* #{ptr_sigil}#{node[:name]}\n"
     end
   end
 
@@ -142,14 +144,15 @@ module LLVMStatementGenerator
 
   def gen_increment(node)
     val = next_tmp
-    @output << "  %#{val} = load i64, i64* %#{node[:name]}\n"
+    ptr_sigil = (@globals && @globals.key?(node[:name])) ? "@" : "%"
+    @output << "  %#{val} = load i64, i64* #{ptr_sigil}#{node[:name]}\n"
     res = next_tmp
     if node[:op] == "++"
       @output << "  %#{res} = add i64 %#{val}, 1\n"
     else
       @output << "  %#{res} = sub i64 %#{val}, 1\n"
     end
-    @output << "  store i64 %#{res}, i64* %#{node[:name]}\n"
+    @output << "  store i64 %#{res}, i64* #{ptr_sigil}#{node[:name]}\n"
   end
 
   def collect_locals(nodes, locals, arrays)

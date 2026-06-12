@@ -82,3 +82,21 @@ fn os_read_file(path, buf, sz) {
 fn getbuf() {
     return malloc(1024)
 }
+
+// === НОВЫЕ СИСТЕМНЫЕ ФУНКЦИИ ===
+
+// Объявление системной usleep из библиотеки Си (glibc)
+extern fn usleep(usec)
+
+// Приостановка программы в миллисекундах
+fn sleep_ms(ms) {
+    usleep(ms * 1000)
+    return 0
+}
+
+// Возвращает точное время в миллисекундах (на стеке, без malloc)
+fn time_ms() {
+    let ts[2]
+    syscall(228, 1, ts)
+    return ts[0] * 1000 + ts[1] / 1000000
+}

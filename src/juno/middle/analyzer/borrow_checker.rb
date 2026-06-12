@@ -82,13 +82,37 @@ class BorrowChecker
 
   private
 
+  def block_returns?(body)
+    return false unless body.is_a?(Array)
+    body.each do |stmt|
+      next unless stmt.is_a?(Hash)
+      return true if stmt[:type] == :return || stmt[:type] == :return_statement
+      if stmt[:type] == :if_statement
+        if block_returns?(stmt[:body]) && block_returns?(stmt[:else_body])
+          return true
+        end
+      end
+    end
+    false
+  end
+
   def report_error(message, node)
+    node_filename = node[:filename] || @filename
+    node_source = @source
+    if node[:filename] && node[:filename] != @filename
+      begin
+        node_source = File.read(node[:filename])
+      rescue
+        # fallback to @source
+      end
+    end
+
     error = JunoTypeError.new(
       message,
-      filename: @filename,
+      filename: node_filename,
       line_num: node[:line],
       column: node[:column],
-      source: @source
+      source: node_source
     )
     JunoErrorReporter.report(error)
   end
@@ -178,25 +202,38 @@ class BorrowChecker
       (node[:body] || []).each { |n| process_node(n) }
       
       then_state = @var_states
+      then_returns = block_returns?(node[:body])
+
       @var_states = saved_state
       (node[:else_body] || []).each { |n| process_node(n) }
       
-      # Merge: if either branch freed/moved, consider it potentially freed/moved
-      # This is conservative but safe
-      then_state.each do |name, info|
-        if @var_states.key?(name)
-          current = @var_states[name]
-          # If the then-branch freed it but else didn't, or vice versa, warn
-          if info[:state] != current[:state]
-            # Take the more restrictive state
-            if info[:state] == :freed || current[:state] == :freed
-              @var_states[name] = { state: :freed, line: node[:line] }
-            elsif info[:state] == :moved || current[:state] == :moved
-              @var_states[name] = { state: :moved, line: node[:line] }
+      else_state = @var_states
+      else_returns = block_returns?(node[:else_body])
+
+      if then_returns && else_returns
+        @var_states = else_state
+      elsif then_returns
+        @var_states = else_state
+      elsif else_returns
+        @var_states = then_state
+      else
+        # Merge: if either branch freed/moved, consider it potentially freed/moved
+        # This is conservative but safe
+        then_state.each do |name, info|
+          if @var_states.key?(name)
+            current = @var_states[name]
+            # If the then-branch freed it but else didn't, or vice versa, warn
+            if info[:state] != current[:state]
+              # Take the more restrictive state
+              if info[:state] == :freed || current[:state] == :freed
+                @var_states[name] = { state: :freed, line: node[:line] }
+              elsif info[:state] == :moved || current[:state] == :moved
+                @var_states[name] = { state: :moved, line: node[:line] }
+              end
             end
+          else
+            @var_states[name] = info
           end
-        else
-          @var_states[name] = info
         end
       end
 

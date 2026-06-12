@@ -1,0 +1,272 @@
+extern fn InitWindow(width: int, height: int, title: ptr) from "libraylib.so"
+extern fn WindowShouldClose(): int from "libraylib.so"
+extern fn BeginDrawing() from "libraylib.so"
+extern fn EndDrawing() from "libraylib.so"
+extern fn ClearBackground(color: int) from "libraylib.so"
+extern fn DrawText(text: ptr, posX: int, posY: int, fontSize: int, color: int) from "libraylib.so"
+extern fn DrawRectangle(posX: int, posY: int, width: int, height: int, color: int) from "libraylib.so"
+extern fn DrawRectangleLines(posX: int, posY: int, width: int, height: int, color: int) from "libraylib.so"
+extern fn DrawLine(startX: int, startY: int, endX: int, endY: int, color: int) from "libraylib.so"
+extern fn DrawCircle(centerX: int, centerY: int, radius: float, color: int) from "libraylib.so"
+extern fn DrawPixel(posX: int, posY: int, color: int) from "libraylib.so"
+extern fn CloseWindow() from "libraylib.so"
+extern fn SetTargetFPS(fps: int) from "libraylib.so"
+
+extern fn IsKeyPressed(key: int): int from "libraylib.so"
+extern fn IsKeyDown(key: int): int from "libraylib.so"
+extern fn IsKeyReleased(key: int): int from "libraylib.so"
+extern fn IsMouseButtonPressed(button: int): int from "libraylib.so"
+extern fn IsMouseButtonDown(button: int): int from "libraylib.so"
+extern fn GetMouseX(): int from "libraylib.so"
+extern fn GetMouseY(): int from "libraylib.so"
+extern fn GetFPS(): int from "libraylib.so"
+extern fn GetCharPressed(): int from "libraylib.so"
+extern fn GetKeyPressed(): int from "libraylib.so"
+
+extern fn juno_load_font(filename: ptr): ptr
+extern fn juno_draw_text(font: ptr, text: ptr, x: int, y: int, size: int, spacing: int, color: int)
+
+let mut g_layout_x = 0
+let mut g_layout_y = 0
+let mut g_layout_spacing = 0
+let mut g_layout_font = 0
+
+fn gui_init(width, height, title) {
+    InitWindow(width, height, title)
+}
+
+fn gui_should_close() -> int {
+    return WindowShouldClose() & 1
+}
+
+fn gui_begin() {
+    BeginDrawing()
+}
+
+fn gui_end() {
+    EndDrawing()
+}
+
+fn gui_clear(clr) {
+    ClearBackground(clr)
+}
+
+fn gui_draw_rect(x, y, w, h, clr) {
+    DrawRectangle(x, y, w, h, clr)
+}
+
+fn gui_draw_rect_lines(x, y, w, h, clr) {
+    DrawRectangleLines(x, y, w, h, clr)
+}
+
+fn gui_draw_line(x1, y1, x2, y2, clr) {
+    DrawLine(x1, y1, x2, y2, clr)
+}
+
+fn gui_draw_circle(cx, cy, r: float, clr) {
+    DrawCircle(cx, cy, r, clr)
+}
+
+fn gui_draw_pixel(x, y, clr) {
+    DrawPixel(x, y, clr)
+}
+
+fn gui_draw_text(text, x, y, size, clr) {
+    DrawText(text, x, y, size, clr)
+}
+
+fn gui_set_fps(fps) {
+    SetTargetFPS(fps)
+}
+
+fn gui_get_fps() -> int {
+    return GetFPS()
+}
+
+fn gui_close() {
+    CloseWindow()
+}
+
+fn gui_color(r, g, b, a) -> int {
+    return r | (g << 8) | (b << 16) | (a << 24)
+}
+
+fn gui_color_lighten(clr, amount) -> int {
+    let r = clr & 255
+    let g = (clr >> 8) & 255
+    let b = (clr >> 16) & 255
+    let a = (clr >> 24) & 255
+    
+    let mut nr = r + amount
+    let mut ng = g + amount
+    let mut nb = b + amount
+    
+    if (nr > 255) { nr = 255 }
+    if (ng > 255) { ng = 255 }
+    if (nb > 255) { nb = 255 }
+    
+    return nr | (ng << 8) | (nb << 16) | (a << 24)
+}
+
+fn gui_load_font(filename) -> ptr {
+    return juno_load_font(filename)
+}
+
+fn gui_draw_text_ttf(font, text, x, y, size, spacing, clr) {
+    juno_draw_text(font, text, x, y, size, spacing, clr)
+}
+
+fn gui_set_font(font_ptr) {
+    g_layout_font = font_ptr
+}
+
+fn gui_begin_column(start_x, start_y, spacing) {
+    g_layout_x = start_x
+    g_layout_y = start_y
+    g_layout_spacing = spacing
+}
+
+fn gui_render_text(text, size, clr) {
+    if (g_layout_font == 0) {
+        DrawText(text, g_layout_x, g_layout_y, size, clr)
+    } else {
+        juno_draw_text(g_layout_font, text, g_layout_x, g_layout_y, size, 1, clr)
+    }
+    g_layout_y = g_layout_y + size + g_layout_spacing
+}
+
+fn gui_render_rect(w, h, clr) {
+    DrawRectangle(g_layout_x, g_layout_y, w, h, clr)
+    g_layout_y = g_layout_y + h + g_layout_spacing
+}
+
+fn gui_render_button(text, w, h, clr) -> int {
+    let x = g_layout_x
+    let y = g_layout_y
+    
+    let mx = GetMouseX()
+    let my = GetMouseY()
+    
+    let mut hover = 0
+    if (mx >= x) {
+        if (mx <= (x + w)) {
+            if (my >= y) {
+                if (my <= (y + h)) {
+                    hover = 1
+                }
+            }
+        }
+    }
+    
+    let mut draw_color = clr
+    if (hover == 1) {
+        draw_color = gui_color_lighten(clr, 30)
+    }
+    
+    DrawRectangle(x, y, w, h, draw_color)
+    
+    let text_len = len(text)
+    let text_x = x + (w / 2) - (text_len * 4)
+    let text_y = y + (h / 2) - 8
+    
+    if (g_layout_font == 0) {
+        DrawText(text, text_x, text_y, 10, 0xFFFFFFFF)
+    } else {
+        juno_draw_text(g_layout_font, text, text_x, text_y, 16, 1, 0xFFFFFFFF)
+    }
+    
+    g_layout_y = g_layout_y + h + g_layout_spacing
+    
+    if (hover == 1) {
+        if ((IsMouseButtonPressed(0) & 1) == 1) {
+            return 1
+        }
+    }
+    return 0
+}
+
+fn gui_end_column() {
+    g_layout_x = 0
+    g_layout_y = 0
+    g_layout_spacing = 0
+}
+
+fn gui_check_collision(x1, y1, w1, h1, x2, y2, w2, h2) -> int {
+    if (x1 < (x2 + w2)) {
+        if ((x1 + w1) > x2) {
+            if (y1 < (y2 + h2)) {
+                if ((y1 + h1) > y2) {
+                    return 1
+                }
+            }
+        }
+    }
+    return 0
+}
+
+fn gui_is_key_pressed(key) -> int {
+    return IsKeyPressed(key) & 1
+}
+
+fn gui_is_key_down(key) -> int {
+    return IsKeyDown(key) & 1
+}
+
+fn gui_is_key_released(key) -> int {
+    return IsKeyReleased(key) & 1
+}
+
+fn gui_is_mouse_pressed(btn) -> int {
+    return IsMouseButtonPressed(btn) & 1
+}
+
+fn gui_is_mouse_down(btn) -> int {
+    return IsMouseButtonDown(btn) & 1
+}
+
+fn gui_mouse_x() -> int {
+    return GetMouseX()
+}
+
+fn gui_mouse_y() -> int {
+    return GetMouseY()
+}
+
+fn gui_get_char_pressed() -> int {
+    return GetCharPressed()
+}
+
+fn gui_get_key_pressed() -> int {
+    return GetKeyPressed()
+}
+
+fn gui_color_rosewater() -> int { return 0xFFDCF2F5 }
+fn gui_color_flamingo() -> int { return 0xFFDEC2F2 }
+fn gui_color_pink() -> int { return 0xFFE8B4F5 }
+fn gui_color_mauve() -> int { return 0xFFF5A0C6 }
+fn gui_color_red() -> int { return 0xFF8BE7F3 }
+fn gui_color_maroon() -> int { return 0xFF95B2E1 }
+fn gui_color_peach() -> int { return 0xFFA6BEFE }
+fn gui_color_yellow() -> int { return 0xFF9BE1F9 }
+fn gui_color_green() -> int { return 0xFFA1E3A6 }
+fn gui_color_teal() -> int { return 0xFFC9E494 }
+fn gui_color_sky() -> int { return 0xFFEAE291 }
+fn gui_color_sapphire() -> int { return 0xFFEAE274 }
+fn gui_color_blue() -> int { return 0xFFF5B489 }
+fn gui_color_lavender() -> int { return 0xFFDCB4B5 }
+fn gui_color_base() -> int { return 0xFF2E1E1E }
+fn gui_color_mantle() -> int { return 0xFF25181E }
+
+fn gui_key_space() -> int { return 32 }
+fn gui_key_enter() -> int { return 257 }
+fn gui_key_escape() -> int { return 256 }
+fn gui_key_right() -> int { return 262 }
+fn gui_key_left() -> int { return 263 }
+fn gui_key_down() -> int { return 264 }
+fn gui_key_up() -> int { return 265 }
+fn gui_key_a() -> int { return 65 }
+fn gui_key_d() -> int { return 68 }
+fn gui_key_s() -> int { return 83 }
+fn gui_key_w() -> int { return 87 }
+fn gui_mouse_left() -> int { return 0 }
+fn gui_mouse_right() -> int { return 1 }

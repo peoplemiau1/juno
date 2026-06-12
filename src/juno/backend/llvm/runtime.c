@@ -6,12 +6,57 @@
 #include <sys/stat.h>
 #include <ctype.h>
 
-// Juno String Concatenation
+typedef struct {
+    unsigned int id;
+    int width;
+    int height;
+    int mipmaps;
+    int format;
+} J_Texture2D;
+
+typedef struct {
+    int baseSize;
+    int glyphCount;
+    int glyphPadding;
+    J_Texture2D texture;
+    void* recs;
+    void* glyphs;
+} J_Font;
+
+typedef struct {
+    float x;
+    float y;
+} J_Vector2;
+
+typedef struct {
+    unsigned char r;
+    unsigned char g;
+    unsigned char b;
+    unsigned char a;
+} J_Color;
+
+extern void DrawTextEx(J_Font font, const char *text, J_Vector2 position, float fontSize, float spacing, J_Color tint);
+extern J_Font LoadFont(const char *fileName);
+
+long juno_load_font(long filename_ptr) {
+    J_Font* f = malloc(sizeof(J_Font));
+    *f = LoadFont((char*)filename_ptr);
+    return (long)f;
+}
+
+void juno_draw_text(long font_ptr, long text_ptr, long x, long y, long size, long spacing, long color) {
+    J_Font* f = (J_Font*)font_ptr;
+    J_Vector2 pos = { (float)x, (float)y };
+    J_Color clr = { (unsigned char)(color & 255), (unsigned char)((color >> 8) & 255), (unsigned char)((color >> 16) & 255), (unsigned char)((color >> 24) & 255) };
+    DrawTextEx(*f, (char*)text_ptr, pos, (float)size, (float)spacing, clr);
+}
+
 long concat(long s1_ptr, long s2_ptr) {
     char* s1 = (char*)s1_ptr;
     char* s2 = (char*)s2_ptr;
-    if (!s1) s1 = "";
-    if (!s2) s2 = "";
+    char empty[1] = {0};
+    if (!s1) s1 = empty;
+    if (!s2) s2 = empty;
     
     size_t len1 = strlen(s1);
     size_t len2 = strlen(s2);
@@ -25,12 +70,9 @@ long trim(long s_ptr) {
     char* s = (char*)s_ptr;
     if (!s || *s == 0) return s_ptr;
     
-    // Trim leading
     while (*s && isspace((unsigned char)*s)) s++;
-    
     if (*s == 0) return (long)s;
 
-    // Trim trailing
     char* end = s + strlen(s) - 1;
     while (end > s && isspace((unsigned char)*end)) end--;
     *(end + 1) = 0;
@@ -94,4 +136,13 @@ long substr(long s_ptr, long start, long len) {
     memcpy(res, s + start, len);
     res[len] = 0;
     return (long)res;
+}
+
+long prints(long s_ptr) {
+    char* s = (char*)s_ptr;
+    if (s) {
+        printf("%s\n", s);
+        fflush(stdout);
+    }
+    return 0;
 }

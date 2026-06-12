@@ -2,7 +2,7 @@
 require 'optparse'
 require 'fileutils'
 
-PROJECT_ROOT = File.expand_path("..", File.dirname(__FILE__))
+PROJECT_ROOT = File.expand_path("..", __dir__)
 
 GREEN = "\e[32m"
 BOLD = "\e[1m"

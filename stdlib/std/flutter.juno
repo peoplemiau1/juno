@@ -1,0 +1,120 @@
+extern fn FlutterEngineInitialize(version: int, config: ptr, args: ptr, user_data: ptr, engine_out: ptr): int from "libflutter_engine.so"
+extern fn FlutterEngineRunInitialized(engine: ptr): int from "libflutter_engine.so"
+extern fn FlutterEngineShutdown(engine: ptr): int from "libflutter_engine.so"
+extern fn FlutterEngineGetCurrentTime(): int from "libflutter_engine.so"
+extern fn FlutterEngineSendWindowMetricsEvent(engine: ptr, event: ptr): int from "libflutter_engine.so"
+extern fn FlutterEngineSendPointerEvent(engine: ptr, events: ptr, count: int): int from "libflutter_engine.so"
+
+struct FlutterApp {
+    engine_ptr
+    assets_path
+    icu_path
+    width
+    height
+    pixel_ratio
+}
+
+fn FlutterApp.create(assets: ptr, icu: ptr) -> ptr {
+    let self: FlutterApp = malloc(48)
+    self.engine_ptr = 0
+    self.assets_path = assets
+    self.icu_path = icu
+    self.width = 1024
+    self.height = 768
+    self.pixel_ratio = 1.0
+    return self
+}
+
+fn FlutterApp.start_software(self, present_callback_ptr) -> int {
+    let config = malloc(24)
+    store_i64(config, 1)
+    
+    let soft_config = ptr_add(config, 1)
+    store_i64(soft_config, 16)
+    store_i64(ptr_add(soft_config, 1), present_callback_ptr)
+    
+    let args_size = 512
+    let args = malloc(args_size)
+    memset(args, 0, args_size)
+    
+    store_i64(args, args_size)
+    store_i64(ptr_add(args, 1), self.assets_path)
+    store_i64(ptr_add(args, 2), 0)
+    store_i64(ptr_add(args, 3), 0)
+    store_i64(ptr_add(args, 4), self.icu_path)
+    
+    let engine_out = malloc(8)
+    store_i64(engine_out, 0)
+    
+    let res = FlutterEngineInitialize(1, config, args, self, engine_out)
+    if (res != 0) {
+        free(config)
+        free(args)
+        free(engine_out)
+        return res
+    }
+    
+    self.engine_ptr = load_i64(engine_out)
+    
+    res = FlutterEngineRunInitialized(self.engine_ptr)
+    
+    free(config)
+    free(args)
+    free(engine_out)
+    return res
+}
+
+fn FlutterApp.update_size(self, w, h, ratio) -> int {
+    self.width = w
+    self.height = h
+    self.pixel_ratio = ratio
+    
+    if (self.engine_ptr == 0) { return 0 - 1 }
+    
+    let event_size = 136
+    let event = malloc(event_size)
+    memset(event, 0, event_size)
+    
+    store_i64(event, event_size)
+    store_i64(ptr_add(event, 1), w)
+    store_i64(ptr_add(event, 2), h)
+    store_i64(ptr_add(event, 3), ratio)
+    store_i64(ptr_add(event, 4), 0)
+    store_i64(ptr_add(event, 5), 0)
+    store_i64(ptr_add(event, 10), 0)
+    store_i64(ptr_add(event, 11), 0)
+    
+    let res = FlutterEngineSendWindowMetricsEvent(self.engine_ptr, event)
+    free(event)
+    return res
+}
+
+fn FlutterApp.send_pointer(self, phase, x, y, buttons) -> int {
+    if (self.engine_ptr == 0) { return 0 - 1 }
+    
+    let event_size = 152
+    let event = malloc(event_size)
+    memset(event, 0, event_size)
+    
+    store_i64(event, event_size)
+    store_i64(ptr_add(event, 1), phase)
+    store_i64(ptr_add(event, 2), FlutterEngineGetCurrentTime())
+    store_i64(ptr_add(event, 3), x)
+    store_i64(ptr_add(event, 4), y)
+    store_i64(ptr_add(event, 5), 0)
+    store_i64(ptr_add(event, 6), 0)
+    store_i64(ptr_add(event, 10), 1)
+    store_i64(ptr_add(event, 11), buttons)
+    store_i64(ptr_add(event, 15), 0)
+    
+    let res = FlutterEngineSendPointerEvent(self.engine_ptr, event, 1)
+    free(event)
+    return res
+}
+
+fn FlutterApp.shutdown(self) -> int {
+    if (self.engine_ptr == 0) { return 0 - 1 }
+    let res = FlutterEngineShutdown(self.engine_ptr)
+    self.engine_ptr = 0
+    return res
+}

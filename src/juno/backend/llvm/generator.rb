@@ -18,18 +18,28 @@ class LLVMGenerator
     @tmp_count = 0
     @label_count = 0
     @structs = {}
+    @globals = {}
   end
 
-  BUILTINS = %w(printf malloc realloc free concat trim file_read_all file_read_safe exists write read open close getpid juno_strlen juno_pow time rand srand substr syscall spin_lock spin_unlock)
+  BUILTINS = %w(printf malloc realloc free concat trim file_read_all file_read_safe exists write read open close getpid juno_strlen juno_pow time rand srand substr syscall spin_lock spin_unlock prints)
 
   def generate
     @output = ""
     emit_header
     setup_builtins
     
+    @globals = {}
+    @ast.each do |node|
+      if node.is_a?(Hash) && node[:type] == :assignment && node[:let]
+        val = node[:expression] && node[:expression][:type] == :literal ? node[:expression][:value] : 0
+        @globals[node[:name]] = val
+      end
+    end
+
     collect_metadata(@ast)
     emit_structs
     emit_strings
+    emit_globals
 
     @ast.each do |node|
       process_node(node)
@@ -67,6 +77,7 @@ class LLVMGenerator
     @output << "declare void @srand(i32)\n"
     @output << "declare i64 @substr(i64, i64, i64)\n"
     @output << "declare i64 @syscall(i64, ...)\n"
+    @output << "declare i64 @prints(i64)\n"
     @output << "declare void @llvm.memcpy.p0i8.p0i8.i64(i8*, i8*, i64, i1)\n"
     @output << "declare void @llvm.memset.p0i8.i64(i8*, i8, i64, i1)\n"
 
@@ -102,6 +113,13 @@ class LLVMGenerator
     @structs.each do |name, info|
       fields = info[:fields].map { "i64" }.join(", ")
       @output << "%struct.#{name} = type { #{fields} }\n"
+    end
+    @output << "\n"
+  end
+
+  def emit_globals
+    @globals.each do |name, val|
+      @output << "@#{name} = global i64 #{val}\n"
     end
     @output << "\n"
   end
@@ -178,7 +196,7 @@ class LLVMGenerator
   end
 
   def next_tmp
-    res = "t#{@tmp_count}"
+    res = "tmp#{@tmp_count}" 
     @tmp_count += 1
     res
   end

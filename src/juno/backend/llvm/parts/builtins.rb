@@ -125,6 +125,11 @@ module LLVMBuiltinGenerator
       r = next_tmp
       @output << "  %#{r} = call i64 @malloc(i64 #{arg})\n"
       return "%#{r}"
+    when "alloc"
+      arg = eval_expr(node[:args][0])
+      r = next_tmp
+      @output << "  %#{r} = call i64 @malloc(i64 #{arg})\n"
+      return "%#{r}"
     when "realloc"
       ptr = eval_expr(node[:args][0])
       size = eval_expr(node[:args][1])
@@ -139,6 +144,30 @@ module LLVMBuiltinGenerator
       @output << "  %#{tmp_ptr} = inttoptr i64 #{ptr} to i8*\n"
       @output << "  call void @free(i8* %#{tmp_ptr})\n"
       return "0"
+    when "prints"
+      arg = eval_expr(node[:args][0])
+      r = next_tmp
+      @output << "  %#{r} = call i64 @prints(i64 #{arg})\n"
+      return "%#{r}"
+    when "len"
+      arg_node = node[:args][0]
+      if arg_node && arg_node[:type] == :variable && @current_arrays && @current_arrays[arg_node[:name]]
+        return @current_arrays[arg_node[:name]].to_s
+      else
+        arg = eval_expr(arg_node)
+        r = next_tmp
+        @output << "  %#{r} = call i64 @juno_strlen(i64 #{arg})\n"
+        return "%#{r}"
+      end
+    when "sizeof"
+      arg = node[:args][0]
+      size = 8
+      if arg && arg[:type] == :variable && @structs.key?(arg[:name])
+        size = @structs[arg[:name]][:fields].size * 8
+      elsif arg && arg[:type] == :variable && @structs.key?(arg[:inferred_type])
+        size = @structs[arg[:inferred_type]][:fields].size * 8
+      end
+      return size.to_s
     when "write", "read"
       args = node[:args].map { |a| eval_expr(a) }
       tmp_ptr = next_tmp

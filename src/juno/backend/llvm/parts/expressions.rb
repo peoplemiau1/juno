@@ -23,10 +23,23 @@ module LLVMExpressionGenerator
         # Array decays to pointer
         size = @current_arrays[node[:name]]
         gep = next_tmp
-        @output << "  %#{gep} = getelementptr inbounds [#{size} x i64], [#{size} x i64]* %#{node[:name]}, i64 0, i64 #{idx}\n"
+        @output << "  %#{gep} = getelementptr inbounds [#{size} x i64], [#{size} x i64]* %#{node[:name]}, i64 0, i64 0\n"
         tmp_ptr = next_tmp
         @output << "  %#{tmp_ptr} = ptrtoint i64* %#{gep} to i64\n"
         "%#{tmp_ptr}"
+      elsif @globals && @globals.key?(node[:name])
+        tmp = next_tmp
+        @output << "  %#{tmp} = load i64, i64* @#{node[:name]}\n"
+        "%#{tmp}"
+      elsif fn_node = @ast.find { |n| (n[:type] == :function_definition || n[:type] == :extern_definition) && n[:name] == node[:name] }
+        # Находим функцию в AST и безопасно кастим её указатель в i64 для передачи параметром!
+        params_count = fn_node[:params] ? fn_node[:params].length : 0
+        args_types = Array.new(params_count, "i64").join(", ")
+        fn_type = "i64 (#{args_types})*"
+        
+        tmp = next_tmp
+        @output << "  %#{tmp} = ptrtoint #{fn_type} @#{node[:name].gsub('.', '_')} to i64\n"
+        "%#{tmp}"
       else
         tmp = next_tmp
         @output << "  %#{tmp} = load i64, i64* %#{node[:name]}\n"
@@ -50,7 +63,8 @@ module LLVMExpressionGenerator
       case operand[:type]
       when :variable
         tmp = next_tmp
-        @output << "  %#{tmp} = ptrtoint i64* %#{operand[:name]} to i64\n"
+        ptr_sigil = (@globals && @globals.key?(operand[:name])) ? "@" : "%"
+        @output << "  %#{tmp} = ptrtoint i64* #{ptr_sigil}#{operand[:name]} to i64\n"
         "%#{tmp}"
       when :array_access
         # Get address instead of loading value
@@ -61,7 +75,8 @@ module LLVMExpressionGenerator
           @output << "  %#{gep} = getelementptr inbounds [#{size} x i64], [#{size} x i64]* %#{operand[:name]}, i64 0, i64 #{idx}\n"
         else
           base = next_tmp
-          @output << "  %#{base} = load i64, i64* %#{operand[:name]}\n"
+          ptr_sigil = (@globals && @globals.key?(operand[:name])) ? "@" : "%"
+          @output << "  %#{base} = load i64, i64* #{ptr_sigil}#{operand[:name]}\n"
           offset = next_tmp
           @output << "  %#{offset} = mul i64 #{idx}, 8\n"
           addr = next_tmp
@@ -78,7 +93,8 @@ module LLVMExpressionGenerator
         struct_name = operand[:struct_name] || find_struct_for_field(member)
         if struct_name
           ptr = next_tmp
-          @output << "  %#{ptr} = load i64, i64* %#{receiver_name}\n"
+          ptr_sigil = (@globals && @globals.key?(receiver_name)) ? "@" : "%"
+          @output << "  %#{ptr} = load i64, i64* #{ptr_sigil}#{receiver_name}\n"
           struct_ptr = next_tmp
           @output << "  %#{struct_ptr} = inttoptr i64 %#{ptr} to %struct.#{struct_name}*\n"
           field_idx = @structs[struct_name][:fields].index(member)
@@ -100,7 +116,8 @@ module LLVMExpressionGenerator
         @output << "  %#{gep} = getelementptr inbounds [#{size} x i64], [#{size} x i64]* %#{node[:name]}, i64 0, i64 #{idx}\n"
       else
         base = next_tmp
-        @output << "  %#{base} = load i64, i64* %#{node[:name]}\n"
+        ptr_sigil = (@globals && @globals.key?(node[:name])) ? "@" : "%"
+        @output << "  %#{base} = load i64, i64* #{ptr_sigil}#{node[:name]}\n"
         offset = next_tmp
         @output << "  %#{offset} = mul i64 #{idx}, 8\n"
         addr = next_tmp
