@@ -213,7 +213,6 @@ module ParserStatements
       body << stmt if stmt
     end
     consume_symbol('}')
-    params.unshift("self") if name.include?('.') && !params.include?("self")
     node = { type: :function_definition, name: name, params: params, body: body }
     node[:type_params] = type_params unless type_params.empty?
     node[:param_types] = param_types unless param_types.empty?

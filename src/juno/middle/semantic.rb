@@ -101,9 +101,7 @@ class SemanticAnalyzer
     when :function_definition
       # Add params to local vars
       params = (node[:params] || []).dup
-      if node[:name].include?('.')
-        params.unshift("self")
-      end
+      
 
       params.each do |p|
         p_name = p.is_a?(Hash) ? p[:name] : p

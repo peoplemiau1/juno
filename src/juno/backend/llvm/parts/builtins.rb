@@ -251,15 +251,42 @@ module LLVMBuiltinGenerator
       r = next_tmp
       @output << "  %#{r} = zext i8 %#{tmp_v} to i64\n"
       return "%#{r}"
+    when "byte_at"
+      ptr = eval_expr(node[:args][0])
+      idx = eval_expr(node[:args][1])
+      addr = next_tmp
+      @output << "  %#{addr} = add i64 #{ptr}, #{idx}\n"
+      tmp_p = next_tmp
+      @output << "  %#{tmp_p} = inttoptr i64 %#{addr} to i8*\n"
+      tmp_v = next_tmp
+      @output << "  %#{tmp_v} = load i8, i8* %#{tmp_p}, align 1\n"
+      r = next_tmp
+      @output << "  %#{r} = zext i8 %#{tmp_v} to i64\n"
+      return "%#{r}"
+    when "byte_set"
+      ptr = eval_expr(node[:args][0])
+      idx = eval_expr(node[:args][1])
+      val = eval_expr(node[:args][2])
+      addr = next_tmp
+      @output << "  %#{addr} = add i64 #{ptr}, #{idx}\n"
+      tmp_p = next_tmp
+      @output << "  %#{tmp_p} = inttoptr i64 %#{addr} to i8*\n"
+      tmp_v = next_tmp
+      @output << "  %#{tmp_v} = trunc i64 #{val} to i8\n"
+      @output << "  store i8 %#{tmp_v}, i8* %#{tmp_p}, align 1\n"
+      return "0"
     end
 
-    # Method calls and custom functions
     func_name = name.gsub('.', '_')
     if name.include?('.')
       parts = name.split('.')
       receiver_name = parts[0]
       method_name = parts[1]
-      receiver_type = node[:receiver_type] || find_variable_type(receiver_name)
+      receiver_type = node[:receiver_type]
+      
+      if receiver_type.nil? || receiver_type == "int"
+        receiver_type = find_variable_type(receiver_name)
+      end
       
       if receiver_type && !["int", "ptr"].include?(receiver_type)
         real_func_name = "#{receiver_type}_#{method_name}"
@@ -279,6 +306,9 @@ module LLVMBuiltinGenerator
   end
 
   def find_variable_type(name)
+    if @global_types && @global_types.key?(name)
+      return @global_types[name]
+    end
     @current_function[:body].each do |stmt|
       if stmt[:type] == :assignment && stmt[:name] == name
         return stmt[:var_type] || stmt[:inferred_type] || "int"
