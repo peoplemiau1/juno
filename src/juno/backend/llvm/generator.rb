@@ -57,6 +57,8 @@ class LLVMGenerator
 
   def setup_builtins
     @output << "declare i32 @printf(i8*, ...)\n"
+    @output << "declare void @exit(i32)
+"
     @output << "declare i64 @malloc(i64)\n"
     @output << "declare i64 @realloc(i8*, i64)\n"
     @output << "declare void @free(i8*)\n"

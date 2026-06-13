@@ -4,6 +4,8 @@ module LLVMExpressionGenerator
     case node[:type]
     when :literal
       node[:value].to_s
+    when :float_literal
+      [node[:value].to_f].pack("E").unpack1("Q<").to_s
     when :string_literal
       id = @strings[node[:value]]
       tmp = next_tmp
@@ -14,13 +16,11 @@ module LLVMExpressionGenerator
       "%#{tmp_ptr}"
     when :variable
       if @structs && @structs.key?(node[:name])
-        # Struct name used as value -> allocation
         size = @structs[node[:name]][:fields].size * 8
         tmp = next_tmp
         @output << "  %#{tmp} = call i64 @malloc(i64 #{size})\n"
         "%#{tmp}"
       elsif @current_arrays && @current_arrays[node[:name]]
-        # Array decays to pointer
         size = @current_arrays[node[:name]]
         gep = next_tmp
         @output << "  %#{gep} = getelementptr inbounds [#{size} x i64], [#{size} x i64]* %#{node[:name]}, i64 0, i64 0\n"
@@ -32,7 +32,6 @@ module LLVMExpressionGenerator
         @output << "  %#{tmp} = load i64, i64* @#{node[:name]}\n"
         "%#{tmp}"
       elsif fn_node = @ast.find { |n| (n[:type] == :function_definition || n[:type] == :extern_definition) && n[:name] == node[:name] }
-        # Находим функцию в AST и безопасно кастим её указатель в i64 для передачи параметром!
         params_count = fn_node[:params] ? fn_node[:params].length : 0
         args_types = Array.new(params_count, "i64").join(", ")
         fn_type = "i64 (#{args_types})*"
@@ -67,7 +66,6 @@ module LLVMExpressionGenerator
         @output << "  %#{tmp} = ptrtoint i64* #{ptr_sigil}#{operand[:name]} to i64\n"
         "%#{tmp}"
       when :array_access
-        # Get address instead of loading value
         idx = eval_expr(operand[:index])
         gep = next_tmp
         if @current_arrays && @current_arrays[operand[:name]]
@@ -87,7 +85,6 @@ module LLVMExpressionGenerator
         @output << "  %#{res} = ptrtoint i64* %#{gep} to i64\n"
         "%#{res}"
       when :member_access
-        # Similar for struct fields
         receiver_name = operand[:receiver]
         member = operand[:member]
         struct_name = operand[:struct_name] || find_struct_for_field(member)
@@ -171,31 +168,65 @@ module LLVMExpressionGenerator
        return "%#{tmp}"
     end
 
+    is_float = (l_type == "float" || r_type == "float" ||
+                node[:left][:type] == :float_literal || node[:right][:type] == :float_literal)
+
     tmp = next_tmp
-    case node[:op]
-    when "+" then @output << "  %#{tmp} = add i64 #{l}, #{r}\n"
-    when "-" then @output << "  %#{tmp} = sub i64 #{l}, #{r}\n"
-    when "*" then @output << "  %#{tmp} = mul i64 #{l}, #{r}\n"
-    when "/" then @output << "  %#{tmp} = sdiv i64 #{l}, #{r}\n"
-    when "%" then @output << "  %#{tmp} = srem i64 #{l}, #{r}\n"
-    when "<<" then @output << "  %#{tmp} = shl i64 #{l}, #{r}\n"
-    when ">>" then @output << "  %#{tmp} = ashr i64 #{l}, #{r}\n"
-    when "&" then @output << "  %#{tmp} = and i64 #{l}, #{r}\n"
-    when "|" then @output << "  %#{tmp} = or i64 #{l}, #{r}\n"
-    when "^" then @output << "  %#{tmp} = xor i64 #{l}, #{r}\n"
-    when "<=", ">=", "==", "!=", "<", ">"
-      op_map = { "<=" => "sle", ">=" => "sge", "==" => "eq", "!=" => "ne", "<" => "slt", ">" => "sgt" }
-      cmp = next_tmp
-      @output << "  %#{cmp} = icmp #{op_map[node[:op]]} i64 #{l}, #{r}\n"
-      @output << "  %#{tmp} = zext i1 %#{cmp} to i64\n"
-    when "||", "&&"
-      l_bool = next_tmp
-      r_bool = next_tmp
-      res_bool = next_tmp
-      @output << "  %#{l_bool} = icmp ne i64 #{l}, 0\n"
-      @output << "  %#{r_bool} = icmp ne i64 #{r}, 0\n"
-      @output << "  %#{res_bool} = #{node[:op] == '||' ? 'or' : 'and'} i1 %#{l_bool}, %#{r_bool}\n"
-      @output << "  %#{tmp} = zext i1 %#{res_bool} to i64\n"
+    if is_float
+      t_l = next_tmp
+      @output << "  %#{t_l} = bitcast i64 #{l} to double\n"
+      t_r = next_tmp
+      @output << "  %#{t_r} = bitcast i64 #{r} to double\n"
+      
+      case node[:op]
+      when "+"
+        t_res = next_tmp
+        @output << "  %#{t_res} = fadd double %#{t_l}, %#{t_r}\n"
+        @output << "  %#{tmp} = bitcast double %#{t_res} to i64\n"
+      when "-"
+        t_res = next_tmp
+        @output << "  %#{t_res} = fsub double %#{t_l}, %#{t_r}\n"
+        @output << "  %#{tmp} = bitcast double %#{t_res} to i64\n"
+      when "*"
+        t_res = next_tmp
+        @output << "  %#{t_res} = fmul double %#{t_l}, %#{t_r}\n"
+        @output << "  %#{tmp} = bitcast double %#{t_res} to i64\n"
+      when "/"
+        t_res = next_tmp
+        @output << "  %#{t_res} = fdiv double %#{t_l}, %#{t_r}\n"
+        @output << "  %#{tmp} = bitcast double %#{t_res} to i64\n"
+      when "<=", ">=", "==", "!=", "<", ">"
+        op_map = { "==" => "oeq", "!=" => "one", "<" => "olt", ">" => "ogt", "<=" => "ole", ">=" => "oge" }
+        cmp = next_tmp
+        @output << "  %#{cmp} = fcmp #{op_map[node[:op]]} double %#{t_l}, %#{t_r}\n"
+        @output << "  %#{tmp} = zext i1 %#{cmp} to i64\n"
+      end
+    else
+      case node[:op]
+      when "+" then @output << "  %#{tmp} = add i64 #{l}, #{r}\n"
+      when "-" then @output << "  %#{tmp} = sub i64 #{l}, #{r}\n"
+      when "*" then @output << "  %#{tmp} = mul i64 #{l}, #{r}\n"
+      when "/" then @output << "  %#{tmp} = sdiv i64 #{l}, #{r}\n"
+      when "%" then @output << "  %#{tmp} = srem i64 #{l}, #{r}\n"
+      when "<<" then @output << "  %#{tmp} = shl i64 #{l}, #{r}\n"
+      when ">>" then @output << "  %#{tmp} = ashr i64 #{l}, #{r}\n"
+      when "&" then @output << "  %#{tmp} = and i64 #{l}, #{r}\n"
+      when "|" then @output << "  %#{tmp} = or i64 #{l}, #{r}\n"
+      when "^" then @output << "  %#{tmp} = xor i64 #{l}, #{r}\n"
+      when "<=", ">=", "==", "!=", "<", ">"
+        op_map = { "<=" => "sle", ">=" => "sge", "==" => "eq", "!=" => "ne", "<" => "slt", ">" => "sgt" }
+        cmp = next_tmp
+        @output << "  %#{cmp} = icmp #{op_map[node[:op]]} i64 #{l}, #{r}\n"
+        @output << "  %#{tmp} = zext i1 %#{cmp} to i64\n"
+      when "||", "&&"
+        l_bool = next_tmp
+        r_bool = next_tmp
+        res_bool = next_tmp
+        @output << "  %#{l_bool} = icmp ne i64 #{l}, 0\n"
+        @output << "  %#{r_bool} = icmp ne i64 #{r}, 0\n"
+        @output << "  %#{res_bool} = #{node[:op] == '||' ? 'or' : 'and'} i1 %#{l_bool}, %#{r_bool}\n"
+        @output << "  %#{tmp} = zext i1 %#{res_bool} to i64\n"
+      end
     end
     "%#{tmp}"
   end

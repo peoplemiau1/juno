@@ -35,8 +35,13 @@ typedef struct {
     unsigned char a;
 } J_Color;
 
+#ifdef __GNUC__
+__attribute__((weak)) void DrawTextEx(J_Font font, const char *text, J_Vector2 position, float fontSize, float spacing, J_Color tint) {}
+__attribute__((weak)) J_Font LoadFont(const char *fileName) { J_Font f = {0}; return f; }
+#else
 extern void DrawTextEx(J_Font font, const char *text, J_Vector2 position, float fontSize, float spacing, J_Color tint);
 extern J_Font LoadFont(const char *fileName);
+#endif
 
 long juno_load_font(long filename_ptr) {
     J_Font* f = malloc(sizeof(J_Font));

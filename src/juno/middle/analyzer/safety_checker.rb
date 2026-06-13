@@ -1,17 +1,18 @@
 require_relative "../../errors"
 
-class BorrowChecker
-  def initialize(ast, source = "", filename = "")
+class JunoSafetyChecker
+  def initialize(ast, functions = {}, source = "", filename = "")
     @ast = ast
+    @functions = functions
     @source = source
     @filename = filename
-    @var_states = {} # name => { state: :owned|:moved|:freed, line: int }
-    @aliases = {}    # name => set of names
+    @var_states = {}
+    @fn_effects = {}
+    @errors = []
   end
 
   attr_reader :fn_effects
 
-  # Functions that are known to NEVER consume (free/close) their arguments
   SAFE_FUNCTIONS = %w[
     print print_s println print_i print_hex print_newline print_space
     write read output putc puts
@@ -22,12 +23,48 @@ class BorrowChecker
     square cube abs_val min_val max_val factorial gcd ipow
   ].freeze
 
-
-  # Functions that are known to ALWAYS consume (free/close) their arguments
-  CONSUMING_FUNCTIONS = %w[free close os_free mem_free os_close].freeze
-
   def check
-    # Pass 1: Global analysis of function effects (Iterate until fixed point)
+    @errors = []
+    analyze_all_fn_effects
+    @ast.each { |node| process_node(node) }
+    
+    unless @errors.empty?
+      @errors.each(&:display)
+      exit 1
+    end
+  end
+
+  def allocates_resource?(name)
+    ['malloc', 'open', 'os_open', 'os_alloc', 'mem_malloc', 'fopen'].include?(name) ||
+      name.downcase.start_with?('alloc_', 'create_', 'open_') || name.end_with?('.new')
+  end
+
+  def consumes_resource?(name)
+    ['free', 'close', 'os_close', 'os_free', 'mem_free', 'delete'].include?(name) ||
+      name.downcase.start_with?('free_', 'close_', 'destroy_', 'delete') ||
+      name.end_with?('.free', '.close')
+  end
+
+  private
+
+  def resolve_local_pointer(expr)
+    return nil unless expr.is_a?(Hash)
+    
+    if expr[:type] == :address_of
+      operand = expr[:operand] || expr[:expression]
+      if operand && operand[:type] == :variable
+        return operand[:name]
+      end
+    elsif expr[:type] == :variable
+      name = expr[:name]
+      if @var_states.key?(name) && @var_states[name][:state] == :local_ptr
+        return @var_states[name][:target]
+      end
+    end
+    nil
+  end
+
+  def analyze_all_fn_effects
     @fn_effects = {}
     changed = true
     while changed
@@ -43,9 +80,6 @@ class BorrowChecker
         end
       end
     end
-
-    # Pass 2: Main borrow check
-    @ast.each { |node| process_node(node) }
   end
 
   def analyze_fn_effects(fn_node)
@@ -61,11 +95,10 @@ class BorrowChecker
       
       if node[:type] == :fn_call
         fn_name = node[:name]
-        if CONSUMING_FUNCTIONS.include?(fn_name) || (@fn_effects[fn_name] && !@fn_effects[fn_name].empty?)
+        if consumes_resource?(fn_name) || (@fn_effects[fn_name] && !@fn_effects[fn_name].empty?)
           node[:args]&.each_with_index do |arg, idx|
             if arg[:type] == :variable && params.include?(arg[:name])
-              # Does this call at this index consume the variable?
-              if CONSUMING_FUNCTIONS.include?(fn_name) && idx == 0
+              if consumes_resource?(fn_name) && idx == 0
                 consumed_params << arg[:name]
               elsif @fn_effects[fn_name]
                 consumed_params << arg[:name] if idx == 0 
@@ -79,8 +112,6 @@ class BorrowChecker
     walker.call(fn_node[:body])
     consumed_params.uniq
   end
-
-  private
 
   def block_returns?(body)
     return false unless body.is_a?(Array)
@@ -96,25 +127,39 @@ class BorrowChecker
     false
   end
 
-  def report_error(message, node)
+  def report_error(message, node, is_warning = false)
+    line = node[:line]
+    col = node[:column]
+
+    if line.nil? || col.nil?
+      sub_node = node[:expression] || node[:value] || node[:target] || node[:operand]
+      if sub_node.is_a?(Hash)
+        line ||= sub_node[:line]
+        col ||= sub_node[:column]
+      end
+    end
+
     node_filename = node[:filename] || @filename
     node_source = @source
     if node[:filename] && node[:filename] != @filename
       begin
         node_source = File.read(node[:filename])
       rescue
-        # fallback to @source
       end
     end
 
-    error = JunoTypeError.new(
-      message,
-      filename: node_filename,
-      line_num: node[:line],
-      column: node[:column],
-      source: node_source
-    )
-    JunoErrorReporter.report(error)
+    if is_warning
+      JunoErrorReporter.warn(message, filename: node_filename, line_num: line || 0)
+    else
+      error = JunoTypeError.new(
+        message,
+        filename: node_filename,
+        line_num: line,
+        column: col,
+        source: node_source
+      )
+      @errors << error
+    end
   end
 
   def process_node(node)
@@ -123,21 +168,28 @@ class BorrowChecker
     case node[:type]
     when :function_definition
       @var_states = {}
-      @aliases = {}
+      @current_fn = node[:name]
       (node[:body] || []).each { |stmt| process_node(stmt) }
+      
+      unless @current_fn.end_with?('.init')
+        @var_states.each do |name, info|
+          if info[:state] == :owned
+            report_error("Resource leak in function '#{@current_fn}': Resource '#{name}' (allocated at line #{info[:line]}) is never freed or closed", info[:node], true)
+          end
+        end
+      end
 
     when :assignment
       name = node[:name] || ""
       expr = node[:expression]
       
-      # Check the expression first
       check_expression(expr) if expr.is_a?(Hash)
 
-      # Track resources only from actual allocation calls
-      if expr.is_a?(Hash) && expr[:type] == :fn_call && ["malloc", "open"].include?(expr[:name])
-        # Don't track field assignments (self.data = malloc) — those belong to the struct
+      if local_var = resolve_local_pointer(expr)
+        @var_states[name] = { state: :local_ptr, target: local_var, line: node[:line], node: node }
+      elsif expr.is_a?(Hash) && expr[:type] == :fn_call && allocates_resource?(expr[:name])
         unless name.include?('.')
-          @var_states[name] = { state: :owned, line: node[:line] }
+          @var_states[name] = { state: :owned, line: node[:line], node: node }
         end
       elsif expr.is_a?(Hash) && expr[:type] == :variable
         src_name = expr[:name]
@@ -149,19 +201,30 @@ class BorrowChecker
             report_error("Use of freed value '#{src_name}'", node)
           end
           
-          # Transfer ownership only for tracked resources
           if state_info[:state] == :owned
-            @var_states[name] = { state: :owned, line: node[:line] }
-            @var_states[src_name] = { state: :moved, line: node[:line] }
+            if name.include?('.')
+              @var_states[src_name] = { state: :moved, line: node[:line], node: node }
+            else
+              @var_states[name] = { state: :owned, line: node[:line], node: node }
+              @var_states[src_name] = { state: :moved, line: node[:line], node: node }
+            end
           end
         end
+      end
+
+    when :deref_assign
+      check_expression(node[:target])
+      check_expression(node[:value])
+      
+      if local_var = resolve_local_pointer(node[:value])
+        report_error("Escape error: storing pointer to local variable '#{local_var}' into a dereferenced pointer, causing it to escape function '#{@current_fn}' scope", node)
       end
 
     when :fn_call
       fn_name = node[:name] || ""
       args = node[:args] || []
 
-      if fn_name == "free" || fn_name == "close"
+      if consumes_resource?(fn_name)
         arg = args[0]
         if arg && arg[:type] == :variable
           v_name = arg[:name]
@@ -170,32 +233,40 @@ class BorrowChecker
             if state_info[:state] == :moved
               report_error("Attempt to free already moved value '#{v_name}'", node)
             elsif state_info[:state] == :freed
-              report_error("Double free detected for '#{v_name}'", node)
+              report_error("Double free/close detected for '#{v_name}'", node)
             end
-            @var_states[v_name] = { state: :freed, line: node[:line] }
+            @var_states[v_name] = { state: :freed, line: node[:line], node: node }
           end
         end
       else
-        # Check each argument
         args.each_with_index do |arg, idx|
-          # 1. First check if we can use this expression
           check_expression(arg)
 
-          # 2. Then update state if it's a move
           if arg[:type] == :variable
             v_name = arg[:name]
             if @var_states.key?(v_name) && @var_states[v_name][:state] == :owned
-              is_consumed = function_consumes_arg?(fn_name, idx)
-              if is_consumed
-                @var_states[v_name] = { state: :moved, line: node[:line], moved_to: fn_name }
+              if function_consumes_arg?(fn_name, idx)
+                @var_states[v_name] = { state: :moved, line: node[:line], node: node }
               end
             end
           end
         end
       end
 
+    when :return
+      expr = node[:expression]
+      
+      if local_var = resolve_local_pointer(expr)
+        report_error("Dangling pointer: returning pointer to local variable '#{local_var}' which will be destroyed when function '#{@current_fn}' returns", node)
+      elsif expr.is_a?(Hash) && expr[:type] == :variable
+        ret_name = expr[:name]
+        if @var_states.key?(ret_name) && @var_states[ret_name][:state] == :owned
+          @var_states[ret_name] = { state: :returned, line: node[:line], node: node }
+        end
+      end
+      check_expression(expr) if expr.is_a?(Hash)
+
     when :if_statement
-      # Clone state for branch analysis
       saved_state = @var_states.dup.transform_values(&:dup)
       
       process_node(node[:condition])
@@ -217,18 +288,14 @@ class BorrowChecker
       elsif else_returns
         @var_states = then_state
       else
-        # Merge: if either branch freed/moved, consider it potentially freed/moved
-        # This is conservative but safe
         then_state.each do |name, info|
           if @var_states.key?(name)
             current = @var_states[name]
-            # If the then-branch freed it but else didn't, or vice versa, warn
             if info[:state] != current[:state]
-              # Take the more restrictive state
               if info[:state] == :freed || current[:state] == :freed
-                @var_states[name] = { state: :freed, line: node[:line] }
+                @var_states[name] = { state: :freed, line: node[:line], node: node }
               elsif info[:state] == :moved || current[:state] == :moved
-                @var_states[name] = { state: :moved, line: node[:line] }
+                @var_states[name] = { state: :moved, line: node[:line], node: node }
               end
             end
           else
@@ -243,15 +310,10 @@ class BorrowChecker
     end
   end
 
-  # Determine if a function consumes (frees) its argument at the given index
   def function_consumes_arg?(fn_name, arg_idx)
-    # Known safe functions never consume
     return false if SAFE_FUNCTIONS.include?(fn_name)
-    
-    # Method calls on objects (e.g., list.add) — generally don't consume args
     return false if fn_name.include?('.')
     
-    # If we analyzed the function and know its effects, use that
     if @fn_effects.key?(fn_name)
       fn_node = @ast.find { |n| n[:type] == :function_definition && n[:name] == fn_name }
       if fn_node
@@ -259,13 +321,9 @@ class BorrowChecker
         param_name = param_name[:name] if param_name.is_a?(Hash)
         return (@fn_effects[fn_name] || []).include?(param_name)
       end
-      return false
     end
     
-    # Unknown function: assume it does NOT consume (borrow semantics by default)
-    # This is the opposite of the old behavior which assumed move.
-    # Rationale: most functions just read their arguments.
-    false
+    consumes_resource?(fn_name) && arg_idx == 0
   end
 
   def check_expression(expr)

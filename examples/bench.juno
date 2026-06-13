@@ -1,0 +1,30 @@
+import "std/thread.juno"
+import "core/io.juno"
+
+fn worker(arg) {
+    let mut sum = 0
+    let limit = 100000000
+    let mut i = 0
+    while i < limit {
+        sum = (sum + i) * 3 / 3
+        i = i + 1
+    }
+    return sum
+}
+
+fn main() {
+    print_s("Juno Multithreading Benchmark Started...\n")
+    
+    let t1 = thread_spawn(worker, 1)
+    let t2 = thread_spawn(worker, 2)
+    let t3 = thread_spawn(worker, 3)
+    let t4 = thread_spawn(worker, 4)
+
+    thread_join(t1)
+    thread_join(t2)
+    thread_join(t3)
+    thread_join(t4)
+
+    print_s("Juno Benchmark Finished!\n")
+    return 0
+}

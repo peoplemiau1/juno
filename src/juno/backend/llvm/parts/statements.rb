@@ -1,11 +1,11 @@
 module LLVMStatementGenerator
   def gen_statement(node)
     return if node.nil?
+    @loop_stack ||= []
     case node[:type]
     when :assignment
       gen_assignment(node)
     when :array_decl
-      # Already allocated in entry block
     when :array_assign
       val = eval_expr(node[:value])
       idx = eval_expr(node[:index])
@@ -39,8 +39,22 @@ module LLVMStatementGenerator
       gen_for(node)
     when :increment
       gen_increment(node)
+    when :break
+      if @loop_stack && !@loop_stack.empty?
+        @output << "  br label %#{@loop_stack.last[:break_label]}\n"
+        dummy = next_label("break_dummy")
+        @output << "#{dummy}:\n"
+      end
     when :continue
-      # handled by gen_while/gen_for with a continue label
+      if @loop_stack && !@loop_stack.empty?
+        @output << "  br label %#{@loop_stack.last[:continue_label]}\n"
+        dummy = next_label("continue_dummy")
+        @output << "#{dummy}:\n"
+      end
+    when :panic
+      @output << "  call void @exit(i32 1)\n"
+    when :todo
+      @output << "  call void @exit(i32 2)\n"
     when :fn_call, :method_call
       eval_expr(node)
     when :return
@@ -99,9 +113,12 @@ module LLVMStatementGenerator
   end
 
   def gen_while(node)
+    @loop_stack ||= []
     start_label = next_label("while_start")
     body_label = next_label("while_body")
     end_label = next_label("while_end")
+
+    @loop_stack << { break_label: end_label, continue_label: start_label }
 
     @output << "  br label %#{start_label}\n"
     @output << "#{start_label}:\n"
@@ -115,15 +132,20 @@ module LLVMStatementGenerator
     @output << "  br label %#{start_label}\n"
 
     @output << "#{end_label}:\n"
+    @loop_stack.pop
   end
 
   def gen_for(node)
+    @loop_stack ||= []
     if node[:init]
       gen_statement(node[:init])
     end
     start_label = next_label("for_start")
     body_label = next_label("for_body")
     end_label = next_label("for_end")
+    update_label = next_label("for_update")
+
+    @loop_stack << { break_label: end_label, continue_label: update_label }
 
     @output << "  br label %#{start_label}\n"
     @output << "#{start_label}:\n"
@@ -134,12 +156,16 @@ module LLVMStatementGenerator
 
     @output << "#{body_label}:\n"
     node[:body].each { |s| gen_statement(s) }
+
+    @output << "  br label %#{update_label}\n"
+    @output << "#{update_label}:\n"
     if node[:update]
       gen_statement(node[:update])
     end
     @output << "  br label %#{start_label}\n"
 
     @output << "#{end_label}:\n"
+    @loop_stack.pop
   end
 
   def gen_increment(node)
@@ -175,7 +201,6 @@ module LLVMStatementGenerator
       elsif node[:type] == :increment
         locals << node[:name]
       elsif node[:type] == :array_assign
-        # Don't add array names to locals
       end
     end
     arrays.each_key { |k| locals.delete(k) }

@@ -3,11 +3,10 @@ require_relative "frontend/parser"
 require_relative "middle/importer"
 require_relative "middle/monomorphizer"
 require_relative "middle/semantic"
-require_relative "middle/analyzer/resource_auditor"
 require_relative "backend/codegen/native_generator"
 require_relative "backend/llvm/generator"
 require_relative "frontend/preprocessor"
-require_relative "middle/analyzer/borrow_checker"
+require_relative "middle/analyzer/safety_checker"
 require_relative "optimizer/turbo"
 require_relative "errors"
 
@@ -51,11 +50,9 @@ module Juno
       analyzer = SemanticAnalyzer.new(ast, input_file, code)
       ast = analyzer.analyze
 
-      borrow_checker = BorrowChecker.new(ast, code, input_file)
-      borrow_checker.check
+      safety_checker = JunoSafetyChecker.new(ast, analyzer.function_signatures, code, input_file)
+      safety_checker.check
 
-      auditor = ResourceAuditor.new(ast, analyzer.function_signatures, code, input_file, borrow_checker.fn_effects)
-      auditor.audit
 
       opt_level = @options[:opt_level] || 2
 
@@ -141,10 +138,10 @@ module Juno
         end
         
         link_cmd = if @options[:os] == :macos
-                         "gcc -o #{@options[:output]} #{obj_file} #{runtime_obj} /bedrock/strata/arch/lib/libraylib.so -Wl,-rpath,/bedrock/strata/arch/lib"
-                       else
-                         "gcc -no-pie -o #{@options[:output]} #{obj_file} #{runtime_obj} /bedrock/strata/arch/lib/libraylib.so -Wl,-rpath,/bedrock/strata/arch/lib"
-                       end
+                 "gcc -o #{@options[:output]} #{obj_file} #{runtime_obj}"
+               else
+                 "gcc -no-pie -o #{@options[:output]} #{obj_file} #{runtime_obj}"
+               end
 
         unless system(link_cmd)
           raise "Linking failed."

@@ -465,3 +465,88 @@ def parse_continue
 end
 
 end
+
+def parse_loop
+  consume_keyword('loop')
+  consume_symbol('{')
+  body = []
+  until match_symbol?('}')
+    stmt = parse_statement
+    body << stmt if stmt
+  end
+  consume_symbol('}')
+  {
+    type: :while_statement,
+    condition: { type: :literal, value: 1 },
+    body: body
+  }
+end
+
+def parse_enum
+  consume_keyword('enum')
+  name = consume_ident
+  consume_symbol('{')
+  variants = []
+  until match_symbol?('}')
+    v_name = consume_ident
+    params = []
+    if match_symbol?('(')
+      consume_symbol('(')
+      until match_symbol?(')')
+        params << consume_type
+        consume_symbol(',') if match_symbol?(',')
+      end
+      consume_symbol(')')
+    end
+    variants << { name: v_name, params: params }
+    consume_symbol(',') if match_symbol?(',')
+  end
+  consume_symbol('}')
+  { type: :enum_definition, name: name, variants: variants }
+end
+
+def parse_type_alias
+  consume_keyword('type')
+  alias_name = consume_ident
+  consume_symbol('=')
+  target_type = consume_type
+  { type: :type_alias, name: alias_name, target: target_type }
+end
+
+def parse_use
+  consume_keyword('use')
+  path = ""
+  if match?(:string)
+    path = consume(:string)[:value]
+    { type: :import, path: path, system: false }
+  else
+    while match?(:ident) || match_symbol?('/') || match_symbol?('.')
+      if match?(:ident)
+        path += consume_ident
+      elsif match_symbol?('/')
+        path += consume_symbol('/')[:value]
+      elsif match_symbol?('.')
+        path += consume_symbol('.')[:value]
+      end
+    end
+    { type: :import, path: path, system: true }
+  end
+end
+
+def parse_panic
+  consume_keyword('panic')
+  msg = nil
+  if match?(:string)
+    msg = consume(:string)[:value]
+  end
+  { type: :panic, message: msg }
+end
+
+def parse_todo
+  consume_keyword('todo')
+  msg = nil
+  if match?(:string)
+    msg = consume(:string)[:value]
+  end
+  { type: :todo, message: msg }
+end

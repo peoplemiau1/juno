@@ -1,0 +1,34 @@
+use "std.juno"
+
+fn create_session() {
+    return malloc(16)
+}
+
+fn destroy_session(s) {
+    free(s)
+    return 0
+}
+
+fn test_leak() {
+    let s = create_session()
+    return 0
+}
+
+fn test_use_after_free() {
+    let s = create_session()
+    destroy_session(s)
+    print_i(*s)
+    return 0
+}
+
+fn test_double_free() {
+    let s = create_session()
+    destroy_session(s)
+    destroy_session(s)
+    return 0
+}
+
+fn main() {
+    return 0
+}
+
