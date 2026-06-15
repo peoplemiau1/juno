@@ -138,9 +138,9 @@ module Juno
         end
         
         link_cmd = if @options[:os] == :macos
-                 "gcc -o #{@options[:output]} #{obj_file} #{runtime_obj}"
+                 "gcc -s -o #{@options[:output]} #{obj_file} #{runtime_obj}"
                else
-                 "gcc -no-pie -o #{@options[:output]} #{obj_file} #{runtime_obj}"
+                 "tcc -s -o #{@options[:output]} #{obj_file} #{runtime_obj}"
                end
 
         unless system(link_cmd)
