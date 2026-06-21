@@ -27,7 +27,6 @@ module ParserStatements
     end
     token = peek
     if token
-      # puts "Parsing at line #{token[:line]}, column #{token[:column]} (#{token[:type]}: #{token[:value]})"
     end
     if token.nil? || match_symbol?("}")
       return nil
@@ -425,7 +424,6 @@ module ParserStatements
       path = consume(:string)[:value]
       { type: :import, path: path, system: false }
     else
-      # System import like std/net
       path = ""
       while match?(:ident) || match_symbol?('/') || match_symbol?('.')
         if match?(:ident)

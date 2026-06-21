@@ -43,7 +43,7 @@ module Juno
 
       importer = Importer.new(File.dirname(input_file), system_path: @options[:stdlib_path])
       ast = importer.resolve(ast, input_file)
-      
+
       monomorphizer = Monomorphizer.new(ast)
       ast = monomorphizer.monomorphize
 
@@ -52,7 +52,6 @@ module Juno
 
       safety_checker = JunoSafetyChecker.new(ast, analyzer.function_signatures, code, input_file)
       safety_checker.check
-
 
       opt_level = @options[:opt_level] || 2
 
@@ -74,7 +73,7 @@ module Juno
         ir_file = @options[:output] + ".ll"
         obj_file = @options[:output] + ".o"
         File.write(ir_file, llvm_ir)
-        
+
         if @options[:os] == :macos
           triples = {
             x86_64: "x86_64-apple-macos",
@@ -96,14 +95,14 @@ module Juno
         raise "llc tool not found. Please install llvm." unless llc_cmd
 
         opt_cmd = `which opt-19 opt-18 opt-17 opt`.split("\n").first&.strip
-        
+
         opt_flag = "-O#{opt_level}"
 
         target_ir_file = ir_file
         if opt_cmd && opt_level > 0
           optimized_ir_file = @options[:output] + ".opt.ll"
           opt_pass_flag = "-passes='default<O#{opt_level}>'"
-          
+
           if system("#{opt_cmd} #{opt_pass_flag} -S -o #{optimized_ir_file} #{ir_file}")
             target_ir_file = optimized_ir_file
           else
@@ -116,7 +115,7 @@ module Juno
         unless system("#{llc_cmd} #{opt_flag} -mtriple=#{target_triple} -relocation-model=pic -filetype=obj -o #{obj_file} #{target_ir_file}")
           raise "llc failed to compile IR. Check #{target_ir_file} for errors."
         end
-        
+
         if @options[:target] == :obj
           return obj_file
         elsif @options[:target] == :flat
@@ -136,7 +135,7 @@ module Juno
             raise "Failed to compile C runtime: #{runtime_src}"
           end
         end
-        
+
         link_cmd = if @options[:os] == :macos
                  "gcc -s -o #{@options[:output]} #{obj_file} #{runtime_obj}"
                else

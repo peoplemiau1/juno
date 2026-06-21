@@ -35,7 +35,7 @@ module LLVMExpressionGenerator
         params_count = fn_node[:params] ? fn_node[:params].length : 0
         args_types = Array.new(params_count, "i64").join(", ")
         fn_type = "i64 (#{args_types})*"
-        
+
         tmp = next_tmp
         @output << "  %#{tmp} = ptrtoint #{fn_type} @#{node[:name].gsub('.', '_')} to i64\n"
         "%#{tmp}"
@@ -154,14 +154,14 @@ module LLVMExpressionGenerator
   def gen_binary_op(node)
     l = eval_expr(node[:left])
     r = eval_expr(node[:right])
-    
+
     l_type = node[:left][:inferred_type] || "int"
     r_type = node[:right][:inferred_type] || "int"
-    
+
     is_string = (l_type == "str" || l_type == "string" || 
                  r_type == "str" || r_type == "string" ||
                  node[:left][:type] == :string_literal || node[:right][:type] == :string_literal)
-    
+
     if node[:op] == "+" && is_string
        tmp = next_tmp
        @output << "  %#{tmp} = call i64 @concat(i64 #{l}, i64 #{r})\n"
@@ -177,7 +177,7 @@ module LLVMExpressionGenerator
       @output << "  %#{t_l} = bitcast i64 #{l} to double\n"
       t_r = next_tmp
       @output << "  %#{t_r} = bitcast i64 #{r} to double\n"
-      
+
       case node[:op]
       when "+"
         t_res = next_tmp

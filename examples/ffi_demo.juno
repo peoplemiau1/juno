@@ -1,6 +1,3 @@
-// Juno FFI Demo
-// Calling C functions from libc
-
 extern fn abs(n: i32) -> i32 from "libc.so.6"
 extern fn strlen(s: ptr) -> i64 from "libc.so.6"
 

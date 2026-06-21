@@ -9,7 +9,7 @@ class Linker
     @import_patches = []
     @functions = {}
     @imports = {}
-    @external_symbols = [] # { name, lib }
+    @external_symbols = []
     @data_pool = []
     @bss_pool = []
     @strings = {}
@@ -23,7 +23,7 @@ class Linker
 
   def declare_import(name, lib)
     @external_symbols << { name: name, lib: lib }
-    @got_slots[name] = nil # Will be assigned an RVA during finalization
+    @got_slots[name] = nil
   end
 
   def register_function(name, offset_in_code)
@@ -51,10 +51,9 @@ class Linker
     return existing[:id] if existing
     label = "str_#{@string_counter}"
     @string_counter += 1
-    
-    # Standard null-terminated strings for strlen compatibility
+
     add_data(label, content + "\x00")
-    
+
     @strings[label] = { content: content, id: label }
     label
   end
@@ -87,16 +86,14 @@ class Linker
   end
 
   def finalize(code_bytes)
-    # Ensure GOT slots are allocated in the data section
     @got_slots.each do |name, _|
       label = "got_#{name}"
-      add_data(label, [0].pack("Q<")) # 8 bytes for address
+      add_data(label, [0].pack("Q<"))
       @got_slots[name] = label
     end
 
     data_bytes = []
     data_offset = code_bytes.length
-    # Align data section to 4096 bytes (page boundary) for proper ELF segment permissions
     padding = (4096 - (data_offset % 4096)) % 4096
     code_bytes += [0] * padding
     data_offset += padding
@@ -128,7 +125,6 @@ class Linker
                (@got_slots[p[:name]] && label_rvas[p[:name]]) ||
                @imports[p[:name]]
       unless target
-        # Try finding RVA in data pool (for builtins or labels that ended up there)
         target = label_rvas[p[:name]]
       end
       patch_value(full_binary, p, target)

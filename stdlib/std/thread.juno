@@ -1,18 +1,13 @@
-// stdlib/std/thread.juno - Juno POSIX Threading Support
-
-// Импортируем нативные pthread-функции из glibc
 extern fn pthread_create(thread_ptr, attr_ptr, start_routine, arg_ptr)
 extern fn pthread_join(thread_id, retval_ptr)
 extern fn pthread_exit(retval_ptr)
 
-// Спавнит поток и возвращает указатель на его ID (pthread_t*)
 fn thread_spawn(f, arg) {
     let thread_ptr = malloc(8)
     pthread_create(thread_ptr, 0, f, arg)
     return thread_ptr
 }
 
-// Ожидает завершения потока и освобождает его память
 fn thread_join(thread_ptr) {
     let tid = *thread_ptr
     pthread_join(tid, 0)
@@ -20,7 +15,6 @@ fn thread_join(thread_ptr) {
     return 0
 }
 
-// Выход из потока
 fn thread_exit() {
     pthread_exit(0)
 }

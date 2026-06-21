@@ -1,4 +1,3 @@
-// stdlib/std/net.juno - Juno Networking & Epoll
 import std/str
 
 fn epoll_in()  { return 1 }

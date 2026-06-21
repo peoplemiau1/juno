@@ -1,5 +1,3 @@
-# access.rb - Array and member access for GeneratorLogic
-
 module GeneratorAccess
   def load_member_rax(full)
     v, f = full.split('.')
@@ -14,10 +12,10 @@ module GeneratorAccess
       $stderr.puts "[BACKEND ERROR] Type '#{st}' for '#{v}' not found in structs: #{@ctx.structs.keys.join(', ')}"
       return
     end
-    
+
     fields = @ctx.structs[st][:fields]
     f_off = fields[f]
-    
+
     if f_off.nil?
       $stderr.puts "[BACKEND ERROR] Field '#{f}' not found in struct '#{st}'. Available fields: #{fields.keys.join(', ')}"
     end
@@ -34,13 +32,13 @@ module GeneratorAccess
      st = @ctx.var_types[v]
      return unless st && @ctx.structs[st]
      f_off = @ctx.structs[st][:fields][f]
-     @emitter.mov_reg_reg(11, 0) # R11 = value (RAX)
+     @emitter.mov_reg_reg(11, 0)
      if @ctx.in_register?(v)
        @emitter.mov_rax_from_reg(@emitter.class.reg_code(@ctx.get_register(v)))
      else
        @emitter.mov_reg_stack_val(0, @ctx.variables[v])
      end
-     @emitter.mov_mem_reg_idx(0, f_off, 11) # [RAX + f_off] = R11
+     @emitter.mov_mem_reg_idx(0, f_off, 11)
   end
 
   def gen_array_access(node)
@@ -48,12 +46,12 @@ module GeneratorAccess
     @emitter.shl_rax_imm(3)
     scratch = @ctx.acquire_scratch
     if scratch
-      @emitter.mov_reg_reg(scratch, 0) # RAX (index) to scratch
+      @emitter.mov_reg_reg(scratch, 0)
       arr_info = @ctx.get_array(node[:name])
       if arr_info then @emitter.mov_reg_stack_val(0, arr_info[:ptr_offset])
       else @emitter.mov_reg_stack_val(0, @ctx.get_variable_offset(node[:name])) end
-      @emitter.mov_reg_reg(2, 0) # RDX = base
-      @emitter.mov_reg_reg(0, scratch) # RAX = index
+      @emitter.mov_reg_reg(2, 0)
+      @emitter.mov_reg_reg(0, scratch)
       @ctx.release_scratch(scratch)
     else
       @emitter.push_reg(0)
@@ -95,23 +93,20 @@ module GeneratorAccess
            @emitter.emit_load_address(@ctx.globals[v], @linker)
            @emitter.mov_rax_mem(0)
         else
-           # EMERGENCY LOGGING
            $stderr.puts "[BACKEND ERROR] Variable '#{v}' not found in context. Current vars: #{@ctx.variables.keys.join(', ')}"
         end
-        # RAX now has the base pointer. Add field offset.
         @emitter.add_reg_imm(0, f_off) if f_off > 0
       end
     end
   end
 
   def gen_dereference(expr)
-    # Check if we are dereferencing a byte_add call
     if expr[:operand][:type] == :fn_call && (expr[:operand][:name] == "byte_add" || expr[:operand][:name] == "gen_byte_add")
       eval_expression(expr[:operand][:args][0]); @emitter.push_reg(0)
       eval_expression(expr[:operand][:args][1])
-      @emitter.pop_reg(2) # RDX = base
+      @emitter.pop_reg(2)
       @emitter.add_rax_rdx
-      @emitter.movzx_rax_mem_rax # Load 1 byte from [rax]
+      @emitter.movzx_rax_mem_rax
     else
       eval_expression(expr[:operand])
       @emitter.mov_rax_mem(0)

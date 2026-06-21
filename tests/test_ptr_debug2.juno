@@ -1,4 +1,3 @@
-// Debug - check variable creation
 fn main() {
     let x = 10
     let y = 20

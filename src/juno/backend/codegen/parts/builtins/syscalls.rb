@@ -1,16 +1,13 @@
-# syscalls.rb - Direct syscall wrappers
-
 module BuiltinSyscalls
   def gen_mmap(node)
     return unless @target_os == :linux
-    # args: addr, len, prot, flags, fd, offset
     eval_expression(node[:args][5]); @emitter.push_reg(0)
     eval_expression(node[:args][4]); @emitter.push_reg(0)
     eval_expression(node[:args][3]); @emitter.push_reg(0)
     eval_expression(node[:args][2]); @emitter.push_reg(0)
     eval_expression(node[:args][1]); @emitter.push_reg(0)
     eval_expression(node[:args][0])
-    
+
     if @arch == :aarch64
        @emitter.pop_reg(1); @emitter.pop_reg(2); @emitter.pop_reg(3)
        @emitter.pop_reg(4); @emitter.pop_reg(5)
@@ -29,24 +26,24 @@ module BuiltinSyscalls
   end
 
   def gen_memcpy(node)
-    eval_expression(node[:args][0]); @emitter.push_reg(0) # dst
-    eval_expression(node[:args][1]); @emitter.push_reg(0) # src
-    eval_expression(node[:args][2]) # n in RAX
+    eval_expression(node[:args][0]); @emitter.push_reg(0)
+    eval_expression(node[:args][1]); @emitter.push_reg(0)
+    eval_expression(node[:args][2])
 
-    @emitter.mov_reg_reg(@arch == :aarch64 ? 2 : 1, 0) # n (X2 or RCX)
-    @emitter.pop_reg(@arch == :aarch64 ? 1 : 6) # src (X1 or RSI)
-    @emitter.pop_reg(@arch == :aarch64 ? 0 : 7) # dst (X0 or RDI)
+    @emitter.mov_reg_reg(@arch == :aarch64 ? 2 : 1, 0)
+    @emitter.pop_reg(@arch == :aarch64 ? 1 : 6)
+    @emitter.pop_reg(@arch == :aarch64 ? 0 : 7)
     @emitter.memcpy
   end
 
   def gen_memset(node)
-    eval_expression(node[:args][0]); @emitter.push_reg(0) # dst
-    eval_expression(node[:args][1]); @emitter.push_reg(0) # val
-    eval_expression(node[:args][2]) # n in RAX
+    eval_expression(node[:args][0]); @emitter.push_reg(0)
+    eval_expression(node[:args][1]); @emitter.push_reg(0)
+    eval_expression(node[:args][2])
 
-    @emitter.mov_reg_reg(@arch == :aarch64 ? 2 : 1, 0) # n (X2 or RCX)
-    @emitter.pop_reg(@arch == :aarch64 ? 1 : 0) # val (X1 or RAX/AL)
-    @emitter.pop_reg(@arch == :aarch64 ? 0 : 7) # dst (X0 or RDI)
+    @emitter.mov_reg_reg(@arch == :aarch64 ? 2 : 1, 0)
+    @emitter.pop_reg(@arch == :aarch64 ? 1 : 0)
+    @emitter.pop_reg(@arch == :aarch64 ? 0 : 7)
     @emitter.memset
   end
 

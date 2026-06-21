@@ -1,5 +1,3 @@
-// test_ptr_debug.juno - Debug pointer step by step
-
 fn main() {
     let x = 10
     return x

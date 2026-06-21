@@ -1,5 +1,3 @@
-// Test reading through pointer parameter
-
 fn get_value(ptr) {
     return *ptr
 }

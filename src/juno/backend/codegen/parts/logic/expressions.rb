@@ -1,5 +1,3 @@
-# expressions.rb - Expression evaluation for GeneratorLogic
-
 module GeneratorExpressions
   def eval_expression(expr)
     case expr[:type]
@@ -17,12 +15,10 @@ module GeneratorExpressions
       elsif @ctx.globals.key?(name)
         @emitter.emit_load_address(@ctx.globals[name], @linker)
         @emitter.mov_rax_mem(0)
-      elsif @linker.strings.key?(name) # It might be a data label from elsewhere
+      elsif @linker.strings.key?(name)
         @emitter.emit_load_address(name, @linker)
       else
-        # Try to find if it's a known function or global in linker
         if @linker.functions.key?(name)
-           # Load function pointer
            if @arch == :aarch64
              @emitter.emit_load_address(name, @linker)
            else
@@ -34,7 +30,6 @@ module GeneratorExpressions
         elsif @linker.data_pool.any?{|d| d[:id] == name} || @linker.bss_pool.any?{|b| b[:id] == name}
            @emitter.emit_load_address(name, @linker)
         else
-           # This is likely an undefined variable
            error_undefined(name, expr)
         end
       end
@@ -47,7 +42,6 @@ module GeneratorExpressions
       elsif expr[:op] == "!"
         @emitter.test_rax_rax
         @emitter.mov_rax(0)
-        # On AArch64, CSET X0, EQ (to get 1 if X0 was 0) is CSINC X0, XZR, XZR, NE
         if @arch == :aarch64 then @emitter.emit32(0x1a9f17e0) else @emitter.emit([0x0f, 0x94, 0xc0]) end
       end
     when :member_access
@@ -69,20 +63,19 @@ module GeneratorExpressions
 
   def gen_match(node)
     eval_expression(node[:expression])
-    @emitter.push_reg(0) # Store matched value on stack
+    @emitter.push_reg(0)
     @ctx.stack_depth += 8
 
     end_patches = []
 
     node[:cases].each do |c|
-      @emitter.mov_rax_rsp_disp8(0) # Load matched value back
-      @emitter.mov_reg_reg(2, 0) # RDX = Matched value
+      @emitter.mov_rax_rsp_disp8(0)
+      @emitter.mov_reg_reg(2, 0)
 
       gen_pattern_check(c[:pattern])
       @emitter.test_rax_rax
       next_case_patch = @emitter.je_rel32
 
-      # Match body
       if c[:body].is_a?(Array)
         c[:body].each { |s| process_node(s) }
       else
@@ -93,9 +86,8 @@ module GeneratorExpressions
       @emitter.patch_je(next_case_patch, @emitter.current_pos)
     end
 
-    # Label for jumps from inside cases
     pop_pos = @emitter.current_pos
-    @emitter.pop_reg(2) # Pop matched value into RDX to keep RAX (result)
+    @emitter.pop_reg(2)
     @ctx.stack_depth -= 8
 
     end_pos = @emitter.current_pos
@@ -110,10 +102,9 @@ module GeneratorExpressions
       @emitter.mov_reg_imm(1, pattern[:value].is_a?(TrueClass) ? 1 : (pattern[:value].is_a?(FalseClass) ? 0 : pattern[:value]))
       @emitter.cmp_rax_rdx("==")
     when :bind_pattern
-      # Bind matched value to variable name
       if @ctx.in_register?(pattern[:name])
         reg = @emitter.class.reg_code(@ctx.get_register(pattern[:name]))
-        @emitter.mov_reg_reg(reg, 2) # 2 is RDX which has the value
+        @emitter.mov_reg_reg(reg, 2)
       else
         off = @ctx.get_variable_offset(pattern[:name])
         @emitter.mov_stack_reg_val(off, 2)
@@ -123,40 +114,26 @@ module GeneratorExpressions
       enum_info = @ctx.enums[pattern[:enum]]
       variant_info = enum_info[:variants][pattern[:variant]]
 
-      # Check if RDX is likely a pointer or a tag
-      # If it's a tag (small integer), compare directly.
-      # If it's a pointer, load tag from [RDX].
-
-      # For now, let's assume if it has fields it MUST be a pointer.
-      # If no fields, it could be either.
       if (pattern[:fields] || []).empty?
-         # Try both? No.
-         # Let's see... if the matched value was an enum variant constructor, it's a pointer.
-         # If it was assigned a variant constant, it's an integer.
 
-         # Unified approach: if RDX > 0x1000, assume pointer.
          @emitter.cmp_reg_imm(2, 4096)
          is_ptr_patch = @emitter.jae_rel32
 
-         @emitter.mov_rax_from_reg(2) # RAX = RDX (tag)
+         @emitter.mov_rax_from_reg(2)
          skip_ptr_patch = @emitter.jmp_rel32
 
          @emitter.patch_jae(is_ptr_patch, @emitter.current_pos)
-         @emitter.mov_rax_mem_idx(2, 0) # RAX = [RDX] (tag)
+         @emitter.mov_rax_mem_idx(2, 0)
 
          @emitter.patch_jmp(skip_ptr_patch, @emitter.current_pos)
       else
-         @emitter.mov_rax_mem_idx(2, 0) # RAX = [RDX]
+         @emitter.mov_rax_mem_idx(2, 0)
       end
 
-      @emitter.mov_reg_imm(6, variant_info[:tag]) # RSI = target tag
-      @emitter.cmp_reg_reg(0, 6) # RAX vs RSI (or X0 vs X6)
+      @emitter.mov_reg_imm(6, variant_info[:tag])
+      @emitter.cmp_reg_reg(0, 6)
 
-      # If match, bind fields
-      # We need a conditional jump to bind only if tag matches
-      skip_bind = @emitter.je_rel32 # Wait, je means match, so we should jne to skip
-      # Actually cmp_rax_rsi returns 1 in RAX if equal.
-      # Let's use internal emitter methods if available or just test rax
+      skip_bind = @emitter.je_rel32
       @emitter.test_rax_rax
       skip_bind = @emitter.je_rel32
 
@@ -171,7 +148,6 @@ module GeneratorExpressions
 
   def unwrap_pattern(ptr_reg, fields)
     fields.each_with_index do |f_name, i|
-      # Field i is at [ptr_reg + 8 + i*8]
       @emitter.mov_rax_mem_idx(ptr_reg, 8 + i * 8)
       if @ctx.in_register?(f_name)
         reg = @emitter.class.reg_code(@ctx.get_register(f_name))
@@ -184,18 +160,17 @@ module GeneratorExpressions
   end
 
   def gen_panic(node)
-    @emitter.mov_rax(1) # exit code
+    @emitter.mov_rax(1)
     @emitter.emit_sys_exit_rax
   end
 
   def gen_todo(node)
-    @emitter.mov_rax(2) # exit code
+    @emitter.mov_rax(2)
     @emitter.emit_sys_exit_rax
   end
 
   def gen_cast(node)
     eval_expression(node[:expression])
-    # Juno currently is mostly 64-bit, but we can add truncation if needed
   end
 
   def gen_anonymous_fn(node)
@@ -243,14 +218,13 @@ module GeneratorExpressions
     end
 
     eval_expression(expr[:left])
-    # Disable scratch registers if right side contains a function call
     scratch = has_fn_call?(expr[:right]) ? nil : @ctx.acquire_scratch
 
     if scratch
       @emitter.mov_reg_reg(scratch, 0)
       eval_expression(expr[:right])
-      @emitter.mov_reg_reg(2, 0) # RDX = Right
-      @emitter.mov_reg_reg(0, scratch) # RAX = Left
+      @emitter.mov_reg_reg(2, 0)
+      @emitter.mov_reg_reg(0, scratch)
       @ctx.release_scratch(scratch)
     else
       @emitter.push_reg(0)
@@ -282,27 +256,24 @@ module GeneratorExpressions
   end
 
   def gen_float_binary_op(node)
-    # 1. Evaluate left side into RAX
     eval_expression(node[:left])
-    # 2. Move RAX to float reg 0
     if @arch == :aarch64
       @emitter.fmov_d_x(0, 0)
     else
       @emitter.movq_xmm_rax(0) 
     end
-    
-    # 3. Save state and evaluate right side
-    @emitter.push_reg(0) # Keep RAX copy
+
+    @emitter.push_reg(0)
     eval_expression(node[:right])
-    
+
     if @arch == :aarch64
-      @emitter.fmov_d_x(1, 0) # Right side in D1
+      @emitter.fmov_d_x(1, 0)
       @emitter.pop_reg(0)
-      @emitter.fmov_d_x(0, 0) # Restore left in D0
+      @emitter.fmov_d_x(0, 0)
     else
-      @emitter.movq_xmm_rax(1) # Right side in XMM1
+      @emitter.movq_xmm_rax(1)
       @emitter.pop_reg(0)
-      @emitter.movq_xmm_rax(0) # Restore left in XMM0
+      @emitter.movq_xmm_rax(0)
     end
 
     case node[:op]
@@ -318,11 +289,10 @@ module GeneratorExpressions
       if @arch == :aarch64
         @emitter.fcmp_d_d(0, 1)
         @emitter.mov_rax(0)
-        # CSET x0, cond
         cond = case node[:op]
                when "==" then 0 when "!=" then 1
-               when "<"  then 3 when ">"  then 12 # hi, lo (unordered/nan handled later)
-               when "<=" then 13 when ">=" then 10 # ls, ge
+               when "<"  then 3 when ">"  then 12
+               when "<=" then 13 when ">=" then 10
                end
         @emitter.emit32(0x1a9f07e0 | (cond << 12))
       else
@@ -338,7 +308,6 @@ module GeneratorExpressions
       return
     end
 
-    # Move result back to RAX
     if @arch == :aarch64
       @emitter.fmov_x_d(0, 0)
     else
@@ -354,9 +323,9 @@ module GeneratorExpressions
     @emitter.test_rax_rax
     @emitter.mov_rax(0)
     if @arch == :aarch64
-      @emitter.emit32(0x1a9f17e0) # CSET X0, NE -> CSINC X0, XZR, XZR, EQ
+      @emitter.emit32(0x1a9f17e0)
     else
-      @emitter.emit([0x0f, 0x95, 0xc0]) # setne al
+      @emitter.emit([0x0f, 0x95, 0xc0])
     end
     @emitter.patch_je(exit_patch, @emitter.current_pos)
   end
@@ -369,9 +338,9 @@ module GeneratorExpressions
     @emitter.test_rax_rax
     @emitter.mov_rax(0)
     if @arch == :aarch64
-      @emitter.emit32(0x1a9f17e0) # CSET X0, NE
+      @emitter.emit32(0x1a9f17e0)
     else
-      @emitter.emit([0x0f, 0x95, 0xc0]) # setne al
+      @emitter.emit([0x0f, 0x95, 0xc0])
     end
     @emitter.patch_jne(success_patch, @emitter.current_pos)
   end
@@ -384,7 +353,6 @@ module GeneratorExpressions
   def gen_pointer_arith(expr)
     base = pointer_node?(expr[:left]) ? expr[:left] : expr[:right]
     offset = (base == expr[:left]) ? expr[:right] : expr[:left]
-    # If both are pointers, don't scale
     no_scale = pointer_node?(expr[:left]) && pointer_node?(expr[:right])
     eval_expression(base)
     scratch = has_fn_call?(offset) ? nil : @ctx.acquire_scratch
@@ -392,8 +360,8 @@ module GeneratorExpressions
       @emitter.mov_reg_reg(scratch, 0)
       eval_expression(offset)
       @emitter.shl_rax_imm(3) unless no_scale
-      @emitter.mov_reg_reg(2, 0) # RDX = Offset
-      @emitter.mov_reg_reg(0, scratch) # RAX = Base
+      @emitter.mov_reg_reg(2, 0)
+      @emitter.mov_reg_reg(0, scratch)
       @ctx.release_scratch(scratch)
     else
       @emitter.push_reg(0)
@@ -408,7 +376,7 @@ module GeneratorExpressions
   def get_full_member_name(node)
     return node if node.is_a?(String)
     return "" unless node.is_a?(Hash)
-    
+
     if node[:type] == :variable
       node[:name] || node[:value]
     elsif node[:type] == :member_access

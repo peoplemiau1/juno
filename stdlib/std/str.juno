@@ -1,4 +1,3 @@
-// std/str.juno - String handling module
 import std/vec
 
 struct String {

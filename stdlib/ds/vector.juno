@@ -1,4 +1,3 @@
-// Dynamic Array (Vector) for Juno
 import "std.juno"
 
 struct Vector {
@@ -8,7 +7,6 @@ struct Vector {
 }
 
 fn Vector.new(): Vector {
-    // Vector has 3 fields (data, size, capacity) = 24 bytes
     let mut v: Vector = malloc(24)
     v.capacity = 4
     v.size = 0
@@ -24,8 +22,7 @@ fn Vector.add(self: Vector, value: int) {
         free(self.data)
         self.data = new_data
     }
-    
-    // ptr_add already scales by 8
+
     let offset_ptr = ptr_add(self.data, self.size)
     store_i64(offset_ptr, value)
     self.size = self.size + 1

@@ -1,20 +1,19 @@
-// examples/math.juno - Math library for Juno
-
-fn square(x) {
-    return x * x
-}
-
-fn cube(x) {
-    return x * x * x
-}
-
 fn double(x) {
     return x * 2
 }
 
-fn factorial(n) {
-    if (n <= 1) {
-        return 1
-    }
-    return n * factorial(n - 1)
+fn main() {
+    println("=== JUNO MATH & STDLIB TEST ===")
+
+    let val = 5
+    println("double(5) =")
+    output_int(double(val))
+
+    println("square(5) =")
+    output_int(square(val))
+
+    println("factorial(5) =")
+    output_int(factorial(val))
+
+    return 0
 }

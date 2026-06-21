@@ -27,7 +27,7 @@ class LLVMGenerator
     @output = ""
     emit_header
     setup_builtins
-    
+
     @globals = {}
     @global_types = {}
     @ast.each do |node|
@@ -168,7 +168,7 @@ class LLVMGenerator
     @output << "define i64 @#{node[:name].gsub('.', '_')}(#{params}) {\n"
     @tmp_count = 0
     @label_count = 0
-    
+
     @output << "entry:\n"
     (node[:params] || []).each do |p|
       @output << "  %#{p} = alloca i64\n"
@@ -178,20 +178,20 @@ class LLVMGenerator
     locals = []
     arrays = {}
     collect_locals(node[:body] || [], locals, arrays)
-    
+
     locals.uniq.each do |var|
       unless (node[:params] || []).include?(var)
         @output << "  %#{var} = alloca i64\n"
       end
     end
-    
+
     arrays.each do |var, size|
       @output << "  %#{var} = alloca [#{size} x i64]\n"
     end
     @current_arrays = arrays
 
     node[:body].each { |stmt| gen_statement(stmt) }
-    
+
     unless node[:body].last&.[](:type) == :return
       @output << "  ret i64 0\n"
     end
@@ -210,4 +210,3 @@ class LLVMGenerator
     res
   end
 end
-

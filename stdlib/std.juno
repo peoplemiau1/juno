@@ -1,6 +1,3 @@
-// stdlib/std.juno - Standard Library Entry Point
-// Imports all modular components
-
 import "core/math.juno"
 import "core/mem.juno"
 import "core/io.juno"
@@ -10,7 +7,6 @@ import "ds/collections.juno"
 import "std/format.juno"
 import "std/fs.juno"
 
-// Global constants for convenience
 fn OS_CLONE_THREAD() { return 0x10000 }
 fn OS_CLONE_VM()     { return 0x100 }
 fn OS_CLONE_FS()     { return 0x200 }

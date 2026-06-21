@@ -1,5 +1,3 @@
-// Test passing pointer to function
-
 fn set_value(ptr) {
     *ptr = 42
 }

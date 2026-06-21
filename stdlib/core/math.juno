@@ -1,6 +1,3 @@
-// stdlib/core/math.juno
-// Core math operations for Juno
-
 fn square(x) { return x * x }
 fn cube(x) { return x * x * x }
 

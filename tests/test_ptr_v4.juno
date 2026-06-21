@@ -1,4 +1,3 @@
-// Test pointer write
 fn main() {
     let x = 10
     let ptr = &x

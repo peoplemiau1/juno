@@ -3,7 +3,6 @@ class CodegenContext
   attr_reader :var_registers, :used_callee_saved
   attr_accessor :stack_ptr, :current_fn, :current_fn_stack_size, :structs, :unions, :enums, :stack_depth
 
-  # Sized types: name -> { size: bytes, signed: bool }
   SIZED_TYPES = {
     "i8"  => { size: 1, signed: true },
     "u8"  => { size: 1, signed: false },
@@ -16,25 +15,25 @@ class CodegenContext
     "int" => { size: 8, signed: true },
     "ptr" => { size: 8, signed: false },
     "bool" => { size: 1, signed: false },
-    "real" => { size: 8, signed: true }, # Placeholder for floats
+    "real" => { size: 8, signed: true },
   }
 
   def initialize(arch = :x86_64)
     @arch = arch
-    @variables = {}   # name -> stack_offset
-    @globals = {}     # name -> label_id
-    @var_types = {}   # name -> type name (string)
-    @var_is_ptr = {}  # name -> bool
-    @structs = {}     # name -> { size: int, fields: {name: offset}, packed: bool }
-    @unions = {}      # name -> { size: int, fields: {name: type} }
-    @enums = {}       # name -> { size: int, variants: { name: { tag, params } } }
-    @arrays = {}      # name -> { base_offset: int, size: int, ptr_offset: int }
-    @var_registers = {} # name -> register symbol (:rbx, :r12, etc.)
-    @used_callee_saved = [] # list of callee-saved regs used in current function
-    @stack_ptr = 16   # Standard alignment
+    @variables = {}
+    @globals = {}
+    @var_types = {}
+    @var_is_ptr = {}
+    @structs = {}
+    @unions = {}
+    @enums = {}
+    @arrays = {}
+    @var_registers = {}
+    @used_callee_saved = []
+    @stack_ptr = 16
     @stack_depth = 0
     @current_fn = nil
-    @available_scratch = (arch == :aarch64) ? (9..15).to_a : [10] # R11 clobbered
+    @available_scratch = (arch == :aarch64) ? (9..15).to_a : [10]
     @used_scratch = []
   end
 
@@ -59,7 +58,7 @@ class CodegenContext
     elsif @unions[type_name]
       @unions[type_name][:size]
     else
-      8  # default
+      8
     end
   end
 
@@ -84,18 +83,15 @@ class CodegenContext
     @current_fn = name
   end
 
-  # Assign register to variable (from register allocator)
   def assign_register(var_name, reg)
     @var_registers[var_name] = reg
     @used_callee_saved << reg unless @used_callee_saved.include?(reg)
   end
 
-  # Check if variable is in a register
   def in_register?(var_name)
     @var_registers.key?(var_name)
   end
 
-  # Get register for variable
   def get_register(var_name)
     @var_registers[var_name]
   end
@@ -129,11 +125,11 @@ class CodegenContext
     array_bytes = size * 8
     @stack_ptr += array_bytes
     base_offset = @stack_ptr
-    
+
     @stack_ptr += 8
     ptr_offset = @stack_ptr
     @variables[name] = ptr_offset
-    
+
     @arrays[name] = {
       base_offset: base_offset,
       size: size,

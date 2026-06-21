@@ -1,5 +1,3 @@
-# assignments.rb - Assignment and variable handling for GeneratorLogic
-
 module GeneratorAssignments
   def process_assignment(node)
     if node[:expression][:type] == :variable && @ctx.structs.key?(node[:expression][:name])
@@ -26,19 +24,18 @@ module GeneratorAssignments
        save_member_rax(name)
     elsif @ctx.globals.key?(name)
        label = @ctx.globals[name]
-       @emitter.push_reg(0) # RAX
+       @emitter.push_reg(0)
        @emitter.emit_load_address(label, @linker)
-       @emitter.mov_reg_reg(@arch == :aarch64 ? 1 : 2, 0) # RDX or X1
-       @emitter.pop_reg(0) # RAX or X0
+       @emitter.mov_reg_reg(@arch == :aarch64 ? 1 : 2, 0)
+       @emitter.pop_reg(0)
        if @arch == :aarch64
-         @emitter.emit32(0xf9000020) # str x0, [x1]
+         @emitter.emit32(0xf9000020)
        else
-         @emitter.mov_mem_reg_idx(2, 0, 0) # [RDX], RAX
+         @emitter.mov_mem_reg_idx(2, 0, 0)
        end
     else
        type = node[:var_type] || node[:inferred_type]
        if !type && node[:expression][:type] == :variable
-         # Inherit type from another variable
          type = @ctx.var_types[node[:expression][:name]]
        end
 
@@ -69,13 +66,12 @@ module GeneratorAssignments
   def process_deref_assign(node)
     eval_expression(node[:value]); @emitter.push_reg(0)
     eval_expression(node[:target])
-    
-    # Check if target is a byte_add
+
     is_byte = node[:target][:type] == :fn_call && (node[:target][:name] == "byte_add" || node[:target][:name] == "gen_byte_add")
-    
+
     target_reg = (@arch == :aarch64 ? 1 : 7)
-    @emitter.mov_reg_reg(target_reg, 0) # RDI or X1 = target
-    @emitter.pop_reg(0)        # RAX or X0 = value
+    @emitter.mov_reg_reg(target_reg, 0)
+    @emitter.pop_reg(0)
     @emitter.mov_mem_reg_idx(target_reg, 0, 0, is_byte ? 1 : 8)
   end
 
@@ -85,26 +81,26 @@ module GeneratorAssignments
 
     scratch = @ctx.acquire_scratch
     if scratch
-       @emitter.mov_reg_reg(scratch, 0) # index in scratch
+       @emitter.mov_reg_reg(scratch, 0)
        arr_info = @ctx.get_array(node[:name])
        if arr_info then @emitter.mov_reg_stack_val(0, arr_info[:ptr_offset])
        else @emitter.mov_reg_stack_val(0, @ctx.get_variable_offset(node[:name])) end
-       @emitter.mov_reg_reg(2, 0) # base in RDX
-       @emitter.mov_reg_reg(0, scratch) # index in RAX
+       @emitter.mov_reg_reg(2, 0)
+       @emitter.mov_reg_reg(0, scratch)
        @ctx.release_scratch(scratch)
        @emitter.add_rax_rdx
     else
-       @emitter.push_reg(0) # index
+       @emitter.push_reg(0)
        arr_info = @ctx.get_array(node[:name])
        if arr_info then @emitter.mov_reg_stack_val(0, arr_info[:ptr_offset])
        else @emitter.mov_reg_stack_val(0, @ctx.get_variable_offset(node[:name])) end
-       @emitter.pop_reg(2) # index in RDX
+       @emitter.pop_reg(2)
        @emitter.add_rax_rdx
     end
 
     target_reg = (@arch == :aarch64 ? 1 : 7)
-    @emitter.mov_reg_reg(target_reg, 0) # target addr (X1 or RDI)
-    @emitter.pop_reg(0) # value (X0 or RAX)
+    @emitter.mov_reg_reg(target_reg, 0)
+    @emitter.pop_reg(0)
     @emitter.mov_mem_reg_idx(target_reg, 0, 0, 8)
   end
 end

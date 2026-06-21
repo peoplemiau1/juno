@@ -1,18 +1,15 @@
-# Memory built-in functions for Juno
-
 module BuiltinMemory
   def gen_alloc(node)
     return unless @target_os == :linux
     eval_expression(node[:args][0])
     if @arch == :aarch64
-      @emitter.mov_reg_reg(1, 0)             # X1 = length (from X0)
-      @emitter.mov_reg_imm(0, 0)             # X0 = addr
-      @emitter.mov_reg_imm(2, 3)             # X2 = prot (PROT_READ|PROT_WRITE)
-      @emitter.mov_reg_imm(3, 0x22)          # X3 = flags (MAP_PRIVATE|MAP_ANONYMOUS)
-      # fd = -1
+      @emitter.mov_reg_reg(1, 0)
+      @emitter.mov_reg_imm(0, 0)
+      @emitter.mov_reg_imm(2, 3)
+      @emitter.mov_reg_imm(3, 0x22)
       @emitter.mov_reg_imm(4, 0xffffffff)
-      @emitter.mov_reg_imm(5, 0)             # X5 = offset
-      @emitter.mov_x8(222)                   # X8 = syscall mmap
+      @emitter.mov_reg_imm(5, 0)
+      @emitter.mov_x8(222)
       @emitter.syscall
     else
       @emitter.mov_reg_reg(6, 0); @emitter.mov_rax(0); @emitter.mov_reg_reg(7, 0)
@@ -28,23 +25,20 @@ module BuiltinMemory
     return if args.empty?
     eval_expression(args[0])
     if @arch == :aarch64
-       # munmap(addr, len)
-       @emitter.mov_reg_reg(0, 0) # X0 = addr (already in X0)
+       @emitter.mov_reg_reg(0, 0)
        if args.length >= 2
          @emitter.push_reg(0)
          eval_expression(args[1])
-         @emitter.mov_reg_reg(1, 0) # X1 = len
-         @emitter.pop_reg(0)        # X0 = addr
+         @emitter.mov_reg_reg(1, 0)
+         @emitter.pop_reg(0)
        else
-         # If len not provided, we might have stored it in a header?
-         # Juno's malloc adds 8 bytes header.
          @emitter.sub_reg_imm(0, 8)
-         @emitter.mov_reg_reg(11, 0) # save addr+header
-         @emitter.mov_rax_mem(0)     # load size
-         @emitter.mov_reg_reg(1, 0)  # X1 = size
-         @emitter.mov_reg_reg(0, 11) # X0 = addr
+         @emitter.mov_reg_reg(11, 0)
+         @emitter.mov_rax_mem(0)
+         @emitter.mov_reg_reg(1, 0)
+         @emitter.mov_reg_reg(0, 11)
        end
-       @emitter.mov_x8(215) # munmap
+       @emitter.mov_x8(215)
        @emitter.syscall
     else
        if args.length >= 2
@@ -57,26 +51,22 @@ module BuiltinMemory
   end
 
   def gen_memcpy(node)
-    # memcpy(dst, src, n)
-    # x86 args: RDI=dst, RSI=src, RCX=n
-    eval_expression(node[:args][2]); @emitter.push_reg(0) # n
-    eval_expression(node[:args][1]); @emitter.push_reg(0) # src
-    eval_expression(node[:args][0]) # dst (RAX)
-    @emitter.mov_reg_reg(7, 0) # RDI = dst
-    @emitter.pop_reg(6) # RSI = src
-    @emitter.pop_reg(1) # RCX = n
+    eval_expression(node[:args][2]); @emitter.push_reg(0)
+    eval_expression(node[:args][1]); @emitter.push_reg(0)
+    eval_expression(node[:args][0])
+    @emitter.mov_reg_reg(7, 0)
+    @emitter.pop_reg(6)
+    @emitter.pop_reg(1)
     @emitter.memcpy
   end
 
   def gen_memset(node)
-    # memset(ptr, val, n)
-    # x86 args: RDI=ptr, RAX=val, RCX=n
-    eval_expression(node[:args][2]); @emitter.push_reg(0) # n
-    eval_expression(node[:args][1]); @emitter.push_reg(0) # val
-    eval_expression(node[:args][0]) # ptr (RAX)
-    @emitter.mov_reg_reg(7, 0) # RDI = ptr
-    @emitter.pop_reg(0) # RAX = val
-    @emitter.pop_reg(1) # RCX = n
+    eval_expression(node[:args][2]); @emitter.push_reg(0)
+    eval_expression(node[:args][1]); @emitter.push_reg(0)
+    eval_expression(node[:args][0])
+    @emitter.mov_reg_reg(7, 0)
+    @emitter.pop_reg(0)
+    @emitter.pop_reg(1)
     @emitter.memset
   end
 end

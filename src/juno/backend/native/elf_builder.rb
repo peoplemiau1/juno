@@ -19,7 +19,6 @@ class ELFBuilder
     interp_data = ""; dynstr = ""; dynsym = ""; rela_plt = ""; hash = ""; dynamic = ""
     interp_rva = 0; metadata_rel_off = 0; dynamic_rva = 0; dynstr_rva = 0; dyn_len = 0
 
-    # 4KB Page Alignment for segments
     code_segment_filesz = align_val(0x1000 + @code_len, 0x1000)
 
     if has_dyn
@@ -34,7 +33,7 @@ class ELFBuilder
       @external_symbols.each do |s|
         dynsym += [sym_offsets[s[:name]], 0x12, 0, 0, 0, 0].pack("LCCSQQ")
       end
-      rel_type = (@arch == :aarch64) ? 1025 : 7 # JUMP_SLOT for x86
+      rel_type = (@arch == :aarch64) ? 1025 : 7
       @external_symbols.each_with_index do |s, i|
         got_rva = @label_rvas[@got_slots[s[:name]]]
         rela_plt += [got_rva, (i + 1) << 32 | rel_type, 0].pack("QQq")
@@ -61,7 +60,7 @@ class ELFBuilder
         [5, dynstr_rva], [10, dynstr.length],
         [6, dynsym_rva], [11, 24],
         [4, hash_rva],
-        [7, rela_plt_rva], [8, rela_plt.length], [9, 24], # RELA
+        [7, rela_plt_rva], [8, rela_plt.length], [9, 24],
         [0, 0]
       ]
       dynamic = dyn_tags.map{|t| t.pack("Qq")}.join
@@ -69,7 +68,7 @@ class ELFBuilder
     end
 
     machine = (@arch == :aarch64) ? 0xb7 : 0x3e
-    type = (@arch == :aarch64) ? 3 : 2 # ET_DYN for ARM, ET_EXEC for x86
+    type = (@arch == :aarch64) ? 3 : 2
     header = "\x7fELF".b << [2, 1, 1, 0].pack("C4") << "\x00" * 8
     header << [type, machine].pack("SS") << [1].pack("L")
     header << [base + 0x1000].pack("Q")
@@ -98,7 +97,7 @@ class ELFBuilder
     result += interp_data.ljust(32, "\x00") if has_dyn
     result = result.ljust(0x1000, "\x00")
     result += @bytes[0...@code_len].pack("C*")
-    result = result.ljust(code_segment_filesz, "\x00") # Pad .text to 4KB
+    result = result.ljust(code_segment_filesz, "\x00")
     data_part = @bytes[@code_len..-1].pack("C*")
     if has_dyn
       m2 = dynstr.ljust(align_val(dynstr.length, 8), "\x00")
@@ -111,24 +110,21 @@ class ELFBuilder
     end
     result += data_part
 
-    # Section String Table (.shstrtab)
     shstrtab = "\x00.text\x00.data\x00.shstrtab\x00"
 
-    # Add dummy section headers for better compatibility
     sh_off = result.length
     sh_num = 4
-    sh = "\x00" * 64 # NULL section
-    sh += [1, 1, 6, base + 0x1000, 0x1000, @code_len, 0, 0, 16, 0].pack("LLQQQQLLQQ") # .text
-    sh += [7, 1, 3, base + code_segment_filesz, code_segment_filesz, data_filesz, 0, 0, 16, 0].pack("LLQQQQLLQQ") # .data
+    sh = "\x00" * 64
+    sh += [1, 1, 6, base + 0x1000, 0x1000, @code_len, 0, 0, 16, 0].pack("LLQQQQLLQQ")
+    sh += [7, 1, 3, base + code_segment_filesz, code_segment_filesz, data_filesz, 0, 0, 16, 0].pack("LLQQQQLLQQ")
 
     shstrtab_data_off = sh_off + sh_num * 64
-    sh += [13, 3, 0, 0, shstrtab_data_off, shstrtab.length, 0, 0, 1, 0].pack("LLQQQQLLQQ") # .shstrtab
+    sh += [13, 3, 0, 0, shstrtab_data_off, shstrtab.length, 0, 0, 1, 0].pack("LLQQQQLLQQ")
 
-    # Update ELF header with SH info
-    result[40..47] = [sh_off].pack("Q")  # e_shoff
-    result[58..59] = [64].pack("S")      # e_shentsize
-    result[60..61] = [4].pack("S")       # e_shnum
-    result[62..63] = [3].pack("S")       # e_shstrndx (index 3 is .shstrtab)
+    result[40..47] = [sh_off].pack("Q")
+    result[58..59] = [64].pack("S")
+    result[60..61] = [4].pack("S")
+    result[62..63] = [3].pack("S")
 
     result + sh + shstrtab
   end

@@ -1,13 +1,9 @@
-// examples/crypto_tea.juno
-// T.E.A (Tiny Encryption Algorithm) on Juno
-// Fixed with robust register allocation and pointer arithmetic.
-
 fn tea_encrypt(v, k) {
     let mut v0 = *v
     let mut v1 = *(ptr_add(v, 1))
 
     let mut sum = 0
-    let delta = 2654435769 // 0x9E3779B9
+    let delta = 2654435769
 
     let k0 = *k
     let k1 = *(ptr_add(k, 1))
@@ -17,20 +13,20 @@ fn tea_encrypt(v, k) {
     let mut i = 0
     while (i < 32) {
         sum = (sum + delta) & 0xFFFFFFFF
-        
+
         let t1 = (v1 << 4) + k0
         let t2 = v1 + sum
         let t3 = (v1 >> 5) + k1
         v0 = (v0 + (t1 ^ t2 ^ t3)) & 0xFFFFFFFF
-        
+
         let t4 = (v0 << 4) + k2
         let t5 = v0 + sum
         let t6 = (v0 >> 5) + k3
         v1 = (v1 + (t4 ^ t5 ^ t6)) & 0xFFFFFFFF
-        
+
         i++
     }
-    
+
     *v = v0
     *(ptr_add(v, 1)) = v1
     return 0
@@ -41,7 +37,7 @@ fn tea_decrypt(v, k) {
     let mut v1 = *(ptr_add(v, 1))
 
     let delta = 2654435769
-    let mut sum = 3337565984 // 0xC6EF3720
+    let mut sum = 3337565984
 
     let k0 = *k
     let k1 = *(ptr_add(k, 1))
@@ -54,16 +50,16 @@ fn tea_decrypt(v, k) {
         let t5 = v0 + sum
         let t6 = (v0 >> 5) + k3
         v1 = (v1 - (t4 ^ t5 ^ t6)) & 0xFFFFFFFF
-        
+
         let t1 = (v1 << 4) + k0
         let t2 = v1 + sum
         let t3 = (v1 >> 5) + k1
         v0 = (v0 - (t1 ^ t2 ^ t3)) & 0xFFFFFFFF
-        
+
         sum = (sum - delta) & 0xFFFFFFFF
         i++
     }
-    
+
     *v = v0
     *(ptr_add(v, 1)) = v1
     return 0
@@ -71,34 +67,34 @@ fn tea_decrypt(v, k) {
 
 fn main() {
     print("\e[1;35m--- JUNO CRYPTOGRAPHY ENGINE ---\e[0m")
-    
+
     let block = alloc(16)
     let key = alloc(32)
-    
-    *block = 305419896  // 0x12345678
-    *(ptr_add(block, 1)) = 2596069104 // 0x9ABCDEF0
-    
+
+    *block = 305419896
+    *(ptr_add(block, 1)) = 2596069104
+
     *key = 0x01020304
     *(ptr_add(key, 1)) = 0x05060708
     *(ptr_add(key, 2)) = 0x090A0B0C
     *(ptr_add(key, 3)) = 0x0D0E0F00
-    
+
     print("\e[34mPlaintext: \e[0m ")
     print(*block)
     print(*(ptr_add(block, 1)))
-    
+
     print("\n\e[36m[ ENCRYPTING... ]\e[0m")
     tea_encrypt(block, key)
     print("\e[33mEncrypted: \e[0m ")
     print(*block)
     print(*(ptr_add(block, 1)))
-    
+
     print("\n\e[32m[ DECRYPTING... ]\e[0m")
     tea_decrypt(block, key)
     print("\e[32mDecrypted: \e[0m ")
     print(*block)
     print(*(ptr_add(block, 1)))
-    
+
     if (*block == 305419896 && *(ptr_add(block, 1)) == 2596069104) {
         print("\n\e[1;32mRESULT: SUCCESS!\e[0m")
     } else {

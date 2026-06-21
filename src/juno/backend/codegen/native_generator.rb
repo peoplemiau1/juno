@@ -1,4 +1,3 @@
-# require_relative "../native/pe_builder"
 require_relative "../native/elf_builder"
 require_relative "../native/flat_builder"
 require_relative "parts/context"
@@ -14,7 +13,7 @@ require_relative "../../optimizer/register_allocator"
 
 class NativeGenerator
   attr_accessor :hell_mode
-  STACK_SIZE = 4096 # Increased for stability
+  STACK_SIZE = 4096
 
   include GeneratorLogic
   include GeneratorCalls
@@ -49,7 +48,7 @@ class NativeGenerator
     @linker.add_bss("file_buffer", 65536)
     @linker.add_bss("file_buffer_2", 65536)
     @linker.add_data("concat_buffer_idx", [0].pack("Q<"))
-    @linker.add_bss("concat_buffer_pool", 1048576) # 16 * 65536
+    @linker.add_bss("concat_buffer_pool", 1048576)
     @linker.add_bss("substr_buffer", 65536)
     @linker.add_bss("chr_buffer", 4)
     @linker.add_bss("input_buffer", 1024)
@@ -58,9 +57,6 @@ class NativeGenerator
   end
 
   def generate(output_path, ir = nil)
-    # If IR is provided, we can use it. For now we use @ast for safety.
-    # FIRST PASS: SYMBOL TABLE & TYPE REGISTRATION
-    # Ensure all functions, structs and unions are known before generation starts
     @ast.each do |n|
       case n[:type]
       when :function_definition
@@ -74,7 +70,6 @@ class NativeGenerator
       when :enum_definition
         gen_enum_def(n)
       when :assignment
-        # Register top-level let as global
         if n[:let] && n[:name]
            name = n[:name]
            label = "global_#{name}"
@@ -104,12 +99,10 @@ class NativeGenerator
     end
 
     if @hell_mode && (@arch == :x86_64 || @arch == :aarch64)
-      # Apply global obfuscation to all generated code before finalizing
       mutated_bytes, mapping = @hell_mode.mutator.inject_junk(@emitter.bytes)
       @emitter.instance_variable_set(:@bytes, mutated_bytes)
       @linker.apply_mapping(mapping)
 
-      # Re-apply internal patches using the mapping
       @emitter.internal_patches.each do |p|
         new_pos = mapping[p[:pos]]
         new_target = mapping[p[:target]]
@@ -201,18 +194,15 @@ class NativeGenerator
   end
 
   def gen_function(node, ctx, emitter, linker)
-    # puts "GEN FUNCTION: #{node[:name]}"
     linker.register_function(node[:name], emitter.current_pos); ctx.reset_for_function(node[:name])
     gen_function_internal(node, ctx, emitter, linker)
   end
 
   def gen_function_internal(node, ctx, emitter, linker)
-    # Run register allocator for function body, skip globals
     res = @allocator.allocate(node[:body], ctx.globals.keys)
     res[:allocations].each { |var, reg| ctx.assign_register(var, reg) }
 
     params = node[:params].map { |p| p.is_a?(Hash) ? p[:name] : p }
-    # Register parameter types
     param_types = node[:param_types] || {}
     node[:params].each do |p|
       t = param_types[p]
@@ -228,7 +218,6 @@ class NativeGenerator
       @ctx.var_is_ptr["self"] = true
     end
 
-    # Pre-calculate needed stack size based on non-register variables
     @ctx.stack_ptr = 16
     node[:params].each do |p|
       p_name = p.is_a?(Hash) ? p[:name] : p
@@ -245,19 +234,14 @@ class NativeGenerator
 
     needed_stack = (@ctx.stack_ptr > @stack_size) ? @ctx.stack_ptr : @stack_size
     needed_stack = (needed_stack + 15) & ~15
-    @ctx.stack_ptr = 16 # Reset to same base as pre-calculation
+    @ctx.stack_ptr = 16
     @ctx.current_fn_stack_size = needed_stack
 
     @emitter.emit_prologue(needed_stack)
 
-    # Save callee-saved registers to allow builtins and allocator to use them safely
     callee_saved = @emitter.callee_saved_regs
     @emitter.push_callee_saved(callee_saved)
 
-    # Stack alignment for x86_64 (16 bytes)
-    # push rbp (8) + sub rsp, stack_size (even) + push N regs (N*8)
-    # Total must be multiple of 16. Total pushed = 1 (RBP) + N (callee_saved).
-    # If 1 + N is even, we need 8 bytes padding to make total odd (+ ret = even).
     if @arch == :x86_64 && (callee_saved.length + 1) % 2 == 0
       @emitter.emit_sub_rsp(8)
     end
@@ -278,7 +262,7 @@ class NativeGenerator
           @emitter.mov_stack_reg_val(off, regs[i])
         else
           @emitter.mov_rax_rbp_disp32(16 + 8 * (i - regs.length))
-          @emitter.mov_stack_reg_val(off, 0) # RAX
+          @emitter.mov_stack_reg_val(off, 0)
         end
       end
     end
@@ -301,6 +285,5 @@ class NativeGenerator
       @emitter.emit_epilogue(needed_stack)
     end
   end
-
 
 end

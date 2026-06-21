@@ -1,5 +1,3 @@
-// Test file I/O wrappers using syscalls
-
 extern fn open(path: ptr, flags: int, mode: int): int
 extern fn write(fd: int, buf: ptr, len: int): int
 extern fn read(fd: int, buf: ptr, len: int): int
@@ -10,7 +8,7 @@ extern fn free(p: ptr): int
 fn main() {
     let path = "build/tmp_io.txt"
     let content = "hello, io"
-    
+
     let fd = open(path, 65, 420)
     if (fd < 0) { return 1 }
     write(fd, content, 9)
@@ -18,13 +16,13 @@ fn main() {
 
     let fd2 = open(path, 0, 0)
     if (fd2 < 0) { return 2 }
-    
+
     let buf = malloc(64)
     read(fd2, buf, 64)
-    
+
     write(1, buf, 9)
     write(1, "\n", 1)
-    
+
     close(fd2)
     free(buf)
     return 0

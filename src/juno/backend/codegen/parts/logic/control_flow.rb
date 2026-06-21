@@ -1,5 +1,3 @@
-# control_flow.rb - IF, WHILE, FOR with BREAK/CONTINUE support
-
 module GeneratorControlFlow
   def gen_if(node)
     return if node[:type] == :noop
@@ -34,7 +32,7 @@ module GeneratorControlFlow
 
   def gen_while(node)
     loop_start = @emitter.current_pos
-    
+
     @loop_stack.push({ breaks: [], continues: [], start_pos: loop_start })
 
     eval_expression(node[:condition])
@@ -47,7 +45,7 @@ module GeneratorControlFlow
     @emitter.patch_jmp(jmp_back, loop_start)
 
     loop_end = @emitter.current_pos
-    
+
     @emitter.patch_je(exit_patch, loop_end)
 
     @loop_stack.last[:breaks].each do |b_pos|
@@ -63,9 +61,9 @@ module GeneratorControlFlow
 
   def gen_for(node)
     process_node(node[:init])
-    
+
     loop_start = @emitter.current_pos
-    
+
     @loop_stack.push({ breaks: [], continues: [], type: :for })
 
     eval_expression(node[:condition])
@@ -76,7 +74,7 @@ module GeneratorControlFlow
 
     update_start = @emitter.current_pos
     process_node(node[:update])
-    
+
     jmp_back = @emitter.jmp_rel32
     @emitter.patch_jmp(jmp_back, loop_start)
 

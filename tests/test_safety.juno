@@ -31,4 +31,3 @@ fn test_double_free() {
 fn main() {
     return 0
 }
-

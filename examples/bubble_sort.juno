@@ -1,11 +1,7 @@
-// Сортировка пузырьком
-// Демонстрация работы с массивами
-
 fn main(): int {
     let arr[10]
     let size = 10
-    
-    // Заполняем массив
+
     arr[0] = 64
     arr[1] = 34
     arr[2] = 25
@@ -16,13 +12,12 @@ fn main(): int {
     arr[7] = 42
     arr[8] = 7
     arr[9] = 55
-    
+
     print("Before sort:")
     for (k = 0; k < size; k++) {
         print(arr[k])
     }
-    
-    // Bubble sort
+
     for (i = 0; i < size; i++) {
         for (j = 0; j < size - i - 1; j++) {
             let a = arr[j]
@@ -33,11 +28,11 @@ fn main(): int {
             }
         }
     }
-    
+
     print("After sort:")
     for (m = 0; m < size; m++) {
         print(arr[m])
     }
-    
+
     return 0
 }

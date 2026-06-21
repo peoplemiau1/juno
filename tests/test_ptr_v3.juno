@@ -1,4 +1,3 @@
-// Minimal pointer test
 fn main() {
     let x = 10
     let ptr = &x

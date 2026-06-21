@@ -1,5 +1,3 @@
-// Test without optimization tricks
-
 fn get100() {
     return 100
 }

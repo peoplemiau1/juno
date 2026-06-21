@@ -1,11 +1,9 @@
-# Turbo Optimizer for Juno AST
-
 require 'set'
 
 class TurboOptimizer
-  INLINE_THRESHOLD = 10  # Max nodes for inline
-  UNROLL_THRESHOLD = 8   # Max iterations to unroll
-  
+  INLINE_THRESHOLD = 10
+  UNROLL_THRESHOLD = 8
+
   def initialize(ast)
     @ast = ast
     @functions = {}
@@ -16,17 +14,17 @@ class TurboOptimizer
   def optimize
     analyze_functions
     find_inline_candidates
-    
+
     @ast = @ast.map { |node| optimize_node(node) }
-    
+
     @ast = inline_functions(@ast)
-    
+
     @ast = @ast.map { |node| optimize_loops(node) }
-    
+
     @ast = @ast.map { |node| eliminate_dead_stores(node) }
-    
+
     @ast = @ast.map { |node| final_pass(node) }
-    
+
     @ast
   end
 
@@ -46,15 +44,13 @@ class TurboOptimizer
         }
       end
     end
-    
-    # Find call relationships
+
     @ast.each do |node|
       if node[:type] == :function_definition
         find_calls(node[:body], node[:name])
       end
     end
-    
-    # Mark recursive functions
+
     @functions.each do |name, info|
       info[:is_recursive] = info[:calls].include?(name)
     end
@@ -104,13 +100,13 @@ class TurboOptimizer
 
   def find_calls_in_node(node, current_fn)
     return unless node.is_a?(Hash)
-    
+
     if node[:type] == :fn_call && @functions.key?(node[:name])
       @functions[current_fn][:calls] << node[:name]
       @functions[current_fn][:is_leaf] = false
       @call_count[node[:name]] += 1
     end
-    
+
     node.values.each do |v|
       case v
       when Hash then find_calls_in_node(v, current_fn)
@@ -119,10 +115,9 @@ class TurboOptimizer
     end
   end
 
-
   def optimize_node(node)
     return node unless node.is_a?(Hash)
-    
+
     case node[:type]
     when :function_definition
       node[:body] = node[:body].map { |n| optimize_node(n) }
@@ -151,27 +146,24 @@ class TurboOptimizer
 
   def optimize_expr(expr)
     return expr unless expr.is_a?(Hash)
-    
+
     case expr[:type]
     when :binary_op
       left = optimize_expr(expr[:left])
       right = optimize_expr(expr[:right])
-      
-      # Constant folding
+
       if left[:type] == :literal && right[:type] == :literal
         result = fold_const(left[:value], expr[:op], right[:value])
         return { type: :literal, value: result } if result
       end
-      
+
       expr[:left] = left
       expr[:right] = right
-      
-      # Algebraic simplifications
+
       expr = algebraic_simplify(expr)
-      
-      # Strength reduction
+
       expr = strength_reduce(expr)
-      
+
       expr
     when :fn_call
       expr[:args] = expr[:args]&.map { |a| optimize_expr(a) }
@@ -217,68 +209,57 @@ class TurboOptimizer
     left = expr[:left]
     right = expr[:right]
     op = expr[:op]
-    
-    # x - x = 0
+
     if op == "-" && exprs_equal?(left, right)
       return { type: :literal, value: 0 }
     end
-    
-    # x / x = 1 (when x != 0)
+
     if op == "/" && exprs_equal?(left, right) && left[:type] != :literal
       return { type: :literal, value: 1 }
     end
-    
-    # x & x = x, x | x = x
+
     if (op == "&" || op == "|") && exprs_equal?(left, right)
       return left
     end
-    
-    # x ^ x = 0
+
     if op == "^" && exprs_equal?(left, right)
       return { type: :literal, value: 0 }
     end
-    
-    # a + b - b = a
+
     if op == "-" && left[:type] == :binary_op && left[:op] == "+"
       if exprs_equal?(left[:right], right)
         return left[:left]
       end
     end
-    
-    # a - b + b = a
+
     if op == "+" && left[:type] == :binary_op && left[:op] == "-"
       if exprs_equal?(left[:right], right)
         return left[:left]
       end
     end
-    
-    # x & 0 = 0
+
     if op == "&" && (literal_value(left) == 0 || literal_value(right) == 0)
       return { type: :literal, value: 0 }
     end
-    
-    # x | 0 = x
+
     if op == "|" && literal_value(right) == 0
       return left
     end
     if op == "|" && literal_value(left) == 0
       return right
     end
-    
-    # x ^ 0 = x
+
     if op == "^" && literal_value(right) == 0
       return left
     end
-    
-    # Constant comparison folding: x == x => 1, x != x => 0
+
     if ["==", "<=", ">="].include?(op) && exprs_equal?(left, right)
       return { type: :literal, value: 1 }
     end
     if ["!=", "<", ">"].include?(op) && exprs_equal?(left, right)
       return { type: :literal, value: 0 }
     end
-    
-    # x && 0 = 0, x || 1 = 1
+
     if op == "&&" && (literal_value(left) == 0 || literal_value(right) == 0)
       return { type: :literal, value: 0 }
     end
@@ -288,22 +269,21 @@ class TurboOptimizer
     if op == "||" && (literal_value(right) != nil && literal_value(right) != 0)
       return { type: :literal, value: 1 }
     end
-    
-    # x && 1 = x (truthiness), 1 && x = x
+
     if op == "&&" && literal_value(right) == 1
       return left
     end
     if op == "&&" && literal_value(left) == 1
       return right
     end
-    
+
     expr
   end
 
   def exprs_equal?(a, b)
     return false unless a.is_a?(Hash) && b.is_a?(Hash)
     return false unless a[:type] == b[:type]
-    
+
     case a[:type]
     when :variable then a[:name] == b[:name]
     when :literal then a[:value] == b[:value]
@@ -317,15 +297,12 @@ class TurboOptimizer
     left = expr[:left]
     right = expr[:right]
     op = expr[:op]
-    
+
     case op
     when "*"
-      # x * 0 = 0
       return { type: :literal, value: 0 } if literal_value(right) == 0 || literal_value(left) == 0
-      # x * 1 = x
       return left if literal_value(right) == 1
       return right if literal_value(left) == 1
-      # x * 2 = x << 1
       if (n = literal_value(right)) && power_of_two?(n)
         return { type: :binary_op, op: "<<", left: left, right: { type: :literal, value: log2(n) } }
       end
@@ -335,12 +312,10 @@ class TurboOptimizer
     when "/"
       return left if literal_value(right) == 1
       return { type: :literal, value: 0 } if literal_value(left) == 0
-      # x / 2^n = x >> n
       if (n = literal_value(right)) && power_of_two?(n)
         return { type: :binary_op, op: ">>", left: left, right: { type: :literal, value: log2(n) } }
       end
     when "%"
-      # x % 2^n = x & (2^n - 1)
       if (n = literal_value(right)) && power_of_two?(n)
         return { type: :binary_op, op: "&", left: left, right: { type: :literal, value: n - 1 } }
       end
@@ -354,7 +329,7 @@ class TurboOptimizer
     when ">>"
       return left if literal_value(right) == 0
     end
-    
+
     expr
   end
 
@@ -370,7 +345,6 @@ class TurboOptimizer
     Math.log2(n).to_i
   end
 
-
   def inline_functions(ast)
     ast.map do |node|
       if node[:type] == :function_definition
@@ -382,7 +356,7 @@ class TurboOptimizer
 
   def inline_in_body(body)
     return body unless body.is_a?(Array)
-    
+
     result = []
     body.each do |node|
       inlined = try_inline(node)
@@ -397,7 +371,7 @@ class TurboOptimizer
 
   def try_inline(node)
     return node unless node.is_a?(Hash)
-    
+
     case node[:type]
     when :assignment
       if node[:expression][:type] == :fn_call && @inline_candidates.include?(node[:expression][:name])
@@ -428,36 +402,33 @@ class TurboOptimizer
 
   def try_inline_expr(expr)
     return expr unless expr.is_a?(Hash)
-    
+
     if expr[:type] == :fn_call && @inline_candidates.include?(expr[:name])
-      # Can't inline in expression context easily, skip
       return expr
     end
-    
+
     expr
   end
 
   def inline_call(call, result_var)
     fn_info = @functions[call[:name]]
     return call unless fn_info
-    
+
     fn = fn_info[:node]
     params = fn[:params] || []
     args = call[:args] || []
-    
-    # Create variable substitution map
+
     subst = {}
     params.each_with_index do |param, i|
       param_name = param.is_a?(Hash) ? param[:name] : param
       subst[param_name] = args[i] if args[i]
     end
-    
-    # Clone and substitute body
+
     inlined = []
     fn[:body].each do |stmt|
       cloned = deep_clone(stmt)
       substituted = substitute_vars(cloned, subst)
-      
+
       if substituted[:type] == :return
         if result_var
           inlined << { type: :assignment, name: result_var, expression: substituted[:expression] }
@@ -468,7 +439,7 @@ class TurboOptimizer
         inlined << substituted
       end
     end
-    
+
     inlined.empty? ? { type: :noop } : inlined
   end
 
@@ -482,11 +453,11 @@ class TurboOptimizer
 
   def substitute_vars(node, subst)
     return node unless node.is_a?(Hash)
-    
+
     if node[:type] == :variable && subst.key?(node[:name])
       return deep_clone(subst[node[:name]])
     end
-    
+
     node.transform_values { |v|
       case v
       when Hash then substitute_vars(v, subst)
@@ -496,10 +467,9 @@ class TurboOptimizer
     }
   end
 
-
   def optimize_loops(node)
     return node unless node.is_a?(Hash)
-    
+
     case node[:type]
     when :function_definition
       node[:body] = node[:body].map { |n| optimize_loops(n) }
@@ -507,8 +477,7 @@ class TurboOptimizer
     when :for_statement
       unrolled = try_unroll_for(node)
       return unrolled if unrolled
-      
-      # Loop-invariant code motion
+
       node = hoist_invariants(node)
       node
     when :while_statement
@@ -528,30 +497,26 @@ class TurboOptimizer
     cond = node[:condition]
     update = node[:update]
     body = node[:body]
-    
-    # Check if it's a simple counted loop
+
     return nil unless init[:type] == :assignment
     return nil unless init[:expression][:type] == :literal
-    
+
     loop_var = init[:name]
     start_val = init[:expression][:value]
-    
-    # Check condition: i < N or i <= N
+
     return nil unless cond[:type] == :binary_op
     return nil unless cond[:left][:type] == :variable && cond[:left][:name] == loop_var
     return nil unless cond[:right][:type] == :literal
-    
+
     end_val = cond[:right][:value]
     end_val += 1 if cond[:op] == "<="
-    
+
     iterations = end_val - start_val
     return nil if iterations <= 0 || iterations > UNROLL_THRESHOLD
-    
-    # Check update: i++ or i = i + 1
+
     return nil unless update[:type] == :increment || 
                       (update[:type] == :assignment && update[:name] == loop_var)
-    
-    # Unroll!
+
     unrolled = []
     (start_val...end_val).each do |i|
       body.each do |stmt|
@@ -560,17 +525,17 @@ class TurboOptimizer
         unrolled << substituted
       end
     end
-    
+
     { type: :block, body: unrolled }
   end
 
   def substitute_loop_var(node, var_name, value)
     return node unless node.is_a?(Hash)
-    
+
     if node[:type] == :variable && node[:name] == var_name
       return { type: :literal, value: value }
     end
-    
+
     node.transform_values { |v|
       case v
       when Hash then substitute_loop_var(v, var_name, value)
@@ -581,12 +546,11 @@ class TurboOptimizer
   end
 
   def hoist_invariants(node)
-    # Find variables written in loop
     written = find_written_vars(node[:body])
-    
+
     hoisted = []
     new_body = []
-    
+
     node[:body].each do |stmt|
       if can_hoist?(stmt, written)
         hoisted << stmt
@@ -594,9 +558,9 @@ class TurboOptimizer
         new_body << stmt
       end
     end
-    
+
     return node if hoisted.empty?
-    
+
     node[:body] = new_body
     { type: :block, body: hoisted + [node] }
   end
@@ -611,13 +575,13 @@ class TurboOptimizer
 
   def collect_written_vars(node, vars)
     return unless node.is_a?(Hash)
-    
+
     case node[:type]
     when :assignment then vars << node[:name]
     when :increment then vars << node[:name]
     when :deref_assign then nil
     end
-    
+
     node.values.each do |v|
       case v
       when Hash then collect_written_vars(v, vars)
@@ -628,21 +592,19 @@ class TurboOptimizer
 
   def can_hoist?(stmt, written_vars)
     return false unless stmt[:type] == :assignment
-    
-    # Don't hoist if result is modified in loop
+
     return false if written_vars.include?(stmt[:name])
-    
-    # Don't hoist if expression uses modified variables
+
     !uses_any_var?(stmt[:expression], written_vars)
   end
 
   def uses_any_var?(expr, vars)
     return false unless expr.is_a?(Hash)
-    
+
     if expr[:type] == :variable
       return vars.include?(expr[:name])
     end
-    
+
     expr.values.any? do |v|
       case v
       when Hash then uses_any_var?(v, vars)
@@ -652,10 +614,9 @@ class TurboOptimizer
     end
   end
 
-
   def final_pass(node)
     return node unless node.is_a?(Hash)
-    
+
     case node[:type]
     when :function_definition
       node[:body] = remove_dead_code(node[:body])
@@ -664,7 +625,6 @@ class TurboOptimizer
     when :block
       node[:body] = remove_dead_code(node[:body])
       node[:body] = node[:body].map { |n| final_pass(n) }
-      # Flatten single-statement blocks
       return node[:body].first if node[:body].length == 1
       node
     when :if_statement
@@ -680,8 +640,7 @@ class TurboOptimizer
     node[:condition] = optimize_expr(node[:condition])
     node[:body] = node[:body].map { |n| optimize_node(n) }
     node[:else_body] = node[:else_body]&.map { |n| optimize_node(n) }
-    
-    # Constant condition
+
     if node[:condition][:type] == :literal
       if node[:condition][:value] != 0
         return { type: :block, body: node[:body] }
@@ -691,20 +650,19 @@ class TurboOptimizer
         return { type: :noop }
       end
     end
-    
+
     node
   end
 
   def optimize_loop_node(node)
     node[:condition] = optimize_expr(node[:condition])
     node[:body] = node[:body].map { |n| optimize_node(n) }
-    
+
     if node[:type] == :for_statement
       node[:init] = optimize_node(node[:init])
       node[:update] = optimize_node(node[:update])
     end
-    
-    # Dead loop
+
     if node[:condition][:type] == :literal && node[:condition][:value] == 0
       return { type: :noop }
     end
@@ -751,7 +709,7 @@ class TurboOptimizer
       next true if node[:type] == :fn_call
       next true if node[:type] == :deref_assign
       next true if node[:type] == :array_assign
-      next true if node[:type] == :if_statement # for now
+      next true if node[:type] == :if_statement
       next true if node[:type] == :while_statement
       next true if node[:type] == :for_statement
       false
@@ -776,7 +734,7 @@ class TurboOptimizer
     constants = {}
     assigned_once = Set.new
     assigned_multi = Set.new
-    
+
     body.each do |node|
       if node.is_a?(Hash) && node[:type] == :assignment && node[:name]
         if assigned_once.include?(node[:name])
@@ -786,14 +744,14 @@ class TurboOptimizer
         end
       end
     end
-    
+
     body.map do |node|
       case node[:type]
       when :assignment
         expr = substitute_constants_expr(node[:expression], constants)
         expr = optimize_expr(expr)
         node[:expression] = expr
-        
+
         if expr[:type] == :literal && !assigned_multi.include?(node[:name])
           constants[node[:name]] = expr[:value]
         else
@@ -822,7 +780,7 @@ class TurboOptimizer
 
   def substitute_constants_expr(expr, constants)
     return expr unless expr.is_a?(Hash)
-    
+
     case expr[:type]
     when :variable
       if constants.key?(expr[:name])
@@ -844,18 +802,16 @@ class TurboOptimizer
   def eliminate_common_subexpressions(body)
     expr_cache = {}
     temp_counter = 0
-    
+
     body.flat_map do |node|
       if node[:type] == :assignment
         expr = node[:expression]
         expr_key = expr_to_key(expr)
-        
+
         if expr_key && expr_cache.key?(expr_key) && !has_side_effects?(expr)
-          # Reuse cached value
           node[:expression] = { type: :variable, name: expr_cache[expr_key] }
           [node]
         elsif expr_key && complex_expr?(expr) && !has_side_effects?(expr)
-          # Cache this expression
           expr_cache[expr_key] = node[:name]
           [node]
         else
@@ -869,7 +825,7 @@ class TurboOptimizer
 
   def expr_to_key(expr)
     return nil unless expr.is_a?(Hash)
-    
+
     case expr[:type]
     when :literal then "L#{expr[:value]}"
     when :variable then "V#{expr[:name]}"
@@ -892,7 +848,7 @@ class TurboOptimizer
   def has_side_effects?(expr)
     return false unless expr.is_a?(Hash)
     return true if expr[:type] == :fn_call
-    
+
     expr.values.any? do |v|
       case v
       when Hash then has_side_effects?(v)

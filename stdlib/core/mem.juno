@@ -1,12 +1,5 @@
-// stdlib/core/mem.juno
-// Memory management and raw byte operations
-
 fn os_alloc(size) { return malloc(size) }
 fn os_free(p) { free(p) }
-
-// Memory block operations (builtins)
-// NOTE: Builtins like memcpy, memset are already in the compiler
-// But we provide wrappers for convenience
 
 fn copy_memory(dst, src, n) {
     memcpy(dst, src, n)

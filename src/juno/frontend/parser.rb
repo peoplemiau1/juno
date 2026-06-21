@@ -25,10 +25,9 @@ class Parser
     ast
   end
 
-  # --- Helpers ---
   def peek; @tokens[0]; end
   def peek_next; @tokens[1]; end
-  
+
   def consume(type = nil)
     t = @tokens.shift
     if t.nil?

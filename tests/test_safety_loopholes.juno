@@ -1,0 +1,28 @@
+fn test_if_0_leak() {
+    let ptr = malloc(1024)
+    if (0) {
+        free(ptr)
+    }
+    return 0
+}
+
+fn test_alias_double_free() {
+    let ptr1 = malloc(1024)
+    let ptr2 = &ptr1
+    let ptr3 = &ptr1
+    free(*ptr2)
+    free(*ptr3)
+    return 0
+}
+
+fn test_alias_use_after_free() {
+    let ptr1 = malloc(1024)
+    let ptr2 = &ptr1
+    free(*ptr2)
+    let val = *ptr2
+    return 0
+}
+
+fn main() {
+    return 0
+}

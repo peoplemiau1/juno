@@ -1,4 +1,3 @@
-# Function call dispatcher for Juno compiler
 require_relative "builtins/strings"
 require_relative "builtins/math"
 require_relative "builtins/memory"
@@ -65,15 +64,14 @@ module GeneratorCalls
       "file_read_safe" => :gen_file_read_all_v2
     }
     return send(aliases[name], node) if aliases.key?(name)
-    
+
     if name.include?('.')
       v = name.split('.')[0]
       if @ctx.var_types.key?(v)
         return gen_method_call(node)
       end
-      # Fallthrough to user fn call for static Type.method() calls
     end
-    
+
     gen_user_fn_call(node)
   end
 
@@ -88,14 +86,10 @@ module GeneratorCalls
 
     padding = 0
     if @arch == :x86_64
-      # Calculate current stack alignment
-      # Frame (8 for RBP + stack_size) + Callee-saved + Alignment padding + Temp pushes
       callee_saved_count = @emitter.callee_saved_regs.length
       align_pad = ((callee_saved_count + 1) % 2 == 0) ? 8 : 0
       current_total = 8 + (@ctx.current_fn_stack_size || 0) + callee_saved_count * 8 + align_pad + @ctx.stack_depth
 
-      # We will push num_stack * 8 bytes.
-      # We want (current_total + padding + num_stack * 8) % 16 == 0
       padding = (16 - (current_total + num_stack * 8) % 16) % 16
     end
 
@@ -121,7 +115,6 @@ module GeneratorCalls
          @emitter.emit_call_indirect(node[:name], @linker)
       else
          @emitter.xor_rax_rax if @arch == :x86_64
-         # FF 15 disp32 -> disp32 is at +2 from start of call_ind_rel32
          @linker.add_import_patch(@emitter.current_pos + 2, node[:name], :rel32)
          @emitter.call_ind_rel32
       end
@@ -164,14 +157,12 @@ module GeneratorCalls
       @ctx.stack_depth += padding
     end
 
-    # Push args first
     args.reverse_each do |a|
       eval_expression(a)
       @emitter.push_reg(0)
       @ctx.stack_depth += 8
     end
 
-    # Push 'this' LAST so it's on top
     if @ctx.in_register?(v)
       @emitter.mov_rax_from_reg(@emitter.class.reg_code(@ctx.get_register(v)))
     else
@@ -212,7 +203,6 @@ module GeneratorCalls
     name = node[:name]
     args = node[:args] || []
 
-    # Load fn pointer into R11
     if @ctx.in_register?(name)
       @emitter.mov_reg_reg(11, @emitter.class.reg_code(@ctx.get_register(name)))
     else
@@ -230,12 +220,11 @@ module GeneratorCalls
     if @arch == :x86_64
       callee_saved_count = @emitter.callee_saved_regs.length
       align_pad = ((callee_saved_count + 1) % 2 == 0) ? 8 : 0
-      # Include +8 for the fn ptr we are about to push
       current_total = 8 + (@ctx.current_fn_stack_size || 0) + callee_saved_count * 8 + align_pad + @ctx.stack_depth + 8
       padding = (16 - (current_total + num_stack * 8) % 16) % 16
     end
 
-    @emitter.push_reg(11) # Save fn ptr
+    @emitter.push_reg(11)
     @ctx.stack_depth += 8
     if padding > 0
       @emitter.emit_sub_rsp(padding)
@@ -250,7 +239,6 @@ module GeneratorCalls
     num_pop = [args.length, regs.length].min
     num_pop.times { |i| @emitter.pop_reg(regs[i]); @ctx.stack_depth -= (@arch == :aarch64 ? 16 : 8) }
 
-    # Load saved fn ptr back to R11.
     offset = num_stack * (@arch == :aarch64 ? 16 : 8) + padding
     @emitter.mov_reg_mem_idx(11, @arch == :aarch64 ? 31 : 4, offset)
 
@@ -265,7 +253,6 @@ module GeneratorCalls
     enum_info = @ctx.enums[enum_name]
     variant_info = enum_info[:variants][variant_name]
 
-    # Allocate on heap
     eval_expression({ type: :fn_call, name: "malloc", args: [{ type: :literal, value: enum_info[:size] }] })
 
     ptr_reg = @ctx.acquire_scratch

@@ -1,5 +1,3 @@
-// Test all new system programming features
-
 #define BUFFER_SIZE 1024
 #define VERSION 1
 
@@ -58,15 +56,15 @@ fn test_pointers(): int {
     arr[0] = 10
     arr[1] = 20
     arr[2] = 30
-    
+
     let ptr = &arr[0]
     print("arr[0]:")
     print(*ptr)
-    
+
     let ptr2 = ptr_add(ptr, 2)
     print("arr[2]:")
     print(*ptr2)
-    
+
     return 0
 }
 
@@ -80,13 +78,13 @@ fn test_syscalls(): int {
 
 fn main(): int {
     print("====== ALL FEATURES TEST ======")
-    
+
     test_preprocessor()
     test_bitwise()
     test_types()
     test_pointers()
     test_syscalls()
-    
+
     print("====== ALL TESTS PASSED ======")
     return 0
 }

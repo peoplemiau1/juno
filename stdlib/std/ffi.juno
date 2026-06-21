@@ -80,21 +80,14 @@ fn ffi_call(f_addr: int, a1: ptr, a2: int, a3: int) -> int {
 }
 #endif
 
-// Находим базу libc/ld через системный стек (Auxiliary Vector)
 fn ffi_init() -> int {
     if g_dlopen_ptr != 0 { return 1 }
-    
-    // В PRoot/Box64 проще всего найти libc через попытку открыть её по стандартному пути
-    // Но мы сделаем хитрее: воспользуемся тем, что Box64 прокидывает символы
-    
-    // Попробуем найти dlopen в текущем процессе (он там есть благодаря Box64)
-    let base = 0x7f0000000000 // Базовое предположение для Box64
+
+    let base = 0x7f0000000000
     prints("DEBUG: ffi_init starting...\n")
     let maps = file_read_all("/proc/self/maps")
     prints("DEBUG: Maps read successfully.\n")
-    
-    // output(maps) // Commented out to avoid crash if output is buggy
-    
+
     prints("DEBUG: Length: ")
     print(len(maps))
     prints("\n")
@@ -105,14 +98,13 @@ fn ffi_init() -> int {
     prints("\n")
 
     if libc_idx == 0 - 1 { libc_idx = str_find(maps, "libc-") }
-    
+
     if libc_idx != 0 - 1 {
         let mut start = libc_idx
         while start > 0 {
             if u8(*(maps + start - 1)) == 10 { break }
             start = start - 1
         }
-        // Парсим адрес вручную
         let mut addr = 0
         let mut i = 0
         while i < 12 {
@@ -127,17 +119,17 @@ fn ffi_init() -> int {
         prints("DEBUG: Libc base found: ")
         print(addr)
         prints("\n")
-        
+
         g_dlopen_ptr = _ffi_find_symbol(addr, "dlopen")
         prints("DEBUG: dlopen: ")
         print(g_dlopen_ptr)
         prints("\n")
-        
+
         g_dlsym_ptr = _ffi_find_symbol(addr, "dlsym")
         prints("DEBUG: dlsym: ")
         print(g_dlsym_ptr)
         prints("\n")
-        
+
         if g_dlopen_ptr != 0 { return 1 }
     }
     return 0

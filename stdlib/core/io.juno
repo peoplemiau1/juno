@@ -1,5 +1,3 @@
-// stdlib/core/io.juno
-// Input/Output and terminal operations
 import "core/string.juno"
 
 fn os_open(path) { return open(path) }
@@ -83,18 +81,13 @@ fn getbuf() {
     return malloc(1024)
 }
 
-// === НОВЫЕ СИСТЕМНЫЕ ФУНКЦИИ ===
-
-// Объявление системной usleep из библиотеки Си (glibc)
 extern fn usleep(usec)
 
-// Приостановка программы в миллисекундах
 fn sleep_ms(ms) {
     usleep(ms * 1000)
     return 0
 }
 
-// Возвращает точное время в миллисекундах (на стеке, без malloc)
 fn time_ms() {
     let ts[2]
     syscall(228, 1, ts)

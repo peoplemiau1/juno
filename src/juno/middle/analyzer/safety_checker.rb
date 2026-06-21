@@ -1,6 +1,17 @@
 require_relative "../../errors"
 
 class JunoSafetyChecker
+  attr_reader :fn_effects
+
+  SAFE_FUNCTIONS = %w[
+    print print_s println print_i print_hex print_newline print_space
+    write read output putc puts
+    strlen streq str_hash str_find str_contains str_substring
+    concat substr ord chr itoa format_print
+    ptr_add memset memcpy memmove
+    square cube abs_val min_val max_val factorial gcd ipow
+  ].freeze
+
   def initialize(ast, functions = {}, source = "", filename = "")
     @ast = ast
     @functions = functions
@@ -12,23 +23,11 @@ class JunoSafetyChecker
     @local_lets = []
   end
 
-  attr_reader :fn_effects
-
-  SAFE_FUNCTIONS = %w[
-    print print_s println print_i print_hex print_newline print_space
-    write read output putc puts
-    strlen streq str_hash str_find str_contains str_substring
-    concat substr ord chr itoa
-    format_print
-    ptr_add memset memcpy memmove
-    square cube abs_val min_val max_val factorial gcd ipow
-  ].freeze
-
   def check
     @errors = []
     analyze_all_fn_effects
     @ast.each { |node| process_node(node) }
-    
+
     unless @errors.empty?
       @errors.each(&:display)
       exit 1
@@ -48,19 +47,44 @@ class JunoSafetyChecker
 
   private
 
+  def resolve_target_var(expr)
+    return nil unless expr.is_a?(Hash)
+    if expr[:type] == :variable
+      name = expr[:name]
+      if @var_states.key?(name) && @var_states[name][:state] == :local_ptr
+        return @var_states[name][:target]
+      end
+      return name
+    elsif expr[:type] == :address_of
+      operand = expr[:operand] || expr[:expression]
+      return operand[:type] == :variable ? operand[:name] : nil
+    elsif expr[:type] == :dereference
+      operand = expr[:operand] || expr[:expression]
+      return resolve_target_var(operand)
+    end
+    nil
+  end
+
   def resolve_local_pointer(expr)
     return nil unless expr.is_a?(Hash)
-    
     if expr[:type] == :address_of
       operand = expr[:operand] || expr[:expression]
-      if operand && operand[:type] == :variable
-        return operand[:name]
-      end
+      return operand[:type] == :variable ? operand[:name] : nil
     elsif expr[:type] == :variable
       name = expr[:name]
       if @var_states.key?(name) && @var_states[name][:state] == :local_ptr
         return @var_states[name][:target]
       end
+    end
+    nil
+  end
+
+  def static_eval_bool(cond)
+    return nil unless cond.is_a?(Hash)
+    if cond[:type] == :literal
+      val = cond[:value]
+      return val != 0 if val.is_a?(Integer)
+      return val if val.is_a?(TrueClass) || val.is_a?(FalseClass)
     end
     nil
   end
@@ -86,24 +110,21 @@ class JunoSafetyChecker
   def analyze_fn_effects(fn_node)
     consumed_params = []
     params = (fn_node[:params] || []).map { |p| p.is_a?(Hash) ? p[:name] : p }
-    
+
     walker = ->(node) {
       if node.is_a?(Array)
         node.each { |i| walker.call(i) }
         return
       end
       return unless node.is_a?(Hash)
-      
+
       if node[:type] == :fn_call
         fn_name = node[:name]
         if consumes_resource?(fn_name) || (@fn_effects[fn_name] && !@fn_effects[fn_name].empty?)
           node[:args]&.each_with_index do |arg, idx|
-            if arg[:type] == :variable && params.include?(arg[:name])
-              if consumes_resource?(fn_name) && idx == 0
-                consumed_params << arg[:name]
-              elsif @fn_effects[fn_name]
-                consumed_params << arg[:name] if idx == 0 
-              end
+            arg_var = resolve_target_var(arg)
+            if arg_var && params.include?(arg_var)
+              consumed_params << arg_var if (consumes_resource?(fn_name) && idx == 0) || @fn_effects[fn_name]
             end
           end
         end
@@ -118,11 +139,9 @@ class JunoSafetyChecker
     return false unless body.is_a?(Array)
     body.each do |stmt|
       next unless stmt.is_a?(Hash)
-      return true if stmt[:type] == :return || stmt[:type] == :return_statement
+      return true if [:return, :return_statement].include?(stmt[:type])
       if stmt[:type] == :if_statement
-        if block_returns?(stmt[:body]) && block_returns?(stmt[:else_body])
-          return true
-        end
+        return true if block_returns?(stmt[:body]) && block_returns?(stmt[:else_body])
       end
     end
     false
@@ -152,14 +171,7 @@ class JunoSafetyChecker
     if is_warning
       JunoErrorReporter.warn(message, filename: node_filename, line_num: line || 0)
     else
-      error = JunoTypeError.new(
-        message,
-        filename: node_filename,
-        line_num: line,
-        column: col,
-        source: node_source
-      )
-      @errors << error
+      @errors << JunoTypeError.new(message, filename: node_filename, line_num: line, column: col, source: node_source)
     end
   end
 
@@ -172,7 +184,7 @@ class JunoSafetyChecker
       @local_lets = []
       @current_fn = node[:name]
       (node[:body] || []).each { |stmt| process_node(stmt) }
-      
+
       unless @current_fn.end_with?('.init')
         @var_states.each do |name, info|
           if info[:state] == :owned && @local_lets.include?(name)
@@ -184,14 +196,11 @@ class JunoSafetyChecker
     when :assignment
       name = node[:name] || ""
       expr = node[:expression]
-      
-      if node[:let]
-        @local_lets << name
-      end
 
+      @local_lets << name if node[:let]
       check_expression(expr) if expr.is_a?(Hash)
 
-      if local_var = resolve_local_pointer(expr)
+      if (local_var = resolve_local_pointer(expr))
         @var_states[name] = { state: :local_ptr, target: local_var, line: node[:line], node: node }
       elsif expr.is_a?(Hash) && expr[:type] == :fn_call && allocates_resource?(expr[:name])
         if node[:let]
@@ -201,12 +210,9 @@ class JunoSafetyChecker
         src_name = expr[:name]
         if @var_states.key?(src_name)
           state_info = @var_states[src_name]
-          if state_info[:state] == :moved
-            report_error("Use of moved value '#{src_name}'", node)
-          elsif state_info[:state] == :freed
-            report_error("Use of freed value '#{src_name}'", node)
-          end
-          
+          report_error("Use of moved value '#{src_name}'", node) if state_info[:state] == :moved
+          report_error("Use of freed value '#{src_name}'", node) if state_info[:state] == :freed
+
           if state_info[:state] == :owned
             if name.include?('.') || !node[:let]
               @var_states[src_name] = { state: :moved, line: node[:line], node: node }
@@ -221,7 +227,7 @@ class JunoSafetyChecker
     when :deref_assign
       check_expression(node[:target])
       check_expression(node[:value])
-      
+
       if local_var = resolve_local_pointer(node[:value])
         report_error("Escape error: storing pointer to local variable '#{local_var}' into a dereferenced pointer, causing it to escape function '#{@current_fn}' scope", node)
       end
@@ -236,38 +242,26 @@ class JunoSafetyChecker
           v_name = receiver_name
           if @var_states.key?(v_name)
             state_info = @var_states[v_name]
-            if state_info[:state] == :moved
-              report_error("Attempt to free already moved value '#{v_name}'", node)
-            elsif state_info[:state] == :freed
-              report_error("Double free/close detected for '#{v_name}'", node)
-            end
+            report_error("Attempt to free already moved value '#{v_name}'", node) if state_info[:state] == :moved
+            report_error("Double free/close detected for '#{v_name}'", node) if state_info[:state] == :freed
             @var_states[v_name] = { state: :freed, line: node[:line], node: node }
           end
         end
       elsif consumes_resource?(fn_name)
-        arg = args[0]
-        if arg && arg[:type] == :variable
-          v_name = arg[:name]
-          if @var_states.key?(v_name)
-            state_info = @var_states[v_name]
-            if state_info[:state] == :moved
-              report_error("Attempt to free already moved value '#{v_name}'", node)
-            elsif state_info[:state] == :freed
-              report_error("Double free/close detected for '#{v_name}'", node)
-            end
-            @var_states[v_name] = { state: :freed, line: node[:line], node: node }
-          end
+        arg_var = resolve_target_var(args[0])
+        if arg_var && @var_states.key?(arg_var)
+          state_info = @var_states[arg_var]
+          report_error("Attempt to free already moved value '#{arg_var}'", node) if state_info[:state] == :moved
+          report_error("Double free/close detected for '#{arg_var}'", node) if state_info[:state] == :freed
+          @var_states[arg_var] = { state: :freed, line: node[:line], node: node }
         end
       else
         args.each_with_index do |arg, idx|
           check_expression(arg)
-
-          if arg[:type] == :variable
-            v_name = arg[:name]
-            if @var_states.key?(v_name) && @var_states[v_name][:state] == :owned
-              if function_consumes_arg?(fn_name, idx)
-                @var_states[v_name] = { state: :moved, line: node[:line], node: node }
-              end
+          arg_var = resolve_target_var(arg)
+          if arg_var && @var_states.key?(arg_var) && @var_states[arg_var][:state] == :owned
+            if function_consumes_arg?(fn_name, idx)
+              @var_states[arg_var] = { state: :moved, line: node[:line], node: node }
             end
           end
         end
@@ -275,11 +269,9 @@ class JunoSafetyChecker
 
     when :return
       expr = node[:expression]
-      
-      if local_var = resolve_local_pointer(expr)
+      if (local_var = resolve_local_pointer(expr))
         report_error("Dangling pointer: returning pointer to local variable '#{local_var}' which will be destroyed when function '#{@current_fn}' returns", node)
-      elsif expr.is_a?(Hash) && expr[:type] == :variable
-        ret_name = expr[:name]
+      elsif (ret_name = resolve_target_var(expr))
         if @var_states.key?(ret_name) && @var_states[ret_name][:state] == :owned
           @var_states[ret_name] = { state: :returned, line: node[:line], node: node }
         end
@@ -287,39 +279,46 @@ class JunoSafetyChecker
       check_expression(expr) if expr.is_a?(Hash)
 
     when :if_statement
-      saved_state = @var_states.dup.transform_values(&:dup)
-      
-      process_node(node[:condition])
-      (node[:body] || []).each { |n| process_node(n) }
-      
-      then_state = @var_states
-      then_returns = block_returns?(node[:body])
-
-      @var_states = saved_state
-      (node[:else_body] || []).each { |n| process_node(n) }
-      
-      else_state = @var_states
-      else_returns = block_returns?(node[:else_body])
-
-      if then_returns && else_returns
-        @var_states = else_state
-      elsif then_returns
-        @var_states = else_state
-      elsif else_returns
-        @var_states = then_state
+      cond_val = static_eval_bool(node[:condition])
+      if cond_val == true
+        (node[:body] || []).each { |n| process_node(n) }
+      elsif cond_val == false
+        (node[:else_body] || []).each { |n| process_node(n) } if node[:else_body]
       else
-        then_state.each do |name, info|
-          if @var_states.key?(name)
-            current = @var_states[name]
-            if info[:state] != current[:state]
-              if info[:state] == :freed || current[:state] == :freed
-                @var_states[name] = { state: :freed, line: node[:line], node: node }
-              elsif info[:state] == :moved || current[:state] == :moved
-                @var_states[name] = { state: :moved, line: node[:line], node: node }
+        saved_state = @var_states.dup.transform_values(&:dup)
+
+        process_node(node[:condition])
+        (node[:body] || []).each { |n| process_node(n) }
+
+        then_state = @var_states
+        then_returns = block_returns?(node[:body])
+
+        @var_states = saved_state
+        (node[:else_body] || []).each { |n| process_node(n) }
+
+        else_state = @var_states
+        else_returns = block_returns?(node[:else_body])
+
+        if then_returns && else_returns
+          @var_states = else_state
+        elsif then_returns
+          @var_states = else_state
+        elsif else_returns
+          @var_states = then_state
+        else
+          then_state.each do |name, info|
+            if @var_states.key?(name)
+              current = @var_states[name]
+              if info[:state] != current[:state]
+                if info[:state] == :freed || current[:state] == :freed
+                  @var_states[name] = { state: :freed, line: node[:line], node: node }
+                elsif info[:state] == :moved || current[:state] == :moved
+                  @var_states[name] = { state: :moved, line: node[:line], node: node }
+                end
               end
+            else
+              @var_states[name] = info
             end
-          else
-            @var_states[name] = info
           end
         end
       end
@@ -333,7 +332,7 @@ class JunoSafetyChecker
   def function_consumes_arg?(fn_name, arg_idx)
     return false if SAFE_FUNCTIONS.include?(fn_name)
     return false if fn_name.include?('.')
-    
+
     if @fn_effects.key?(fn_name)
       fn_node = @ast.find { |n| n[:type] == :function_definition && n[:name] == fn_name }
       if fn_node
@@ -342,15 +341,14 @@ class JunoSafetyChecker
         return (@fn_effects[fn_name] || []).include?(param_name)
       end
     end
-    
+
     consumes_resource?(fn_name) && arg_idx == 0
   end
 
   def check_expression(expr)
     return unless expr.is_a?(Hash)
-    
-    if expr[:type] == :variable
-      name = expr[:name]
+
+    if (name = resolve_target_var(expr))
       if @var_states.key?(name)
         info = @var_states[name]
         if info[:state] == :moved

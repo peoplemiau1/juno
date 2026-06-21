@@ -96,15 +96,15 @@ fn gui_color_lighten(clr, amount) -> int {
     let g = (clr >> 8) & 255
     let b = (clr >> 16) & 255
     let a = (clr >> 24) & 255
-    
+
     let mut nr = r + amount
     let mut ng = g + amount
     let mut nb = b + amount
-    
+
     if (nr > 255) { nr = 255 }
     if (ng > 255) { ng = 255 }
     if (nb > 255) { nb = 255 }
-    
+
     return nr | (ng << 8) | (nb << 16) | (a << 24)
 }
 
@@ -143,10 +143,10 @@ fn gui_render_rect(w, h, clr) {
 fn gui_render_button(text, w, h, clr) -> int {
     let x = g_layout_x
     let y = g_layout_y
-    
+
     let mx = GetMouseX()
     let my = GetMouseY()
-    
+
     let mut hover = 0
     if (mx >= x) {
         if (mx <= (x + w)) {
@@ -157,26 +157,26 @@ fn gui_render_button(text, w, h, clr) -> int {
             }
         }
     }
-    
+
     let mut draw_color = clr
     if (hover == 1) {
         draw_color = gui_color_lighten(clr, 30)
     }
-    
+
     DrawRectangle(x, y, w, h, draw_color)
-    
+
     let text_len = len(text)
     let text_x = x + (w / 2) - (text_len * 4)
     let text_y = y + (h / 2) - 8
-    
+
     if (g_layout_font == 0) {
         DrawText(text, text_x, text_y, 10, 0xFFFFFFFF)
     } else {
         juno_draw_text(g_layout_font, text, text_x, text_y, 16, 1, 0xFFFFFFFF)
     }
-    
+
     g_layout_y = g_layout_y + h + g_layout_spacing
-    
+
     if (hover == 1) {
         if ((IsMouseButtonPressed(0) & 1) == 1) {
             return 1

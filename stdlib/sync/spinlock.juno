@@ -1,13 +1,10 @@
-// stdlib/sync/spinlock.juno
-// Atomic synchronization primitives - Industrial Edition v3.0
-
 struct SpinLock {
     state_ptr: ptr
 }
 
 fn SpinLock.init(self) {
     write(1, "SPIN_INIT_START\n", 16)
-    
+
     let p = malloc(8)
     write(1, "SPIN_MALLOC_OK\n", 15)
 

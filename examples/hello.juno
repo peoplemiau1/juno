@@ -1,5 +1,3 @@
-// hello.juno - Simple hello world
-
 fn main() {
     print("Hello from Juno!")
     print(42)

@@ -1,5 +1,3 @@
-// test_ptr_noopt.juno - Pointer test without optimization tricks
-
 fn get_ten() {
     return 10
 }

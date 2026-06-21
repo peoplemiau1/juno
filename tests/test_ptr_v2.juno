@@ -1,19 +1,13 @@
-// test_ptr_v2.juno - Step by step pointer test
-
 fn main() {
     let x = 10
     let ptr = &x
-    
-    // Read original value
-    let val = *ptr      // val should be 10
-    
-    // Modify through pointer
-    *ptr = 42           // x should become 42
-    
-    // Read modified value
-    let x2 = x          // x2 should be 42
-    
-    // Return just val first
+
+    let val = *ptr
+
+    *ptr = 42
+
+    let x2 = x
+
     print(val)
     print(x)
     return val

@@ -163,7 +163,7 @@ module ParserExpressions
     when :fn_call then node[:name] || "unknown_call"
     when :address_of then "(&#{extract_name(node[:operand])})"
     when :dereference then "(*#{extract_name(node[:operand])})"
-    when :array_access then node[:name] # Just return base name for array access
+    when :array_access then node[:name]
     else 
       "unknown_#{node[:type]}"
     end
@@ -180,10 +180,10 @@ module ParserExpressions
     if match?(:string)
       return with_loc({ type: :string_literal, value: consume(:string)[:value] }, t)
     end
-    
+
     if match?(:ident) || (match?(:keyword) && ["malloc", "free", "realloc", "realloc_header", "sleep", "os_sleep", "thread_create", "spin_lock", "spin_unlock"].include?(peek[:value]))
       name = (match?(:ident) ? consume_ident : consume[:value])
-      
+
       if match_symbol?('(')
          args = []
          consume_symbol('(')
@@ -197,21 +197,21 @@ module ParserExpressions
       end
       return with_loc({ type: :variable, name: name }, t)
     end
-    
+
     if match_symbol?('(')
       consume_symbol('(')
       exp = parse_expression
       consume_symbol(')')
       return exp
     end
-    
+
     error_unexpected(t, t ? "Expected expression" : "Unexpected end of input")
   end
 
   def is_op?(t)
     t && [:operator, :symbol, :bitor, :bitxor, :ampersand, :star, :langle, :rangle].include?(t[:type])
   end
-  
+
   def match_operator?(op)
     t = peek
     t && is_op?(t) && t[:value] == op ? t : nil

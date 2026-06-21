@@ -4,9 +4,7 @@ fn main() {
     let c = a + b
     let d = a * b
     let e = a / b
-    
-    // We can't print floats yet because print() expects int
-    // But we can check results if we cast or use bit patterns
+
     if c == 12.5 {
         print(1)
     }

@@ -1,5 +1,3 @@
-# base_gen.rb - Common code generation helpers for Juno
-
 module BaseGenerator
   def gen_entry_point(has_top_level, has_user_main)
     @emitter.emit_prologue(@stack_size)
@@ -12,14 +10,13 @@ module BaseGenerator
       @emitter.call_rel32
     end
     @target_os == :linux ? @emitter.emit_sys_exit_rax : @emitter.emit_epilogue(@stack_size)
-    return # Ensure no extra bytes
+    return
   end
 
   def gen_synthetic_main(nodes)
     @linker.register_function("__juno_init", @emitter.current_pos)
     @ctx.reset_for_function("__juno_init")
 
-    # Register allocation for top-level code
     res = @allocator.allocate(nodes)
     res[:allocations].each do |var, reg|
       @ctx.assign_register(var, reg) unless @ctx.globals.key?(var)
@@ -49,7 +46,7 @@ module BaseGenerator
       @emitter.pop_callee_saved(@emitter.callee_saved_regs)
       @emitter.emit_epilogue(@stack_size)
     end
-    return # No fallthrough
+    return
   end
 
   def gen_struct_def(node)

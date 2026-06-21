@@ -1,4 +1,3 @@
-# src/importer.rb - Module import system for Juno
 require_relative "../frontend/lexer"
 require_relative "../frontend/parser"
 require_relative "../errors"
@@ -7,12 +6,10 @@ class Importer
   def initialize(base_path = ".", system_path: nil)
     @base_path = base_path
     @system_path = system_path
-    @imported = {}  # path -> ast (cache to avoid circular imports)
-    @import_stack = []  # for detecting circular imports
+    @imported = {}
+    @import_stack = []
   end
 
-  # Process AST and resolve all imports
-  # Returns merged AST with all imported definitions
   def resolve(ast, current_file = nil)
     result = []
 
@@ -22,11 +19,10 @@ class Importer
           imported_ast = process_import(node[:path], current_file, node[:system] || node[:type] == :use_statement)
         rescue JunoImportError => e
           if !node[:system] && node[:type] != :use_statement
-            # Fallback to system path if local failed
             begin
               imported_ast = process_import(node[:path], current_file, true)
             rescue JunoImportError
-              raise e # Raise original error if both fail
+              raise e
             end
           else
             raise e
@@ -44,9 +40,7 @@ class Importer
   private
 
   def process_import(path, current_file, is_system = false)
-    # Resolve path
     if is_system && @system_path
-      # Support 'std/std' pattern by checking base system directory
       check_path = (path == "std/std") ? "std" : path
       full_path = File.join(@system_path, check_path)
     elsif current_file
@@ -55,11 +49,9 @@ class Importer
     else
       full_path = File.join(@base_path, path)
     end
-    
-    # Normalize path
+
     full_path = File.expand_path(full_path)
 
-    # Support .juno and .wt extensions (Prefer files over directories)
     unless File.file?(full_path)
       if File.exist?(full_path + ".juno")
         full_path += ".juno"
@@ -68,7 +60,6 @@ class Importer
       end
     end
 
-    # Check for circular imports
     if @import_stack.include?(full_path)
       cycle = @import_stack.drop_while { |p| p != full_path } + [full_path]
       raise JunoImportError.new(
@@ -77,10 +68,8 @@ class Importer
       )
     end
 
-    # Return cached if already imported
     return [] if @imported.key?(full_path)
 
-    # Check file exists
     unless File.exist?(full_path)
       raise JunoImportError.new(
         "Cannot find module '#{path}'",
@@ -88,7 +77,6 @@ class Importer
       )
     end
 
-    # Parse imported file
     @import_stack.push(full_path)
     begin
       source = File.read(full_path)
@@ -97,19 +85,16 @@ class Importer
       parser = Parser.new(tokens, full_path, source)
       imported_ast = parser.parse
 
-      # Recursively resolve imports in the imported file
       resolved_ast = resolve(imported_ast, full_path)
 
-      # Cache and return only definitions (structs, functions)
-      # Skip main function from imported modules
       definitions = resolved_ast.select do |node|
         case node[:type]
         when :struct_definition, :enum_definition, :type_alias, :extern_definition, :union_definition
           true
         when :function_definition
-          node[:name] != "main"  # Don't import main()
+          node[:name] != "main"
         when :assignment
-          node[:let] == true     # Import top-level let globals
+          node[:let] == true
         else
           false
         end
@@ -123,7 +108,6 @@ class Importer
   end
 end
 
-# Custom error for import issues
 class JunoImportError < JunoError
   def initialize(message, filename: "unknown", line_num: nil)
     super("E0002", message, filename: filename, line_num: line_num)

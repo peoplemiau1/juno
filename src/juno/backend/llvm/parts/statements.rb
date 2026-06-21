@@ -68,7 +68,7 @@ module LLVMStatementGenerator
       parts = node[:name].split('.')
       receiver = parts[0]
       field_name = parts[1]
-      
+
       struct_name = node[:struct_name] || find_struct_for_field(field_name)
       if struct_name
         ptr = next_tmp

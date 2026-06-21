@@ -109,7 +109,7 @@ class CodeEmitter
   def mov_reg_sp(dst)
     log_asm "mov #{REG_NAMES[dst]}, rsp"
     rex = rex_prefix(w: true, b: dst >= 8)
-    modrm = modrm_byte(3, 4, dst) # mov dst, rsp
+    modrm = modrm_byte(3, 4, dst)
     emit([rex, 0x89, modrm])
   end
 
@@ -117,7 +117,7 @@ class CodeEmitter
     return if offset.nil?
     log_asm "mov [rbp - #{offset}], #{REG_NAMES[src]}"
     rex = rex_prefix(w: true, r: src >= 8)
-    modrm = modrm_byte(2, src, 5) # [RBP + disp32]
+    modrm = modrm_byte(2, src, 5)
     emit([rex, 0x89, modrm] + [(-offset)].pack("l<").bytes)
   end
 
@@ -125,7 +125,7 @@ class CodeEmitter
     return if offset.nil?
     log_asm "mov #{REG_NAMES[dst]}, [rbp - #{offset}]"
     rex = rex_prefix(w: true, r: dst >= 8)
-    modrm = modrm_byte(2, dst, 5) # [RBP + disp32]
+    modrm = modrm_byte(2, dst, 5)
     emit([rex, 0x8b, modrm] + [(-offset)].pack("l<").bytes)
   end
 
@@ -133,7 +133,7 @@ class CodeEmitter
     return if offset.nil?
     log_asm "lea #{REG_NAMES[dst]}, [rbp - #{offset}]"
     rex = rex_prefix(w: true, r: dst >= 8)
-    modrm = modrm_byte(2, dst, 5) # [RBP + disp32]
+    modrm = modrm_byte(2, dst, 5)
     emit([rex, 0x8d, modrm] + [(-offset)].pack("l<").bytes)
   end
 
@@ -157,14 +157,14 @@ class CodeEmitter
       emit([rex, opcode, modrm])
     elsif offset >= -128 && offset <= 127
       modrm = modrm_byte(1, dst, base)
-      if (base % 8) == 4 # SIB needed
+      if (base % 8) == 4
         emit([rex, opcode, modrm, 0x24, offset & 0xFF])
       else
         emit([rex, opcode, modrm, offset & 0xFF])
       end
     else
       modrm = modrm_byte(2, dst, base)
-      if (base % 8) == 4 # SIB needed
+      if (base % 8) == 4
         emit([rex, opcode, modrm, 0x24] + [offset].pack("l<").bytes)
       else
         emit([rex, opcode, modrm] + [offset].pack("l<").bytes)
@@ -223,7 +223,7 @@ class CodeEmitter
     log_asm "add #{REG_NAMES[reg]}, #{imm}"
     rex = rex_prefix(w: true, b: reg >= 8)
     if imm >= -128 && imm <= 127
-      modrm = modrm_byte(3, 0, reg) # ADD /0
+      modrm = modrm_byte(3, 0, reg)
       emit([rex, 0x83, modrm, imm & 0xFF])
     else
       modrm = modrm_byte(3, 0, reg)
@@ -235,7 +235,7 @@ class CodeEmitter
     log_asm "sub #{REG_NAMES[reg]}, #{imm}"
     rex = rex_prefix(w: true, b: reg >= 8)
     if imm >= -128 && imm <= 127
-      modrm = modrm_byte(3, 5, reg) # SUB /5
+      modrm = modrm_byte(3, 5, reg)
       emit([rex, 0x83, modrm, imm & 0xFF])
     else
       modrm = modrm_byte(3, 5, reg)
@@ -264,36 +264,36 @@ class CodeEmitter
   def xor_rax_rdx; xor_reg_reg(0, 2); end
   def xor_rax_reg(src); xor_reg_reg(0, src); end
   def xor_rax_rax; xor_reg_reg(0, 0); end
-  
+
   def neg_reg(reg)
     log_asm "neg #{REG_NAMES[reg]}"
     rex = rex_prefix(w: true, b: reg >= 8)
-    modrm = modrm_byte(3, 3, reg) # NEG /3
+    modrm = modrm_byte(3, 3, reg)
     emit([rex, 0xf7, modrm])
   end
 
   def not_reg(reg)
     log_asm "not #{REG_NAMES[reg]}"
     rex = rex_prefix(w: true, b: reg >= 8)
-    modrm = modrm_byte(3, 2, reg) # 0xF7 /2
+    modrm = modrm_byte(3, 2, reg)
     emit([rex, 0xf7, modrm])
   end
   def not_rax; not_reg(0); end
 
   def shl_reg_cl(reg)
     log_asm "shl #{REG_NAMES[reg]}, cl"
-    mov_reg_reg(1, 2) # RCX = RDX (shift count in RCX)
+    mov_reg_reg(1, 2)
     rex = rex_prefix(w: true, b: reg >= 8)
-    modrm = modrm_byte(3, 4, reg) # SHL reg, CL (/4)
+    modrm = modrm_byte(3, 4, reg)
     emit([rex, 0xd3, modrm])
   end
   def shl_rax_cl; shl_reg_cl(0); end
 
   def shr_reg_cl(reg)
     log_asm "shr #{REG_NAMES[reg]}, cl"
-    mov_reg_reg(1, 2) # RCX = RDX
+    mov_reg_reg(1, 2)
     rex = rex_prefix(w: true, b: reg >= 8)
-    modrm = modrm_byte(3, 5, reg) # SHR reg, CL (/5)
+    modrm = modrm_byte(3, 5, reg)
     emit([rex, 0xd3, modrm])
   end
   def shr_rax_cl; shr_reg_cl(0); end
@@ -301,7 +301,7 @@ class CodeEmitter
   def shl_reg_imm(reg, c)
     log_asm "shl #{REG_NAMES[reg]}, #{c}"
     rex = rex_prefix(w: true, b: reg >= 8)
-    modrm = modrm_byte(3, 4, reg) # SHL reg, imm8 (/4)
+    modrm = modrm_byte(3, 4, reg)
     emit([rex, 0xc1, modrm, c & 0x7f])
   end
   def shl_rax_imm(c); shl_reg_imm(0, c); end
@@ -309,26 +309,26 @@ class CodeEmitter
   def shr_reg_imm(reg, c)
     log_asm "shr #{REG_NAMES[reg]}, #{c}"
     rex = rex_prefix(w: true, b: reg >= 8)
-    modrm = modrm_byte(3, 5, reg) # SHR reg, imm8 (/5)
+    modrm = modrm_byte(3, 5, reg)
     emit([rex, 0xc1, modrm, c & 0x7f])
   end
   def shr_rax_imm(c); shr_reg_imm(0, c); end
 
   def div_rax_by_rdx
     log_asm "idiv rcx"
-    mov_reg_reg(1, 2) # mov rcx, rdx
-    emit([0x48, 0x99]) # cqo
+    mov_reg_reg(1, 2)
+    emit([0x48, 0x99])
     rex = rex_prefix(w: true)
-    modrm = modrm_byte(3, 7, 1) # idiv rcx (/7)
+    modrm = modrm_byte(3, 7, 1)
     emit([rex, 0xf7, modrm])
   end
 
   def mod_rax_by_rdx
     div_rax_by_rdx
-    mov_reg_reg(0, 2) # mov rax, rdx (remainder is in RDX)
+    mov_reg_reg(0, 2)
     test_rax_rax
     p_skip = jns_rel32
-    add_rax_reg(1) # rax += rcx (divisor is in RCX from div_rax_by_rdx)
+    add_rax_reg(1)
     patch_jns(p_skip, current_pos)
   end
 
@@ -341,7 +341,7 @@ class CodeEmitter
               when "<"  then 0x9c when ">"  then 0x9f
               when "<=" then 0x9e when ">=" then 0x9d
               end
-    emit([0x0f, cond_op, 0xc0]) # setCC al
+    emit([0x0f, cond_op, 0xc0])
   end
 
   def cmp_rax_rsi(op)
@@ -353,12 +353,11 @@ class CodeEmitter
               when "<"  then 0x9c when ">"  then 0x9f
               when "<=" then 0x9e when ">=" then 0x9d
               end
-    emit([0x0f, cond_op, 0xc0]) # setCC al
+    emit([0x0f, cond_op, 0xc0])
   end
 
   def cmov(cond, dst, src)
     log_asm "cmov#{cond} #{REG_NAMES[dst]}, #{REG_NAMES[src]}"
-    # CMOVcc reg64, r/m64: 0F 4x /r
     op = case cond
          when "==" then 0x44 when "!=" then 0x45
          when "<"  then 0x4c when ">"  then 0x4f
@@ -374,7 +373,7 @@ class CodeEmitter
     rex = 0x48
     rex |= 0x04 if r2 >= 8
     rex |= 0x01 if r1 >= 8
-    emit([rex, 0x85, 0xc0 | ((r2 & 7) << 3) | (r1 & 7)]) # test r1, r2
+    emit([rex, 0x85, 0xc0 | ((r2 & 7) << 3) | (r1 & 7)])
   end
   def test_rax_rax; test_reg_reg(0, 0); end
 
@@ -392,7 +391,7 @@ class CodeEmitter
     if reg == 0
       emit([rex, 0x3d] + [imm].pack("L<").bytes)
     else
-      modrm = modrm_byte(3, 7, reg) # CMP /7
+      modrm = modrm_byte(3, 7, reg)
       emit([rex, 0x81, modrm] + [imm].pack("L<").bytes)
     end
   end
@@ -409,7 +408,7 @@ class CodeEmitter
   def call_reg(reg)
     log_asm "call #{REG_NAMES[reg]}"
     rex = rex_prefix(b: reg >= 8)
-    modrm = modrm_byte(3, 2, reg) # CALL /2
+    modrm = modrm_byte(3, 2, reg)
     emit([rex, 0xff, modrm])
   end
 
@@ -537,14 +536,14 @@ class CodeEmitter
   def div_reg(reg)
     log_asm "div #{REG_NAMES[reg]}"
     rex = rex_prefix(w: true, b: reg >= 8)
-    modrm = modrm_byte(3, 6, reg) # DIV /6 (unsigned) or IDIV /7
+    modrm = modrm_byte(3, 6, reg)
     emit([rex, 0xf7, modrm])
   end
 
   def idiv_reg(reg)
     log_asm "idiv #{REG_NAMES[reg]}"
     rex = rex_prefix(w: true, b: reg >= 8)
-    modrm = modrm_byte(3, 7, reg) # IDIV /7
+    modrm = modrm_byte(3, 7, reg)
     emit([rex, 0xf7, modrm])
   end
 
@@ -562,7 +561,7 @@ class CodeEmitter
   def dec_reg(reg)
     log_asm "dec #{REG_NAMES[reg]}"
     rex = rex_prefix(w: true, b: reg >= 8)
-    modrm = modrm_byte(3, 1, reg) # DEC /1
+    modrm = modrm_byte(3, 1, reg)
     emit([rex, 0xff, modrm])
   end
 
@@ -570,7 +569,7 @@ class CodeEmitter
     log_asm "mov byte [#{REG_NAMES[reg]}], #{imm}"
     rex = rex_prefix(b: reg >= 8)
     modrm = modrm_byte(0, 0, reg)
-    if (reg & 7) == 4 # RSP/R12 need SIB
+    if (reg & 7) == 4
       emit([rex, 0xc6, modrm, 0x24, imm & 0xff])
     else
       emit([rex, 0xc6, modrm, imm & 0xff])
@@ -580,7 +579,7 @@ class CodeEmitter
   def mov_rax_rsp_disp8(disp)
     log_asm "mov rax, [rsp + #{disp}]"
     rex = rex_prefix(w: true)
-    modrm = modrm_byte(1, 0, 4) # [RSP + disp8]
+    modrm = modrm_byte(1, 0, 4)
     sib = sib_byte(0, 4, 4)
     emit([rex, 0x8b, modrm, sib, disp & 0xff])
   end
@@ -595,14 +594,14 @@ class CodeEmitter
       emit([rex, opcode, modrm])
     elsif offset >= -128 && offset <= 127
       modrm = modrm_byte(1, src, base)
-      if (base % 8) == 4 # SIB needed
+      if (base % 8) == 4
         emit([rex, opcode, modrm, 0x24, offset & 0xFF])
       else
         emit([rex, opcode, modrm, offset & 0xFF])
       end
     else
       modrm = modrm_byte(2, src, base)
-      if (base % 8) == 4 # SIB needed
+      if (base % 8) == 4
         emit([rex, opcode, modrm, 0x24] + [offset].pack("l<").bytes)
       else
         emit([rex, opcode, modrm] + [offset].pack("l<").bytes)
@@ -611,12 +610,9 @@ class CodeEmitter
   end
 
   def syscall; log_asm "syscall"; emit([0x0f, 0x05]); end
-  
-  # --- SSE/Floating Point (x86_64) ---
-  
+
   def movsd_xmm_mem(xmm_reg, base_reg, disp)
     log_asm "movsd xmm#{xmm_reg}, [#{REG_NAMES[base_reg]} + #{disp}]"
-    # F2 0F 10 /r
     rex = rex_prefix(r: xmm_reg >= 8, b: base_reg >= 8)
     modrm = modrm_byte(1, xmm_reg, base_reg)
     emit([0xf2, rex, 0x0f, 0x10, modrm, disp & 0xff].compact)
@@ -624,7 +620,6 @@ class CodeEmitter
 
   def movsd_mem_xmm(base_reg, disp, xmm_reg)
     log_asm "movsd [#{REG_NAMES[base_reg]} + #{disp}], xmm#{xmm_reg}"
-    # F2 0F 11 /r
     rex = rex_prefix(r: xmm_reg >= 8, b: base_reg >= 8)
     modrm = modrm_byte(1, xmm_reg, base_reg)
     emit([0xf2, rex, 0x0f, 0x11, modrm, disp & 0xff].compact)
@@ -632,8 +627,6 @@ class CodeEmitter
 
   def movsd_xmm_xmm(dst, src)
     log_asm "movsd xmm#{dst}, xmm#{src}"
-    # F2 0F 10 /r (if src is reg) or F2 0F 11 /r (if dst is reg)?
-    # Actually F2 0F 10 is MOVSD xmm1, xmm2/m64
     rex = rex_prefix(r: dst >= 8, b: src >= 8)
     modrm = modrm_byte(3, dst, src)
     emit([0xf2, rex, 0x0f, 0x10, modrm].compact)
@@ -641,7 +634,6 @@ class CodeEmitter
 
   def movq_xmm_rax(xmm_reg)
     log_asm "movq xmm#{xmm_reg}, rax"
-    # 66 REX.W 0F 6E /r
     rex = rex_prefix(w: true, r: xmm_reg >= 8)
     modrm = modrm_byte(3, xmm_reg, 0)
     emit([0x66, rex, 0x0f, 0x6e, modrm].compact)
@@ -649,7 +641,6 @@ class CodeEmitter
 
   def movq_rax_xmm(xmm_reg)
     log_asm "movq rax, xmm#{xmm_reg}"
-    # 66 REX.W 0F 7E /r
     rex = rex_prefix(w: true, r: xmm_reg >= 8)
     modrm = modrm_byte(3, xmm_reg, 0)
     emit([0x66, rex, 0x0f, 0x7e, modrm].compact)
@@ -691,14 +682,12 @@ class CodeEmitter
   end
 
   def memcpy
-    # dest=RDI, src=RSI, n=RCX
     log_asm "rep movsb"
-    emit([0xfc, 0xf3, 0xa4]) # cld; rep movsb
+    emit([0xfc, 0xf3, 0xa4])
   end
 
   def memset
-    # dest=RDI, val=AL, n=RCX
     log_asm "rep stosb"
-    emit([0xfc, 0xf3, 0xaa]) # cld; rep stosb
+    emit([0xfc, 0xf3, 0xaa])
   end
 end

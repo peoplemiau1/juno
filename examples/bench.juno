@@ -14,7 +14,7 @@ fn worker(arg) {
 
 fn main() {
     print_s("Juno Multithreading Benchmark Started...\n")
-    
+
     let t1 = thread_spawn(worker, 1)
     let t2 = thread_spawn(worker, 2)
     let t3 = thread_spawn(worker, 3)

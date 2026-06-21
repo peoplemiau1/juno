@@ -1,4 +1,3 @@
-// String Builder for efficient string concatenation
 import "std.juno"
 
 struct StringBuilder {
@@ -8,7 +7,6 @@ struct StringBuilder {
 }
 
 fn StringBuilder.new(initial_capacity: int): StringBuilder {
-    // StringBuilder has 3 fields = 24 bytes
     let mut sb: StringBuilder = malloc(24)
     if initial_capacity < 16 { initial_capacity = 16 }
     sb.capacity = initial_capacity
@@ -30,13 +28,11 @@ fn StringBuilder.append(self: StringBuilder, s: string) {
         self.buffer = new_buf
         self.capacity = new_cap
     }
-    
-    // Use byte_add for byte-level buffer access
+
     let dest = byte_add(self.buffer, self.length)
     memcpy(dest, s, s_len)
     self.length = self.length + s_len
-    
-    // Add null terminator
+
     let term = byte_add(self.buffer, self.length)
     store_i8(term, 0)
 }

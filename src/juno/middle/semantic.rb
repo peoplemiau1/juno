@@ -1,5 +1,3 @@
-# semantic.rb - Semantic analysis for Juno compiler
-
 class SemanticAnalyzer
   def initialize(ast, filename = "unknown", source = "")
     @ast = ast
@@ -19,10 +17,12 @@ class SemanticAnalyzer
   end
 
   def analyze
-    # Pass 1: Collect globals and definitions
     @ast.each do |node|
       case node[:type]
       when :function_definition
+        if @symbol_table.key?(node[:name])
+          error_at(node, "Redefinition of function '#{node[:name]}'")
+        end
         p_names = (node[:params] || []).map { |p| p.is_a?(Hash) ? p[:name] : p }
         @symbol_table[node[:name]] = {
           type: :function,
@@ -32,6 +32,9 @@ class SemanticAnalyzer
         }
         node[:inferred_type] = "void"
       when :extern_definition
+        if @symbol_table.key?(node[:name])
+          error_at(node, "Redefinition of extern function '#{node[:name]}'")
+        end
         @symbol_table[node[:name]] = {
           type: :function,
           return_type: node[:return_type] || "int",
@@ -40,22 +43,33 @@ class SemanticAnalyzer
         }
         node[:inferred_type] = "void"
       when :struct_definition
+        if @structs.key?(node[:name])
+          error_at(node, "Redefinition of struct '#{node[:name]}'")
+        end
         @structs[node[:name]] = node
         node[:inferred_type] = "type"
       when :union_definition
+        if @unions.key?(node[:name])
+          error_at(node, "Redefinition of union '#{node[:name]}'")
+        end
         @unions[node[:name]] = node
         node[:inferred_type] = "type"
       when :enum_definition
-        @structs[node[:name]] = node # Treat enums as structs for pointer checks
+        if @structs.key?(node[:name])
+          error_at(node, "Redefinition of enum '#{node[:name]}'")
+        end
+        @structs[node[:name]] = node
         node[:inferred_type] = "type"
       when :assignment
         if node[:let]
-           @symbol_table[node[:name]] = { type: :global, var_type: node[:var_type] || "int", mut: node[:mut] }
+          if @symbol_table.key?(node[:name])
+            error_at(node, "Redefinition of global variable '#{node[:name]}'")
+          end
+          @symbol_table[node[:name]] = { type: :global, var_type: node[:var_type] || "int", mut: node[:mut] }
         end
       end
     end
 
-    # Pass 2: Analyze bodies
     @ast.each do |node|
       if node[:type] == :function_definition
         @local_vars_count = 0
@@ -64,10 +78,8 @@ class SemanticAnalyzer
 
         analyze_node(node, {})
         params_count = (node[:params] || []).length
-        # Ensure 'self' is accounted for in stack_size if it's a method
-        params_count += 1 if node[:name].include?('.') # self
+        params_count += 1 if node[:name].include?('.')
 
-        # Calculate final stack size with alignment
         stack_size = (@local_vars_count + params_count) * 8
         node[:stack_size] = (stack_size + 15) & ~15
       end
@@ -82,7 +94,7 @@ class SemanticAnalyzer
     body.each do |s|
       next unless s.is_a?(Hash)
       if s[:type] == :array_decl
-        count += s[:size] + 1 # elements + base
+        count += s[:size] + 1
       elsif s[:type] == :assignment && s[:let]
         count += 1
       elsif s[:type] == :if_statement
@@ -99,14 +111,12 @@ class SemanticAnalyzer
     return "int" if node.nil?
     node[:inferred_type] = case node[:type]
     when :function_definition
-      # Add params to local vars
       params = (node[:params] || []).dup
-      
 
       params.each do |p|
         p_name = p.is_a?(Hash) ? p[:name] : p
         type = (node[:param_types] && node[:param_types][p_name]) || (p_name == "self" ? node[:name].split('.')[0] : "int")
-        local_vars[p_name] = { type: type, mut: true } # Params are mutable in Juno by default
+        local_vars[p_name] = { type: type, mut: true }
       end
       node[:body].each { |stmt| analyze_node(stmt, local_vars) }
       "void"
@@ -116,7 +126,6 @@ class SemanticAnalyzer
         local_vars[node[:name]] = { type: node[:var_type] || type, mut: node[:mut] }
         @local_vars_count += 1
       elsif node[:name].include?('.')
-        # Field assignment: receiver.field = expression
         parts = node[:name].split('.', 2)
         receiver_name = parts[0]
         field_name = parts[1]
@@ -126,14 +135,12 @@ class SemanticAnalyzer
           node[:struct_name] = receiver_type if @structs.key?(receiver_type)
         end
       else
-        # Reassignment
         var_info = local_vars[node[:name]] || @symbol_table[node[:name]]
         if var_info
           if !var_info[:mut]
             error_at(node, "Cannot reassign to non-mutable variable '#{node[:name]}'")
           end
         else
-          # First assignment without let
           local_vars[node[:name]] = { type: type, mut: true }
         end
       end
@@ -153,13 +160,11 @@ class SemanticAnalyzer
           error_at(node, "Arithmetic operation '#{node[:op]}' is not allowed on boolean values")
         end
 
-        # Check for function pointers or pointers
         if is_pointer_type?(left_type) || is_pointer_type?(right_type)
           error_at(node, "Arithmetic operation '#{node[:op]}' is not allowed on pointer or function types")
         end
       end
 
-      # For now, most binary ops return int or bool
       if ["==", "!=", "<", ">", "<=", ">="].include?(node[:op])
         "bool"
       elsif ["+", "-"].include?(node[:op]) && (left_type == "ptr" || right_type == "ptr" || left_type == "str" || right_type == "str")
@@ -208,7 +213,6 @@ class SemanticAnalyzer
       name = node[:name]
       sym = @symbol_table[name]
 
-      # Handle methods
       if name.include?('.') && !sym
         receiver, method = name.split('.')
         receiver_type = "int"
@@ -220,7 +224,6 @@ class SemanticAnalyzer
         if receiver_type && @symbol_table.key?("#{receiver_type}.#{method}")
            sym = @symbol_table["#{receiver_type}.#{method}"]
         else
-           # Fallback to heuristic if type unknown
            @symbol_table.each do |k, v|
               if k.end_with?(".#{method}")
                  sym = v
@@ -268,7 +271,7 @@ class SemanticAnalyzer
       "ptr"
     when :dereference
       analyze_node(node[:expression] || node[:operand], local_vars)
-      "int" # Simplified
+      "int"
     when :cast
       analyze_node(node[:expression], local_vars)
       node[:target_type] || "int"
@@ -289,7 +292,7 @@ class SemanticAnalyzer
       end
     when :array_access
       analyze_node(node[:index], local_vars)
-      "int" # Simplified
+      "int"
     else
       "int"
     end

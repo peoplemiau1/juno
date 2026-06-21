@@ -1,5 +1,3 @@
-# Juno Error System - Beautiful error messages
-
 module JunoColors
   RED = "\e[31m"
   YELLOW = "\e[33m"
@@ -12,9 +10,9 @@ end
 
 class JunoError < StandardError
   include JunoColors
-  
+
   attr_reader :error_type, :message, :filename, :line_num, :column, :source
-  
+
   def initialize(error_type, message, filename: "unknown", line_num: nil, column: nil, source: nil)
     @error_type = error_type
     @message = message
@@ -28,7 +26,7 @@ class JunoError < StandardError
   def display
     puts "#{RED}#{BOLD}error[#{@error_type}]#{RESET}: #{BOLD}#{@message}#{RESET}"
     puts "  #{CYAN}-->#{RESET} #{@filename}:#{@line_num || '?'}:#{@column || '?'}"
-    
+
     if @source && @line_num
       display_source_context
     end
@@ -38,15 +36,14 @@ class JunoError < StandardError
 
   def display_source_context
     lines = @source.lines
-    
-    # Show 1 line before, the error line, and 1 line after
+
     start_line = [@line_num - 1, 1].max
     end_line = [@line_num + 1, lines.length].min
-    
+
     (start_line..end_line).each do |ln|
       line_content = lines[ln - 1]&.chomp || ""
       line_num_str = ln.to_s.rjust(3)
-      
+
       if ln == @line_num
         puts " #{RED}#{line_num_str}#{RESET} #{GRAY}|#{RESET} #{line_content}"
         if @column
@@ -60,7 +57,6 @@ class JunoError < StandardError
   end
 end
 
-# Specific error types
 class JunoSyntaxError < JunoError
   def initialize(message, **opts)
     super("E0001", message, **opts)
@@ -126,10 +122,9 @@ class JunoInternalError < JunoError
   end
 end
 
-# Helper module for error reporting
 module JunoErrorReporter
   include JunoColors
-  
+
   def self.report(error)
     error.display
     exit 1
@@ -146,7 +141,7 @@ module JunoErrorReporter
   def self.undefined_error(message, filename, line, col, source)
     report(JunoUndefinedError.new(message, filename: filename, line_num: line, column: col, source: source))
   end
-  
+
   def self.warn(message, filename: nil, line_num: nil)
     puts ""
     puts "#{YELLOW}#{BOLD}warning#{RESET}: #{message}"
@@ -155,11 +150,11 @@ module JunoErrorReporter
     end
     puts ""
   end
-  
+
   def self.hint(message)
     puts "#{CYAN}hint#{RESET}: #{message}"
   end
-  
+
   def self.note(message)
     puts "#{GRAY}note#{RESET}: #{message}"
   end

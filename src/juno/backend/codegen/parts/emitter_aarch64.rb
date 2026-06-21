@@ -28,15 +28,15 @@ class AArch64Emitter
   def emit(arr); @bytes += arr; end
 
   def emit_prologue(stack_size)
-    emit32(0xa9bf7bfd) # stp x29, x30, [sp, #-16]!
-    emit32(0x910003fd) # mov x29, sp
+    emit32(0xa9bf7bfd)
+    emit32(0x910003fd)
     emit_sub_rsp(stack_size)
   end
 
   def emit_epilogue(stack_size)
     emit_add_rsp(stack_size)
-    emit32(0xa8c17bfd) # ldp x29, x30, [sp], #16
-    emit32(0xd65f03c0) # ret
+    emit32(0xa8c17bfd)
+    emit32(0xd65f03c0)
   end
 
   def emit_add_imm(rd, rn, imm)
@@ -49,7 +49,7 @@ class AArch64Emitter
 
   def emit_sub_rsp(size)
     return if size <= 0
-    size = (size + 15) & ~15 # Ensure size is 16-aligned
+    size = (size + 15) & ~15
     while size > 0
       chunk = [size, 4080].min
       emit_sub_imm(31, 31, chunk)
@@ -59,7 +59,7 @@ class AArch64Emitter
 
   def emit_add_rsp(size)
     return if size <= 0
-    size = (size + 15) & ~15 # Ensure size is 16-aligned
+    size = (size + 15) & ~15
     while size > 0
       chunk = [size, 4080].min
       emit_add_imm(31, 31, chunk)
@@ -90,28 +90,24 @@ class AArch64Emitter
   end
 
   def mov_reg_sp(dst)
-    # mov dst, sp  -> add dst, sp, #0
     emit32(0x910003e0 | dst)
   end
 
   def mov_stack_reg_val(offset, src)
-    # Use X16 as scratch to handle large negative offsets from X29
     mov_reg_imm(16, offset)
-    emit32(0xcb1003b0) # sub x16, x29, x16
-    emit32(0xf9000200 | src | (16 << 5)) # str src, [x16]
+    emit32(0xcb1003b0)
+    emit32(0xf9000200 | src | (16 << 5))
   end
 
   def mov_reg_stack_val(dst, offset)
-    # Use X16 as scratch
     mov_reg_imm(16, offset)
-    emit32(0xcb1003b0) # sub x16, x29, x16
-    emit32(0xf9400200 | dst | (16 << 5)) # ldr dst, [x16]
+    emit32(0xcb1003b0)
+    emit32(0xf9400200 | dst | (16 << 5))
   end
 
   def lea_reg_stack(dst, offset)
-    # dst = x29 - offset
     mov_reg_imm(16, offset)
-    emit32(0xcb1003b0 | dst) # sub dst, x29, x16
+    emit32(0xcb1003b0 | dst)
   end
 
   def mov_mem_r11(disp)
@@ -123,7 +119,6 @@ class AArch64Emitter
   end
 
   def mov_reg_mem_idx(dst, base, offset, size = 8)
-    # ldr dst, [base, #offset]
     if size == 8
       emit32(0xf9400000 | ((offset / 8) << 10) | (base << 5) | dst)
     elsif size == 4
@@ -145,8 +140,7 @@ class AArch64Emitter
   end
 
   def add_reg_reg(dst, src)
-    emit32(0x8b000000 | (src << 16) | (dst << 5) | dst) # actually Rn, Rm, Rd. Rn=dst, Rm=src, Rd=dst
-    # wait, add rd, rn, rm is 0x8b000000 | (rm << 16) | (rn << 5) | rd
+    emit32(0x8b000000 | (src << 16) | (dst << 5) | dst)
   end
   def add_rax_rdx; emit32(0x8b020000); end
 
@@ -156,7 +150,6 @@ class AArch64Emitter
   def sub_rax_rdx; emit32(0xcb020000); end
 
   def mul_reg_reg(dst, src)
-    # madd rd, rn, rm, xzr -> rd = rn * rm + 0
     emit32(0x9b007c00 | (src << 16) | (dst << 5) | dst)
   end
   def imul_rax_rdx; emit32(0x9b027c00); end
@@ -193,19 +186,16 @@ class AArch64Emitter
   def xor_rax_reg(src); xor_reg_reg(0, src); end
 
   def not_reg(reg)
-    # orn rd, xzr, rm -> rd = ~rm
     emit32(0xaa2003e0 | (reg << 16) | reg)
   end
   def not_rax; emit32(0xaa2003e0); end
 
   def shl_reg_cl(reg)
-    # asrv rd, rn, rm -> x0, x0, x1
     emit32(0x9ac12000 | (reg << 5) | reg)
   end
   def shl_rax_cl; shl_reg_cl(0); end
 
   def shr_reg_cl(reg)
-    # lsrv rd, rn, rm
     emit32(0x9ac12400 | (reg << 5) | reg)
   end
   def shr_rax_cl; shr_reg_cl(0); end
@@ -225,35 +215,31 @@ class AArch64Emitter
   def div_rax_by_rdx; emit32(0x9ac20c00); end
 
   def mod_rax_by_rdx
-    emit32(0x9ac20c01) # sdiv x1, x0, x2
-    emit32(0x9b028020) # msub x0, x1, x2, x0
+    emit32(0x9ac20c01)
+    emit32(0x9b028020)
   end
 
   def cmp_rax_rdx(op)
     emit32(0xeb02001f)
-    # We use CSET which is CSINC Rd, XZR, XZR, !cond
-    # So we must provide the INVERSE condition.
     cond = case op
-           when "==" then 1 # NE -> (NE ? 0 : 1) = EQ
-           when "!=" then 0 # EQ -> (EQ ? 0 : 1) = NE
-           when "<"  then 10 # GE -> (GE ? 0 : 1) = LT
-           when ">"  then 13 # LE -> (LE ? 0 : 1) = GT
-           when "<=" then 12 # GT -> (GT ? 0 : 1) = LE
-           when ">=" then 11 # LT -> (LT ? 0 : 1) = GE
+           when "==" then 1
+           when "!=" then 0
+           when "<"  then 10
+           when ">"  then 13
+           when "<=" then 12
+           when ">=" then 11
            end
     emit32(0x1a9f07e0 | (cond << 12))
   end
 
-  def test_rax_rax; emit32(0xf100001f); end # cmp x0, #0
-  def test_reg_reg(r1, r2); emit32(0xeb00001f | (r2 << 16) | (r1 << 5)); end # cmp r1, r2
+  def test_rax_rax; emit32(0xf100001f); end
+  def test_reg_reg(r1, r2); emit32(0xeb00001f | (r2 << 16) | (r1 << 5)); end
 
   def cmp_reg_reg(r1, r2)
-    # subs xzr, r1, r2
     emit32(0xeb00001f | (r2 << 16) | (r1 << 5))
   end
 
   def cmp_reg_imm(reg, imm)
-    # subs xzr, reg, #imm
     emit32(0xf100001f | ((imm & 0xfff) << 10) | (reg << 5))
   end
 
@@ -268,16 +254,15 @@ class AArch64Emitter
   def call_rel32; emit32(0x94000000); end
   def call_ind_rel32; emit32(0xd63f0000); end
   def call_reg(reg)
-    # blr xN -> 0xd63f0000 | (n << 5)
     emit32(0xd63f0000 | (reg << 5))
   end
 
   def emit_call_indirect(label, linker)
     pos = current_pos
-    emit32(0x10000009) # ADR X9, 0
+    emit32(0x10000009)
     linker.add_import_patch(pos, label, :aarch64_adr)
-    emit32(0xf9400129) # LDR X9, [X9]
-    emit32(0xd63f0120) # BLR X9
+    emit32(0xf9400129)
+    emit32(0xd63f0120)
   end
 
   def jmp_rel32; pos = current_pos; emit32(0x14000000); pos; end
@@ -293,14 +278,12 @@ class AArch64Emitter
   def patch_je(pos, target)
     @internal_patches << { pos: pos, target: target, type: :je_rel32 }
     offset = (target - pos) / 4
-    # imm19 at bits 5-23
     @bytes[pos...pos+4] = [0x54000000 | ((offset & 0x7FFFF) << 5)].pack("L<").bytes
   end
 
   def patch_jne(pos, target)
     @internal_patches << { pos: pos, target: target, type: :jne_rel32 }
     offset = (target - pos) / 4
-    # imm19 at bits 5-23, cond=1 (NE)
     @bytes[pos...pos+4] = [0x54000001 | ((offset & 0x7FFFF) << 5)].pack("L<").bytes
   end
 
@@ -308,12 +291,11 @@ class AArch64Emitter
 
   def emit_sys_exit_rax
     mov_x8(93)
-    # x0 is already rax
     emit32(0xd4000001)
   end
 
-  def push_reg(r); emit32(0xf81f0fe0 | r); end # str r, [sp, #-16]!
-  def pop_reg(r); emit32(0xf84107e0 | r); end  # ldr r, [sp], #16
+  def push_reg(r); emit32(0xf81f0fe0 | r); end
+  def pop_reg(r); emit32(0xf84107e0 | r); end
 
   def push_callee_saved(regs); regs.each { |r| push_reg(REG_MAP[r] || r) }; end
   def pop_callee_saved(regs); regs.reverse.each { |r| pop_reg(REG_MAP[r] || r) }; end
@@ -325,7 +307,7 @@ class AArch64Emitter
 
   def emit_load_address(label, linker)
     pos = current_pos
-    emit32(0x10000000) # ADR X0, 0
+    emit32(0x10000000)
     linker.add_data_patch(pos, label, :aarch64_adr)
   end
 
@@ -350,25 +332,18 @@ class AArch64Emitter
   def syscall; emit32(0xd4000001); end
 
   def memcpy
-    # dest=X0, src=X1, n=X2
-    # x3 = temp byte
-    emit32(0xb4000082) # cbz x2, +16 (to end)
-    # loop:
-    emit32(0x38400423) # ldrb w3, [x1], #1
-    emit32(0x38000403) # strb w3, [x0], #1
-    emit32(0xd1000442) # sub x2, x2, #1
-    emit32(0x35fffffd) # cbnz x2, -12 (back to ldrb)
-    # end:
+    emit32(0xb4000082)
+    emit32(0x38400423)
+    emit32(0x38000403)
+    emit32(0xd1000442)
+    emit32(0x35fffffd)
   end
 
   def memset
-    # dest=X0, val=X1, n=X2
-    emit32(0xb4000062) # cbz x2, +12 (to end)
-    # loop:
-    emit32(0x38000401) # strb w1, [x0], #1
-    emit32(0xd1000442) # sub x2, x2, #1
-    emit32(0x35fffffe) # cbnz x2, -8 (back to strb)
-    # end:
+    emit32(0xb4000062)
+    emit32(0x38000401)
+    emit32(0xd1000442)
+    emit32(0x35fffffe)
   end
 
   def mov_mem_idx(base, offset, src, size = 8); mov_mem_reg_idx(base, offset, src, size); end
@@ -385,29 +360,21 @@ class AArch64Emitter
     end
   end
 
-  # --- NEON SIMD (AArch64) ---
-
-  # ld1 {v0.4s}, [x1], #16
   def ld1_v4s_post(vd, rn)
     emit32(0x4c417000 | (rn << 5) | vd)
   end
 
-  # add v2.4s, v2.4s, v0.4s
   def add_v4s(vd, vn, vm)
     emit32(0x4e208400 | (vm << 16) | (vn << 5) | vd)
   end
 
-  # st1 {v2.4s}, [x1]
   def st1_v4s(vd, rn)
     emit32(0x4c007000 | (rn << 5) | vd)
   end
 
-  # dup v0.4s, w1
   def dup_v4s_w(vd, rn)
     emit32(0x4e040c00 | (rn << 5) | vd)
   end
-
-  # --- AArch64 Scalar Floating Point (Double Precision) ---
 
   def fmov_d_x(dd, rn)
     log_asm "fmov d#{dd}, x#{rn}"

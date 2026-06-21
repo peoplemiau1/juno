@@ -2,7 +2,7 @@ module LLVMBuiltinGenerator
   def gen_call(node)
     name = node[:name]
     tmp = next_tmp
-    
+
     case name
     when "syscall"
       args = node[:args].map { |a| eval_expr(a) }
@@ -283,11 +283,11 @@ module LLVMBuiltinGenerator
       receiver_name = parts[0]
       method_name = parts[1]
       receiver_type = node[:receiver_type]
-      
+
       if receiver_type.nil? || receiver_type == "int"
         receiver_type = find_variable_type(receiver_name)
       end
-      
+
       if receiver_type && !["int", "ptr"].include?(receiver_type)
         real_func_name = "#{receiver_type}_#{method_name}"
         receiver_val = eval_expr({type: :variable, name: receiver_name})

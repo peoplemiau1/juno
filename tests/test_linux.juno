@@ -1,5 +1,3 @@
-// test_linux.juno - Simple test for Linux
-
 fn add(a, b) {
     return a + b
 }
