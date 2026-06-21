@@ -1,0 +1,126 @@
+import "std.juno"
+
+struct DnsHeader {
+    id: u16
+    flags: u16
+    qdcount: u16
+    ancount: u16
+    nscount: u16
+    arcount: u16
+}
+
+fn dns_resolve_host(domain_name: ptr) -> ptr {
+    let s = socket(2, 2, 0) // AF_INET = 2, SOCK_DGRAM = 2 (UDP)
+    if s < 0 {
+        return 0
+    }
+
+    let buf = malloc(512)
+    memset(buf, 0, 512)
+
+    // Заполняем DNS-заголовок (12 байт)
+    let header: DnsHeader = buf
+    header.id = 0x1234
+    header.flags = 0x0100 // Стандартный рекурсивный запрос
+    header.qdcount = 0x0100 // 1 вопрос (big-endian)
+
+    // Кодируем доменное имя (например, "google.com" -> "\x06google\x03com\x00")
+    let qname = byte_add(buf, 12)
+    let mut last_dot = 0
+    let mut part_len = 0
+    let mut i = 0
+    let dom_len = strlen(domain_name)
+
+    while i <= dom_len {
+        let c = u8(*(byte_add(domain_name, i)))
+        if c == 46 || c == 0 { // '.' или конец строки
+            store_i8(byte_add(qname, last_dot), part_len)
+            last_dot = last_dot + part_len + 1
+            part_len = 0
+        } else {
+            store_i8(byte_add(qname, last_dot + part_len + 1), c)
+            part_len = part_len + 1
+        }
+        i = i + 1
+    }
+    store_i8(byte_add(qname, last_dot), 0) // Терминатор qname
+
+    let qtype = byte_add(qname, last_dot + 1)
+    store_i8(qtype, 0)
+    store_i8(byte_add(qtype, 1), 1) // Type A (IPv4)
+    store_i8(byte_add(qtype, 2), 0)
+    store_i8(byte_add(qtype, 3), 1) // Class IN
+
+    let packet_len = 12 + last_dot + 5
+
+    // Отправляем на DNS Cloudflare (1.1.1.1:53)
+    let dns_ip = ip(1, 1, 1, 1)
+    send(s, buf, packet_len) // Наш UDP-запрос ушел
+
+    // Получаем ответ
+    let recv_buf = malloc(512)
+    let n = recv(s, recv_buf, 512)
+    close(s)
+
+    if n < 30 {
+        free(buf)
+        free(recv_buf)
+        return 0
+    }
+
+    // Безопасный парсинг ответа (наш SafetyChecker следит, чтобы мы не вышли за границы)
+    // Извлекаем IP-адрес из секции Answer (простейший парсер)
+    let ans_ptr = byte_add(recv_buf, packet_len)
+    
+    // Пропускаем имя (обычно это сжатый указатель 0xC00C -> 2 байта)
+    let mut offset = 0
+    let first_byte = u8(*ans_ptr)
+    if (first_byte & 0xC0) == 0xC0 {
+        offset = 2
+    } else {
+        while u8(*(byte_add(ans_ptr, offset))) != 0 {
+            offset = offset + 1
+        }
+        offset = offset + 1
+    }
+
+    let record_data = byte_add(ans_ptr, offset)
+    // Пропускаем Type (2), Class (2), TTL (4) -> 8 байт
+    let rdlength_ptr = byte_add(record_data, 8)
+    let rdlength = (u8(*rdlength_ptr) << 8) | u8(*(byte_add(rdlength_ptr, 1)))
+
+    if rdlength == 4 { // IPv4 адрес
+        let ip_data = byte_add(rdlength_ptr, 2)
+        let resolved_ip = malloc(32)
+        // Форматируем в строку "A.B.C.D"
+        let a = itoa(u8(*ip_data))
+        let b = itoa(u8(*(byte_add(ip_data, 1))))
+        let c = itoa(u8(*(byte_add(ip_data, 2))))
+        let d = itoa(u8(*(byte_add(ip_data, 3))))
+
+        let res1 = concat(a, ".")
+        let res2 = concat(res1, b)
+        let res3 = concat(res2, ".")
+        let res4 = concat(res3, c)
+        let res5 = concat(res4, ".")
+        let ip_str = concat(res5, d)
+
+        free(buf)
+        free(recv_buf)
+        return ip_str
+    }
+
+    free(buf)
+    free(recv_buf)
+    return 0
+}
+
+fn osint_get_ip_info(target_ip: ptr) -> ptr {
+    // Делаем быстрый запрос к геолокационному IP-API для OSINT-разведки
+    let base_url = "http://ip-api.com/json/"
+    let url = concat(base_url, target_ip)
+    
+    // Используем встроенный curl_get
+    let response = curl_get(url)
+    return response
+}

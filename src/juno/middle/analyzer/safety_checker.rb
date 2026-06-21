@@ -9,6 +9,7 @@ class JunoSafetyChecker
     @var_states = {}
     @fn_effects = {}
     @errors = []
+    @local_lets = []
   end
 
   attr_reader :fn_effects
@@ -168,12 +169,13 @@ class JunoSafetyChecker
     case node[:type]
     when :function_definition
       @var_states = {}
+      @local_lets = []
       @current_fn = node[:name]
       (node[:body] || []).each { |stmt| process_node(stmt) }
       
       unless @current_fn.end_with?('.init')
         @var_states.each do |name, info|
-          if info[:state] == :owned
+          if info[:state] == :owned && @local_lets.include?(name)
             report_error("Resource leak in function '#{@current_fn}': Resource '#{name}' (allocated at line #{info[:line]}) is never freed or closed", info[:node], true)
           end
         end
@@ -183,12 +185,16 @@ class JunoSafetyChecker
       name = node[:name] || ""
       expr = node[:expression]
       
+      if node[:let]
+        @local_lets << name
+      end
+
       check_expression(expr) if expr.is_a?(Hash)
 
       if local_var = resolve_local_pointer(expr)
         @var_states[name] = { state: :local_ptr, target: local_var, line: node[:line], node: node }
       elsif expr.is_a?(Hash) && expr[:type] == :fn_call && allocates_resource?(expr[:name])
-        unless name.include?('.')
+        if node[:let]
           @var_states[name] = { state: :owned, line: node[:line], node: node }
         end
       elsif expr.is_a?(Hash) && expr[:type] == :variable
@@ -202,7 +208,7 @@ class JunoSafetyChecker
           end
           
           if state_info[:state] == :owned
-            if name.include?('.')
+            if name.include?('.') || !node[:let]
               @var_states[src_name] = { state: :moved, line: node[:line], node: node }
             else
               @var_states[name] = { state: :owned, line: node[:line], node: node }
@@ -224,7 +230,21 @@ class JunoSafetyChecker
       fn_name = node[:name] || ""
       args = node[:args] || []
 
-      if consumes_resource?(fn_name)
+      if fn_name.include?('.')
+        receiver_name, method_name = fn_name.split('.', 2)
+        if consumes_resource?(method_name) || consumes_resource?(fn_name)
+          v_name = receiver_name
+          if @var_states.key?(v_name)
+            state_info = @var_states[v_name]
+            if state_info[:state] == :moved
+              report_error("Attempt to free already moved value '#{v_name}'", node)
+            elsif state_info[:state] == :freed
+              report_error("Double free/close detected for '#{v_name}'", node)
+            end
+            @var_states[v_name] = { state: :freed, line: node[:line], node: node }
+          end
+        end
+      elsif consumes_resource?(fn_name)
         arg = args[0]
         if arg && arg[:type] == :variable
           v_name = arg[:name]

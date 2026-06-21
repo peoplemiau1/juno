@@ -1,4 +1,3 @@
-# llvm_generator.rb - Type-aware LLVM IR Backend for Juno
 require_relative "parts/statements"
 require_relative "parts/expressions"
 require_relative "parts/builtins"
@@ -19,6 +18,7 @@ class LLVMGenerator
     @label_count = 0
     @structs = {}
     @globals = {}
+    @global_types = {}
   end
 
   BUILTINS = %w(printf malloc realloc free concat trim file_read_all file_read_safe exists write read open close getpid juno_strlen juno_pow time rand srand substr syscall spin_lock spin_unlock prints)
@@ -29,10 +29,12 @@ class LLVMGenerator
     setup_builtins
     
     @globals = {}
+    @global_types = {}
     @ast.each do |node|
       if node.is_a?(Hash) && node[:type] == :assignment && node[:let]
         val = node[:expression] && node[:expression][:type] == :literal ? node[:expression][:value] : 0
         @globals[node[:name]] = val
+        @global_types[node[:name]] = node[:var_type] if node[:var_type]
       end
     end
 
@@ -57,8 +59,6 @@ class LLVMGenerator
 
   def setup_builtins
     @output << "declare i32 @printf(i8*, ...)\n"
-    @output << "declare void @exit(i32)
-"
     @output << "declare i64 @malloc(i64)\n"
     @output << "declare i64 @realloc(i8*, i64)\n"
     @output << "declare void @free(i8*)\n"
@@ -82,6 +82,7 @@ class LLVMGenerator
     @output << "declare i64 @prints(i64)\n"
     @output << "declare void @llvm.memcpy.p0i8.p0i8.i64(i8*, i8*, i64, i1)\n"
     @output << "declare void @llvm.memset.p0i8.i64(i8*, i8, i64, i1)\n"
+    @output << "declare void @exit(i32)\n"
 
     @output << "@fmt_s = private unnamed_addr constant [3 x i8] c\"%s\\00\"\n"
     @output << "@fmt_i = private unnamed_addr constant [4 x i8] c\"%ld\\00\"\n"
@@ -209,3 +210,4 @@ class LLVMGenerator
     res
   end
 end
+
