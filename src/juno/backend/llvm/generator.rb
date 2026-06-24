@@ -139,16 +139,21 @@ class LLVMGenerator
   end
 
   def emit_strings
+    escape_map = {
+      "\n".ord => "\\0A",
+      "\r".ord => "\\0D",
+      "\t".ord => "\\09",
+      "\"".ord => "\\22",
+      "\\".ord => "\\\\"
+    }
     @strings.each do |val, id|
       escaped = val.bytes.map { |b|
-        case b
-        when 10 then "\\0A"
-        when 13 then "\\0D"
-        when 9  then "\\09"
-        when 34 then "\\22"
-        when 92 then "\\\\"
+        if escape_map.key?(b)
+          escape_map[b]
+        elsif b < " ".ord || b > "~".ord
+          "\\#{b.to_s(16).rjust(2, '0').upcase}"
         else
-          (b < 32 || b > 126) ? "\\#{b.to_s(16).rjust(2, '0').upcase}" : b.chr
+          b.chr
         end
       }.join
       len = val.bytesize + 1
@@ -156,7 +161,7 @@ class LLVMGenerator
     end
     @output << "\n"
   end
-
+  
   def process_node(node)
     return if node.nil?
     case node[:type]
