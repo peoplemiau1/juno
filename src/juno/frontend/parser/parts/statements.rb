@@ -559,4 +559,69 @@ module ParserStatements
     end
     { type: :todo, message: msg }
   end
+
+  def parse_match
+    consume_keyword('match')
+    expr = parse_expression
+    consume_symbol('{')
+    cases = []
+    until match_symbol?('}')
+      error_eof("Expected '}'") if peek.nil?
+      pattern = parse_pattern
+      consume_symbol('=>')
+      body = []
+      if match_symbol?('{')
+        consume_symbol('{')
+        until match_symbol?('}')
+          error_eof("Expected '}'") if peek.nil?
+          stmt = parse_statement
+          body << stmt if stmt
+        end
+        consume_symbol('}')
+      else
+        stmt = parse_statement
+        body << stmt if stmt
+      end
+      cases << { pattern: pattern, body: body }
+    end
+    consume_symbol('}')
+    { type: :match_expression, expression: expr, cases: cases }
+  end
+
+  def parse_pattern
+    if match?(:ident)
+      name = consume_ident
+      if name == "_"
+        return { type: :wildcard_pattern }
+      elsif match_symbol?('.')
+        consume_symbol('.')
+        variant = consume_ident
+        fields = []
+        if match_symbol?('(')
+          consume_symbol('(')
+          until match_symbol?(')')
+            error_eof("Expected ')'") if peek.nil?
+            fields << consume_ident
+            consume_symbol(',') if match_symbol?(',')
+          end
+          consume_symbol(')')
+        end
+        return { type: :variant_pattern, enum: name, variant: variant, fields: fields }
+      else
+        return { type: :bind_pattern, name: name }
+      end
+    elsif match?(:number)
+      return { type: :literal_pattern, value: consume(:number)[:value] }
+    elsif match?(:string)
+      return { type: :literal_pattern, value: consume(:string)[:value] }
+    elsif match_keyword?('true')
+      consume_keyword('true')
+      return { type: :literal_pattern, value: true }
+    elsif match_keyword?('false')
+      consume_keyword('false')
+      return { type: :literal_pattern, value: false }
+    else
+      error_unexpected(peek, "Expected pattern")
+    end
+  end
 end

@@ -60,7 +60,7 @@ class Lexer
       elsif m = scanner.scan(/\d+\.\d+/) then add_token(:float_literal, m.to_f)
       elsif m = scanner.scan(/\d+/) then add_token(:number, m.to_i)
       elsif m = scanner.scan(/[a-zA-Z_]\w*/) then add_token(:ident, m)
-      elsif m = scanner.scan(/==|!=|<=|>=|<<|>>|<>|->|\+\+|\-\-|\|\||&&/)
+      elsif m = scanner.scan(/==|!=|<=|>=|<<|>>|=>|<>|->|\+\+|\-\-|\|\||&&/)
         add_token(:operator, m)
       elsif scanner.scan(/\|/) then add_token(:bitor, '|')
       elsif scanner.scan(/\^/) then add_token(:bitxor, '^')
@@ -89,7 +89,6 @@ class Lexer
     @tokens << token
   end
 
-  # Process escape sequences in strings
   def process_escapes(str)
     str.gsub(/\\x([0-9a-fA-F]{2})/) { [$1.to_i(16)].pack('C') }
        .gsub(/\\n/, "\n")
@@ -98,6 +97,6 @@ class Lexer
        .gsub(/\\0/, "\0")
        .gsub(/\\\\/, "\\")
        .gsub(/\\"/, '"')
-       .gsub(/\\e/, "\e")  # ESC character
+       .gsub(/\\e/, "\e")
   end
 end

@@ -17,6 +17,7 @@ class LLVMGenerator
     @tmp_count = 0
     @label_count = 0
     @structs = {}
+    @enums = {}
     @globals = {}
     @global_types = {}
   end
@@ -107,6 +108,16 @@ class LLVMGenerator
           fields: node[:fields],
           field_types: node[:field_types] || {}
         }
+      when :enum_definition
+        @enums ||= {}
+        variants = {}
+        max_payload = 0
+        node[:variants].each_with_index do |v, idx|
+          payload_size = (v[:params] || []).length * 8
+          max_payload = payload_size if payload_size > max_payload
+          variants[v[:name]] = { tag: idx, params: v[:params] || [] }
+        end
+        @enums[node[:name]] = { size: 8 + max_payload, variants: variants }
       end
       node.each { |k, v| collect_metadata(v) if v.is_a?(Hash) || v.is_a?(Array) }
     end
@@ -131,11 +142,11 @@ class LLVMGenerator
     @strings.each do |val, id|
       escaped = val.bytes.map { |b|
         case b
-        when 10 then "\\0A" # \n
-        when 13 then "\\0D" # \r
-        when 9  then "\\09" # \t
-        when 34 then "\\22" # "
-        when 92 then "\\\\" # \
+        when 10 then "\\0A"
+        when 13 then "\\0D"
+        when 9  then "\\09"
+        when 34 then "\\22"
+        when 92 then "\\\\"
         else
           (b < 32 || b > 126) ? "\\#{b.to_s(16).rjust(2, '0').upcase}" : b.chr
         end

@@ -3,6 +3,16 @@ module LLVMBuiltinGenerator
     name = node[:name]
     tmp = next_tmp
 
+    if name.include?('.')
+      parts = name.split('.')
+      enum_name = parts[0]
+      variant_name = parts[1]
+      @enums ||= {}
+      if @enums.key?(enum_name)
+        return gen_llvm_enum_variant_init(enum_name, variant_name, node[:args])
+      end
+    end
+
     case name
     when "syscall"
       args = node[:args].map { |a| eval_expr(a) }
@@ -303,6 +313,34 @@ module LLVMBuiltinGenerator
     args = (node[:args] || []).map { |a| "i64 #{eval_expr(a)}" }.join(", ")
     @output << "  %#{tmp} = call i64 @#{func_name}(#{args})\n"
     "%#{tmp}"
+  end
+
+  def gen_llvm_enum_variant_init(enum_name, variant_name, args)
+    enum_info = @enums[enum_name]
+    variant_info = enum_info[:variants][variant_name]
+    size = enum_info[:size]
+    
+    ptr = next_tmp
+    @output << "  %#{ptr} = call i64 @malloc(i64 #{size})\n"
+    
+    tmp_p = next_tmp
+    @output << "  %#{tmp_p} = inttoptr i64 %#{ptr} to i64*\n"
+    @output << "  store i64 #{variant_info[:tag]}, i64* %#{tmp_p}, align 8\n"
+    
+    tmp_i8 = next_tmp
+    @output << "  %#{tmp_i8} = inttoptr i64 %#{ptr} to i8*\n"
+    
+    (args || []).each_with_index do |arg, idx|
+      val = eval_expr(arg)
+      tmp_arg_p = next_tmp
+      offset = 8 + idx * 8
+      @output << "  %#{tmp_arg_p} = getelementptr i8, i8* %#{tmp_i8}, i64 #{offset}\n"
+      tmp_cast = next_tmp
+      @output << "  %#{tmp_cast} = bitcast i8* %#{tmp_arg_p} to i64*\n"
+      @output << "  store i64 #{val}, i64* %#{tmp_cast}, align 8\n"
+    end
+    
+    "%#{ptr}"
   end
 
   def find_variable_type(name)
