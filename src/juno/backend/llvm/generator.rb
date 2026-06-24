@@ -129,15 +129,15 @@ class LLVMGenerator
 
   def emit_strings
     @strings.each do |val, id|
-      escaped = val.chars.map { |c|
-        case c
-        when "\n" then "\\0A"
-        when "\r" then "\\0D"
-        when "\t" then "\\09"
-        when "\"" then "\\22"
-        when "\\" then "\\\\"
+      escaped = val.bytes.map { |b|
+        case b
+        when 10 then "\\0A" # \n
+        when 13 then "\\0D" # \r
+        when 9  then "\\09" # \t
+        when 34 then "\\22" # "
+        when 92 then "\\\\" # \
         else
-          (c.ord < 32 || c.ord > 126) ? "\\#{c.ord.to_s(16).rjust(2, '0').upcase}" : c
+          (b < 32 || b > 126) ? "\\#{b.to_s(16).rjust(2, '0').upcase}" : b.chr
         end
       }.join
       len = val.bytesize + 1

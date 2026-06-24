@@ -50,8 +50,10 @@ module Juno
       analyzer = SemanticAnalyzer.new(ast, input_file, code)
       ast = analyzer.analyze
 
-      safety_checker = JunoSafetyChecker.new(ast, analyzer.function_signatures, code, input_file)
-      safety_checker.check
+      if @options[:audit]
+        safety_checker = JunoSafetyChecker.new(ast, analyzer.function_signatures, code, input_file)
+        safety_checker.check
+      end
 
       opt_level = @options[:opt_level] || 2
 
@@ -74,28 +76,12 @@ module Juno
         obj_file = @options[:output] + ".o"
         File.write(ir_file, llvm_ir)
 
-        if @options[:os] == :macos
-          triples = {
-            x86_64: "x86_64-apple-macos",
-            aarch64: "arm64-apple-macos",
-            arm: "arm64-apple-macos"
-          }
-        else
-          triples = {
-            x86_64: "x86_64-pc-linux-gnu",
-            aarch64: "aarch64-unknown-linux-gnu",
-            arm: "arm-unknown-linux-gnueabi",
-            riscv64: "riscv64-unknown-linux-gnu",
-            riscv32: "riscv32-unknown-linux-gnu"
-          }
-        end
-        target_triple = triples[@options[:arch]] || (@options[:os] == :macos ? "x86_64-apple-macos" : "x86_64-pc-linux-gnu")
+        target_triple = detect_target_triple
 
         llc_cmd = `which llc-19 llc-18 llc-17 llc`.split("\n").first&.strip
         raise "llc tool not found. Please install llvm." unless llc_cmd
 
         opt_cmd = `which opt-19 opt-18 opt-17 opt`.split("\n").first&.strip
-
         opt_flag = "-O#{opt_level}"
 
         target_ir_file = ir_file
@@ -105,10 +91,8 @@ module Juno
 
           if system("#{opt_cmd} #{opt_pass_flag} -S -o #{optimized_ir_file} #{ir_file}")
             target_ir_file = optimized_ir_file
-          else
-            if system("#{opt_cmd} #{opt_flag} -S -o #{optimized_ir_file} #{ir_file}")
-              target_ir_file = optimized_ir_file
-            end
+          elsif system("#{opt_cmd} #{opt_flag} -S -o #{optimized_ir_file} #{ir_file}")
+            target_ir_file = optimized_ir_file
           end
         end
 
@@ -148,6 +132,24 @@ module Juno
       end
 
       @options[:output]
+    end
+
+    private
+
+    def detect_target_triple
+      arch = @options[:arch]
+      os = @options[:os]
+      if os == :macos
+        return arch == :x86_64 ? "x86_64-apple-macos" : "arm64-apple-macos"
+      end
+      triples = {
+        x86_64: "x86_64-pc-linux-gnu",
+        aarch64: "aarch64-unknown-linux-gnu",
+        arm: "arm-unknown-linux-gnueabi",
+        riscv64: "riscv64-unknown-linux-gnu",
+        riscv32: "riscv32-unknown-linux-gnu"
+      }
+      triples[arch] || "x86_64-pc-linux-gnu"
     end
   end
 end

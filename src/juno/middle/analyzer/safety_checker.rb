@@ -21,10 +21,13 @@ class JunoSafetyChecker
     @fn_effects = {}
     @errors = []
     @local_lets = []
+    @allocators = ['malloc', 'open', 'os_open', 'os_alloc', 'mem_malloc', 'fopen', 'alloc']
+    @consumers = ['free', 'close', 'os_close', 'os_free', 'mem_free', 'delete']
   end
 
   def check
     @errors = []
+    infer_resource_functions
     analyze_all_fn_effects
     @ast.each { |node| process_node(node) }
 
@@ -35,17 +38,60 @@ class JunoSafetyChecker
   end
 
   def allocates_resource?(name)
-    ['malloc', 'open', 'os_open', 'os_alloc', 'mem_malloc', 'fopen'].include?(name) ||
-      name.downcase.start_with?('alloc_', 'create_', 'open_') || name.end_with?('.new')
+    @allocators.include?(name)
   end
 
   def consumes_resource?(name)
-    ['free', 'close', 'os_close', 'os_free', 'mem_free', 'delete'].include?(name) ||
-      name.downcase.start_with?('free_', 'close_', 'destroy_', 'delete') ||
-      name.end_with?('.free', '.close')
+    @consumers.include?(name)
   end
 
   private
+
+  def infer_resource_functions
+    changed = true
+    while changed
+      changed = false
+      @ast.each do |node|
+        next unless node[:type] == :function_definition
+        name = node[:name]
+        next if @allocators.include?(name)
+        if decides_to_allocate?(node)
+          @allocators << name
+          changed = true
+        end
+      end
+    end
+  end
+
+  def decides_to_allocate?(fn_node)
+    local_states = {}
+    allocator_found = false
+    walker = ->(node) {
+      return unless node.is_a?(Hash)
+      if node[:type] == :assignment
+        expr = node[:expression]
+        if expr.is_a?(Hash) && expr[:type] == :fn_call && @allocators.include?(expr[:name])
+          local_states[node[:name]] = :owned
+        end
+      elsif node[:type] == :return
+        expr = node[:expression]
+        if expr.is_a?(Hash) && expr[:type] == :variable && local_states[expr[:name]] == :owned
+          allocator_found = true
+        elsif expr.is_a?(Hash) && expr[:type] == :fn_call && @allocators.include?(expr[:name])
+          allocator_found = true
+        end
+      end
+      node.values.each do |v|
+        if v.is_a?(Hash)
+          walker.call(v)
+        elsif v.is_a?(Array)
+          v.each { |i| walker.call(i) }
+        end
+      end
+    }
+    walker.call(fn_node[:body])
+    allocator_found
+  end
 
   def resolve_target_var(expr)
     return nil unless expr.is_a?(Hash)
@@ -108,23 +154,26 @@ class JunoSafetyChecker
   end
 
   def analyze_fn_effects(fn_node)
-    consumed_params = []
+    consumed_indices = []
     params = (fn_node[:params] || []).map { |p| p.is_a?(Hash) ? p[:name] : p }
-
     walker = ->(node) {
       if node.is_a?(Array)
         node.each { |i| walker.call(i) }
         return
       end
       return unless node.is_a?(Hash)
-
       if node[:type] == :fn_call
         fn_name = node[:name]
-        if consumes_resource?(fn_name) || (@fn_effects[fn_name] && !@fn_effects[fn_name].empty?)
+        if @consumers.include?(fn_name)
+          arg_var = resolve_target_var(node[:args]&.[](0))
+          if arg_var && params.include?(arg_var)
+            consumed_indices << params.index(arg_var)
+          end
+        elsif @fn_effects[fn_name]
           node[:args]&.each_with_index do |arg, idx|
             arg_var = resolve_target_var(arg)
-            if arg_var && params.include?(arg_var)
-              consumed_params << arg_var if (consumes_resource?(fn_name) && idx == 0) || @fn_effects[fn_name]
+            if arg_var && params.include?(arg_var) && @fn_effects[fn_name].include?(idx)
+              consumed_indices << params.index(arg_var)
             end
           end
         end
@@ -132,7 +181,7 @@ class JunoSafetyChecker
       node.values.each { |v| v.is_a?(Array) ? v.each { |i| walker.call(i) } : walker.call(v) }
     }
     walker.call(fn_node[:body])
-    consumed_params.uniq
+    consumed_indices.uniq
   end
 
   def block_returns?(body)
@@ -150,7 +199,6 @@ class JunoSafetyChecker
   def report_error(message, node, is_warning = false)
     line = node[:line]
     col = node[:column]
-
     if line.nil? || col.nil?
       sub_node = node[:expression] || node[:value] || node[:target] || node[:operand]
       if sub_node.is_a?(Hash)
@@ -158,7 +206,6 @@ class JunoSafetyChecker
         col ||= sub_node[:column]
       end
     end
-
     node_filename = node[:filename] || @filename
     node_source = @source
     if node[:filename] && node[:filename] != @filename
@@ -167,7 +214,6 @@ class JunoSafetyChecker
       rescue
       end
     end
-
     if is_warning
       JunoErrorReporter.warn(message, filename: node_filename, line_num: line || 0)
     else
@@ -177,14 +223,12 @@ class JunoSafetyChecker
 
   def process_node(node)
     return unless node.is_a?(Hash)
-
     case node[:type]
     when :function_definition
       @var_states = {}
       @local_lets = []
       @current_fn = node[:name]
       (node[:body] || []).each { |stmt| process_node(stmt) }
-
       unless @current_fn.end_with?('.init')
         @var_states.each do |name, info|
           if info[:state] == :owned && @local_lets.include?(name)
@@ -192,14 +236,11 @@ class JunoSafetyChecker
           end
         end
       end
-
     when :assignment
       name = node[:name] || ""
       expr = node[:expression]
-
       @local_lets << name if node[:let]
       check_expression(expr) if expr.is_a?(Hash)
-
       if (local_var = resolve_local_pointer(expr))
         @var_states[name] = { state: :local_ptr, target: local_var, line: node[:line], node: node }
       elsif expr.is_a?(Hash) && expr[:type] == :fn_call && allocates_resource?(expr[:name])
@@ -212,7 +253,6 @@ class JunoSafetyChecker
           state_info = @var_states[src_name]
           report_error("Use of moved value '#{src_name}'", node) if state_info[:state] == :moved
           report_error("Use of freed value '#{src_name}'", node) if state_info[:state] == :freed
-
           if state_info[:state] == :owned
             if name.include?('.') || !node[:let]
               @var_states[src_name] = { state: :moved, line: node[:line], node: node }
@@ -223,19 +263,15 @@ class JunoSafetyChecker
           end
         end
       end
-
     when :deref_assign
       check_expression(node[:target])
       check_expression(node[:value])
-
       if local_var = resolve_local_pointer(node[:value])
         report_error("Escape error: storing pointer to local variable '#{local_var}' into a dereferenced pointer, causing it to escape function '#{@current_fn}' scope", node)
       end
-
     when :fn_call
       fn_name = node[:name] || ""
       args = node[:args] || []
-
       if fn_name.include?('.')
         receiver_name, method_name = fn_name.split('.', 2)
         if consumes_resource?(method_name) || consumes_resource?(fn_name)
@@ -266,7 +302,6 @@ class JunoSafetyChecker
           end
         end
       end
-
     when :return
       expr = node[:expression]
       if (local_var = resolve_local_pointer(expr))
@@ -277,7 +312,6 @@ class JunoSafetyChecker
         end
       end
       check_expression(expr) if expr.is_a?(Hash)
-
     when :if_statement
       cond_val = static_eval_bool(node[:condition])
       if cond_val == true
@@ -286,19 +320,14 @@ class JunoSafetyChecker
         (node[:else_body] || []).each { |n| process_node(n) } if node[:else_body]
       else
         saved_state = @var_states.dup.transform_values(&:dup)
-
         process_node(node[:condition])
         (node[:body] || []).each { |n| process_node(n) }
-
         then_state = @var_states
         then_returns = block_returns?(node[:body])
-
         @var_states = saved_state
         (node[:else_body] || []).each { |n| process_node(n) }
-
         else_state = @var_states
         else_returns = block_returns?(node[:else_body])
-
         if then_returns && else_returns
           @var_states = else_state
         elsif then_returns
@@ -322,7 +351,6 @@ class JunoSafetyChecker
           end
         end
       end
-
     when :while_statement, :for_statement
       process_node(node[:condition]) if node[:condition]
       (node[:body] || []).each { |n| process_node(n) }
@@ -332,22 +360,14 @@ class JunoSafetyChecker
   def function_consumes_arg?(fn_name, arg_idx)
     return false if SAFE_FUNCTIONS.include?(fn_name)
     return false if fn_name.include?('.')
-
     if @fn_effects.key?(fn_name)
-      fn_node = @ast.find { |n| n[:type] == :function_definition && n[:name] == fn_name }
-      if fn_node
-        param_name = (fn_node[:params] || [])[arg_idx]
-        param_name = param_name[:name] if param_name.is_a?(Hash)
-        return (@fn_effects[fn_name] || []).include?(param_name)
-      end
+      return @fn_effects[fn_name].include?(arg_idx)
     end
-
-    consumes_resource?(fn_name) && arg_idx == 0
+    @consumers.include?(fn_name) && arg_idx == 0
   end
 
   def check_expression(expr)
     return unless expr.is_a?(Hash)
-
     if (name = resolve_target_var(expr))
       if @var_states.key?(name)
         info = @var_states[name]
@@ -358,7 +378,6 @@ class JunoSafetyChecker
         end
       end
     end
-
     expr.values.each do |v|
       if v.is_a?(Hash)
         check_expression(v)

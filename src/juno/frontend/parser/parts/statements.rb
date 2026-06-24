@@ -9,6 +9,7 @@ module ParserStatements
       name += "<"
       consume(:langle)
       until match?(:rangle)
+        error_eof("Expected '>'") if peek.nil?
         name += consume_type
         if match_symbol?(',')
           consume_symbol(',')
@@ -26,8 +27,6 @@ module ParserStatements
       consume_symbol(";")
     end
     token = peek
-    if token
-    end
     if token.nil? || match_symbol?("}")
       return nil
     end
@@ -41,7 +40,6 @@ module ParserStatements
       when 'return' then parse_return
       when 'break'    then parse_break
       when 'continue' then parse_continue
-
       when 'fn'     then parse_fn_definition
       when 'struct' then parse_struct_definition
       when 'enum'   then parse_enum
@@ -120,6 +118,7 @@ module ParserStatements
     consume_symbol('{')
     body = []
     until match_symbol?('}')
+      error_eof("Expected '}'") if peek.nil?
       stmt = parse_statement
       body << stmt if stmt
     end
@@ -135,6 +134,7 @@ module ParserStatements
       consume_symbol('{')
       e_body = []
       until match_symbol?('}')
+        error_eof("Expected '}'") if peek.nil?
         stmt = parse_statement
         e_body << stmt if stmt
       end
@@ -148,6 +148,7 @@ module ParserStatements
       consume_symbol('{')
       else_body = []
       until match_symbol?('}')
+        error_eof("Expected '}'") if peek.nil?
         stmt = parse_statement
         else_body << stmt if stmt
       end
@@ -173,6 +174,7 @@ module ParserStatements
     if match?(:langle)
       consume(:langle)
       until match?(:rangle)
+        error_eof("Expected '>'") if peek.nil?
         type_params << consume_ident
         consume_symbol(',') if match_symbol?(',')
       end
@@ -182,6 +184,7 @@ module ParserStatements
     params = []
     param_types = {}
     until match_symbol?(')')
+      error_eof("Expected ')'") if peek.nil?
       is_mut = false
       if match_keyword?('mut')
         consume_keyword('mut')
@@ -196,7 +199,7 @@ module ParserStatements
       consume_symbol(',') if match_symbol?(',')
     end
     consume_symbol(')')
-        return_type = nil
+    return_type = nil
     if match?(:colon)
       consume(:colon)
       return_type = consume_type
@@ -208,6 +211,7 @@ module ParserStatements
     consume_symbol('{')
     body = []
     until match_symbol?('}')
+      error_eof("Expected '}'") if peek.nil?
       stmt = parse_statement
       body << stmt if stmt
     end
@@ -226,6 +230,7 @@ module ParserStatements
     if match?(:langle)
       consume(:langle)
       until match?(:rangle)
+        error_eof("Expected '>'") if peek.nil?
         type_params << consume_ident
         consume_symbol(',') if match_symbol?(',')
       end
@@ -235,6 +240,7 @@ module ParserStatements
     fields = []
     field_types = {}
     until match_symbol?('}')
+      error_eof("Expected '}'") if peek.nil?
       consume_keyword('let') if match_keyword?('let')
       if match_keyword?('mut')
          consume_keyword('mut')
@@ -259,6 +265,7 @@ module ParserStatements
     if match?(:langle)
       consume(:langle)
       until match?(:rangle)
+        error_eof("Expected '>'") if peek.nil?
         type_params << consume_ident
         consume_symbol(',') if match_symbol?(',')
       end
@@ -268,6 +275,7 @@ module ParserStatements
     fields = []
     field_types = {}
     until match_symbol?('}')
+      error_eof("Expected '}'") if peek.nil?
       field_name = consume_ident
       if match?(:colon)
         consume(:colon)
@@ -287,6 +295,7 @@ module ParserStatements
     if match?(:langle)
       consume(:langle)
       until match?(:rangle)
+        error_eof("Expected '>'") if peek.nil?
         type_params << consume_ident
         consume_symbol(',') if match_symbol?(',')
       end
@@ -296,6 +305,7 @@ module ParserStatements
     fields = []
     field_types = {}
     until match_symbol?('}')
+      error_eof("Expected '}'") if peek.nil?
       field_name = consume_ident
       if match?(:colon)
         consume(:colon)
@@ -350,6 +360,7 @@ module ParserStatements
     consume_symbol('{')
     body = []
     until match_symbol?('}')
+      error_eof("Expected '}'") if peek.nil?
       stmt = parse_statement
       body << stmt if stmt
     end
@@ -374,6 +385,7 @@ module ParserStatements
     consume_symbol('{')
     body = []
     until match_symbol?('}')
+      error_eof("Expected '}'") if peek.nil?
       stmt = parse_statement
       body << stmt if stmt
     end
@@ -390,6 +402,7 @@ module ParserStatements
     params = []
     param_types = {}
     until match_symbol?(')')
+      error_eof("Expected ')'") if peek.nil?
       param_name = consume_ident
       if match?(:colon)
         consume(:colon)
@@ -434,11 +447,9 @@ module ParserStatements
           path += consume_symbol('.')[:value]
         end
       end
-
       if path.empty?
         error_unexpected(peek, "Expected string or system path for import")
       end
-
       { type: :import, path: path, system: true }
     end
   end
@@ -451,99 +462,101 @@ module ParserStatements
     { type: :deref_assign, target: target, value: value }
   end
 
-def parse_break
-  consume_keyword('break')
-  { type: :break }
-end
-
-def parse_continue
-  consume_keyword('continue')
-  { type: :continue }
-end
-
-end
-
-def parse_loop
-  consume_keyword('loop')
-  consume_symbol('{')
-  body = []
-  until match_symbol?('}')
-    stmt = parse_statement
-    body << stmt if stmt
+  def parse_break
+    consume_keyword('break')
+    { type: :break }
   end
-  consume_symbol('}')
-  {
-    type: :while_statement,
-    condition: { type: :literal, value: 1 },
-    body: body
-  }
-end
 
-def parse_enum
-  consume_keyword('enum')
-  name = consume_ident
-  consume_symbol('{')
-  variants = []
-  until match_symbol?('}')
-    v_name = consume_ident
-    params = []
-    if match_symbol?('(')
-      consume_symbol('(')
-      until match_symbol?(')')
-        params << consume_type
-        consume_symbol(',') if match_symbol?(',')
-      end
-      consume_symbol(')')
+  def parse_continue
+    consume_keyword('continue')
+    { type: :continue }
+  end
+
+  def parse_loop
+    consume_keyword('loop')
+    consume_symbol('{')
+    body = []
+    until match_symbol?('}')
+      error_eof("Expected '}'") if peek.nil?
+      stmt = parse_statement
+      body << stmt if stmt
     end
-    variants << { name: v_name, params: params }
-    consume_symbol(',') if match_symbol?(',')
+    consume_symbol('}')
+    {
+      type: :while_statement,
+      condition: { type: :literal, value: 1 },
+      body: body
+    }
   end
-  consume_symbol('}')
-  { type: :enum_definition, name: name, variants: variants }
-end
 
-def parse_type_alias
-  consume_keyword('type')
-  alias_name = consume_ident
-  consume_symbol('=')
-  target_type = consume_type
-  { type: :type_alias, name: alias_name, target: target_type }
-end
-
-def parse_use
-  consume_keyword('use')
-  path = ""
-  if match?(:string)
-    path = consume(:string)[:value]
-    { type: :import, path: path, system: false }
-  else
-    while match?(:ident) || match_symbol?('/') || match_symbol?('.')
-      if match?(:ident)
-        path += consume_ident
-      elsif match_symbol?('/')
-        path += consume_symbol('/')[:value]
-      elsif match_symbol?('.')
-        path += consume_symbol('.')[:value]
+  def parse_enum
+    consume_keyword('enum')
+    name = consume_ident
+    consume_symbol('{')
+    variants = []
+    until match_symbol?('}')
+      error_eof("Expected '}'") if peek.nil?
+      v_name = consume_ident
+      params = []
+      if match_symbol?('(')
+        consume_symbol('(')
+        until match_symbol?(')')
+          error_eof("Expected ')'") if peek.nil?
+          params << consume_type
+          consume_symbol(',') if match_symbol?(',')
+        end
+        consume_symbol(')')
       end
+      variants << { name: v_name, params: params }
+      consume_symbol(',') if match_symbol?(',')
     end
-    { type: :import, path: path, system: true }
+    consume_symbol('}')
+    { type: :enum_definition, name: name, variants: variants }
   end
-end
 
-def parse_panic
-  consume_keyword('panic')
-  msg = nil
-  if match?(:string)
-    msg = consume(:string)[:value]
+  def parse_type_alias
+    consume_keyword('type')
+    alias_name = consume_ident
+    consume_symbol('=')
+    target_type = consume_type
+    { type: :type_alias, name: alias_name, target: target_type }
   end
-  { type: :panic, message: msg }
-end
 
-def parse_todo
-  consume_keyword('todo')
-  msg = nil
-  if match?(:string)
-    msg = consume(:string)[:value]
+  def parse_use
+    consume_keyword('use')
+    path = ""
+    if match?(:string)
+      path = consume(:string)[:value]
+      { type: :import, path: path, system: false }
+    else
+      while match?(:ident) || match_symbol?('/') || match_symbol?('.')
+        if match?(:ident)
+          path += consume_ident
+        elsif match_symbol?('/')
+          path += consume_symbol('/')[:value]
+        elsif match_symbol?('.')
+          path += consume_symbol('.')[:value]
+        end
+      end
+      { type: :import, path: path, system: true }
+    end
   end
-  { type: :todo, message: msg }
+
+  def parse_panic
+    consume_keyword('panic')
+    msg = nil
+    if match?(:string)
+      msg = consume(:string)[:value]
+    end
+    { type: :panic, message: msg }
+  end
+
+  def parse_todo
+    consume_keyword('todo')
+    msg = nil
+    if match?(:string)
+      msg = consume(:string)[:value]
+    end
+    { type: :todo, message: msg }
+  end
 end
