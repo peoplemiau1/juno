@@ -7,6 +7,14 @@ class LLVMGenerator
   include LLVMExpressionGenerator
   include LLVMBuiltinGenerator
 
+  ESCAPE_MAP = {
+    "\n".ord => "\\0A",
+    "\r".ord => "\\0D",
+    "\t".ord => "\\09",
+    "\"".ord => "\\22",
+    "\\".ord => "\\\\"
+  }.freeze
+
   def initialize(ast, source: "", filename: "main.juno")
     @ast = ast
     @source = source
@@ -139,19 +147,12 @@ class LLVMGenerator
   end
 
   def emit_strings
-    escape_map = {
-      "\n".ord => "\\0A",
-      "\r".ord => "\\0D",
-      "\t".ord => "\\09",
-      "\"".ord => "\\22",
-      "\\".ord => "\\\\"
-    }
     @strings.each do |val, id|
       escaped = val.bytes.map { |b|
-        if escape_map.key?(b)
-          escape_map[b]
-        elsif b < " ".ord || b > "~".ord
-          "\\#{b.to_s(16).rjust(2, '0').upcase}"
+        if escaped_char = ESCAPE_MAP[b]
+          escaped_char
+        elsif b < 32 || b > 126
+          "\\%02X" % b
         else
           b.chr
         end
@@ -161,7 +162,7 @@ class LLVMGenerator
     end
     @output << "\n"
   end
-  
+
   def process_node(node)
     return if node.nil?
     case node[:type]
