@@ -1,3 +1,4 @@
+import "core/result.juno"
 import "core/math.juno"
 import "core/mem.juno"
 import "core/io.juno"

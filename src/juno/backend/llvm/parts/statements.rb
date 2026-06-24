@@ -57,6 +57,8 @@ module LLVMStatementGenerator
       @output << "  call void @exit(i32 2)\n"
     when :fn_call, :method_call
       eval_expr(node)
+    when :match_expression
+      eval_expr(node)
     when :return
       val = eval_expr(node[:expression] || {type: :literal, value: 0})
       @output << "  ret i64 #{val}\n"
@@ -68,7 +70,6 @@ module LLVMStatementGenerator
       parts = node[:name].split('.')
       receiver = parts[0]
       field_name = parts[1]
-
       struct_name = node[:struct_name] || find_struct_for_field(field_name)
       if struct_name
         ptr = next_tmp
@@ -94,21 +95,17 @@ module LLVMStatementGenerator
     true_label = next_label("if_true")
     false_label = next_label("if_false")
     end_label = next_label("if_end")
-
     tmp = next_tmp
     @output << "  %#{tmp} = icmp ne i64 #{cond}, 0\n"
     @output << "  br i1 %#{tmp}, label %#{true_label}, label %#{node[:else_body] ? false_label : end_label}\n"
-
     @output << "#{true_label}:\n"
     node[:body].each { |s| gen_statement(s) }
     @output << "  br label %#{end_label}\n"
-
     if node[:else_body]
       @output << "#{false_label}:\n"
       node[:else_body].each { |s| gen_statement(s) }
       @output << "  br label %#{end_label}\n"
     end
-
     @output << "#{end_label}:\n"
   end
 
@@ -117,20 +114,16 @@ module LLVMStatementGenerator
     start_label = next_label("while_start")
     body_label = next_label("while_body")
     end_label = next_label("while_end")
-
     @loop_stack << { break_label: end_label, continue_label: start_label }
-
     @output << "  br label %#{start_label}\n"
     @output << "#{start_label}:\n"
     cond = eval_expr(node[:condition])
     tmp = next_tmp
     @output << "  %#{tmp} = icmp ne i64 #{cond}, 0\n"
     @output << "  br i1 %#{tmp}, label %#{body_label}, label %#{end_label}\n"
-
     @output << "#{body_label}:\n"
     node[:body].each { |s| gen_statement(s) }
     @output << "  br label %#{start_label}\n"
-
     @output << "#{end_label}:\n"
     @loop_stack.pop
   end
@@ -144,26 +137,21 @@ module LLVMStatementGenerator
     body_label = next_label("for_body")
     end_label = next_label("for_end")
     update_label = next_label("for_update")
-
     @loop_stack << { break_label: end_label, continue_label: update_label }
-
     @output << "  br label %#{start_label}\n"
     @output << "#{start_label}:\n"
     cond = eval_expr(node[:condition])
     tmp = next_tmp
     @output << "  %#{tmp} = icmp ne i64 #{cond}, 0\n"
     @output << "  br i1 %#{tmp}, label %#{body_label}, label %#{end_label}\n"
-
     @output << "#{body_label}:\n"
     node[:body].each { |s| gen_statement(s) }
-
     @output << "  br label %#{update_label}\n"
     @output << "#{update_label}:\n"
     if node[:update]
       gen_statement(node[:update])
     end
     @output << "  br label %#{start_label}\n"
-
     @output << "#{end_label}:\n"
     @loop_stack.pop
   end
@@ -200,7 +188,15 @@ module LLVMStatementGenerator
         end
       elsif node[:type] == :increment
         locals << node[:name]
-      elsif node[:type] == :array_assign
+      elsif node[:type] == :match_expression
+        node[:cases].each do |c|
+          collect_locals(c[:body] || [], locals, arrays)
+          if c[:pattern][:type] == :bind_pattern
+            locals << c[:pattern][:name]
+          elsif c[:pattern][:type] == :variant_pattern
+            (c[:pattern][:fields] || []).each { |f| locals << f }
+          end
+        end
       end
     end
     arrays.each_key { |k| locals.delete(k) }

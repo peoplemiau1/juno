@@ -1,0 +1,9 @@
+enum Option {
+	Some(ptr),
+	None
+}
+
+enum Result {
+	Ok(ptr),
+	Err(int)
+}
