@@ -182,7 +182,11 @@ class LLVMGenerator
   def gen_function(node)
     @current_function = node
     params = (node[:params] || []).map { |p| "i64 %#{p}_in" }.join(", ")
-    @output << "define i64 @#{node[:name].gsub('.', '_')}(#{params}) {\n"
+    
+    has_insertC = node[:body]&.any? { |s| s.is_a?(Hash) && s[:type] == :insertC }
+    attrs = has_insertC ? " noinline" : ""
+    
+    @output << "define i64 @#{node[:name].gsub('.', '_')}(#{params})#{attrs} {\n"
     @tmp_count = 0
     @label_count = 0
 

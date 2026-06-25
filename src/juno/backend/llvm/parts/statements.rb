@@ -59,6 +59,8 @@ module LLVMStatementGenerator
       eval_expr(node)
     when :match_expression
       eval_expr(node)
+    when :insertC
+      gen_llvm_insertC(node)
     when :return
       val = eval_expr(node[:expression] || {type: :literal, value: 0})
       @output << "  ret i64 #{val}\n"
@@ -200,5 +202,127 @@ module LLVMStatementGenerator
       end
     end
     arrays.each_key { |k| locals.delete(k) }
+  end
+
+  def gen_llvm_match(node)
+    val = eval_expr(node[:expression])
+    end_label = next_label("match_end")
+    result_var = next_tmp
+    @output << "  %#{result_var} = alloca i64, align 8\n"
+    node[:cases].each_with_index do |c, idx|
+      next_case_label = next_label("match_case_#{idx}_next")
+      body_label = next_label("match_case_#{idx}_body")
+      cond = check_llvm_pattern(val, c[:pattern])
+      @output << "  br i1 #{cond}, label %#{body_label}, label %#{next_case_label}\n"
+      @output << "#{body_label}:\n"
+      bind_llvm_pattern_vars(val, c[:pattern])
+      if c[:body].is_a?(Array)
+        c[:body].each { |s| gen_statement(s) }
+        @output << "  store i64 0, i64* %#{result_var}, align 8\n"
+      else
+        body_val = eval_expr(c[:body])
+        @output << "  store i64 #{body_val}, i64* %#{result_var}, align 8\n"
+      end
+      @output << "  br label %#{end_label}\n"
+      @output << "#{next_case_label}:\n"
+    end
+    @output << "  br label %#{end_label}\n"
+    @output << "#{end_label}:\n"
+    res = next_tmp
+    @output << "  %#{res} = load i64, i64* %#{result_var}, align 8\n"
+    "%#{res}"
+  end
+
+  def check_llvm_pattern(val, pattern)
+    case pattern[:type]
+    when :wildcard_pattern
+      "true"
+    when :literal_pattern
+      lit_val = pattern[:value].is_a?(TrueClass) ? "1" : (pattern[:value].is_a?(FalseClass) ? "0" : pattern[:value].to_s)
+      cmp = next_tmp
+      @output << "  %#{cmp} = icmp eq i64 #{val}, #{lit_val}\n"
+      "%#{cmp}"
+    when :bind_pattern
+      "true"
+    when :variant_pattern
+      tmp_p = next_tmp
+      @output << "  %#{tmp_p} = inttoptr i64 #{val} to i64*\n"
+      tag_val = next_tmp
+      @output << "  %#{tag_val} = load i64, i64* %#{tmp_p}, align 8\n"
+      enum_info = @enums[pattern[:enum]]
+      variant_info = enum_info[:variants][pattern[:variant]]
+      cmp = next_tmp
+      @output << "  %#{cmp} = icmp eq i64 %#{tag_val}, #{variant_info[:tag]}\n"
+      "%#{cmp}"
+    else
+      "true"
+    end
+  end
+
+  def bind_llvm_pattern_vars(val, pattern)
+    if pattern[:type] == :bind_pattern
+      @output << "  store i64 #{val}, i64* %#{pattern[:name]}, align 8\n"
+    elsif pattern[:type] == :variant_pattern
+      (pattern[:fields] || []).each_with_index do |f_name, i|
+        tmp_i8 = next_tmp
+        @output << "  %#{tmp_i8} = inttoptr i64 #{val} to i8*\n"
+        tmp_gep = next_tmp
+        offset = 8 + i * 8
+        @output << "  %#{tmp_gep} = getelementptr i8, i8* %#{tmp_i8}, i64 #{offset}\n"
+        tmp_cast = next_tmp
+        @output << "  %#{tmp_cast} = bitcast i8* %#{tmp_gep} to i64*\n"
+        field_val = next_tmp
+        @output << "  %#{field_val} = load i64, i64* %#{tmp_cast}, align 8\n"
+        @output << "  store i64 %#{field_val}, i64* %#{f_name}, align 8\n"
+      end
+    end
+  end
+
+  def gen_llvm_match(node)
+    val = eval_expr(node[:expression])
+    end_label = next_label("match_end")
+    result_var = next_tmp
+    @output << "  %#{result_var} = alloca i64, align 8\n"
+    node[:cases].each_with_index do |c, idx|
+      next_case_label = next_label("match_case_#{idx}_next")
+      body_label = next_label("match_case_#{idx}_body")
+      cond = check_llvm_pattern(val, c[:pattern])
+      @output << "  br i1 #{cond}, label %#{body_label}, label %#{next_case_label}\n"
+      @output << "#{body_label}:\n"
+      bind_llvm_pattern_vars(val, c[:pattern])
+      if c[:body].is_a?(Array)
+        c[:body].each { |s| gen_statement(s) }
+        @output << "  store i64 0, i64* %#{result_var}, align 8\n"
+      else
+        body_val = eval_expr(c[:body])
+        @output << "  store i64 #{body_val}, i64* %#{result_var}, align 8\n"
+      end
+      @output << "  br label %#{end_label}\n"
+      @output << "#{next_case_label}:\n"
+    end
+    @output << "  br label %#{end_label}\n"
+    @output << "#{end_label}:\n"
+    res = next_tmp
+    @output << "  %#{res} = load i64, i64* %#{result_var}, align 8\n"
+    "%#{res}"
+  end
+
+  def gen_llvm_insertC(node)
+    raw_content = node[:content] || ""
+    bytes = raw_content.scan(/0x[0-9a-fA-F]+|\d+/).map { |b|
+      b.start_with?("0x") ? b.to_i(16) : b.to_i
+    }
+    return if bytes.empty?
+    byte_str = bytes.map { |b| "0x%02X" % b }.join(", ")
+    asm_instruction = ".byte #{byte_str}"
+    
+    first_param = @current_function[:params]&.[](0)
+    if first_param
+      tmp_load = next_tmp
+      @output << "  %#{tmp_load} = load i64, i64* %#{first_param}\n"
+      @output << "  call void asm sideeffect \"#{asm_instruction}\", \"{rdi}\"(i64 %#{tmp_load})\n"
+    else
+      @output << "  call void asm sideeffect \"#{asm_instruction}\", \"\"()\n"
+    end
   end
 end

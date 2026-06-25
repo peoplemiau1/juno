@@ -67,6 +67,10 @@ class JunoSafetyChecker
     local_states = {}
     allocator_found = false
     walker = ->(node) {
+      if node.is_a?(Array)
+        node.each { |i| walker.call(i) }
+        return
+      end
       return unless node.is_a?(Hash)
       if node[:type] == :assignment
         expr = node[:expression]

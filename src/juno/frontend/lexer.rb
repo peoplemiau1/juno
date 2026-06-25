@@ -24,6 +24,13 @@ class Lexer
         @column = 1
       elsif scanner.scan(/[ \t\r]+/)
       elsif scanner.scan(/(\/\/|#).*$/)
+      elsif scanner.scan(/insertC\s*\{/)
+        content = ""
+        until scanner.check(/\}/) || scanner.eos?
+          content << scanner.getch
+        end
+        scanner.getch if !scanner.eos?
+        add_token(:insertC, "insertC", content)
       elsif m = scanner.scan(/(struct|union|fn|func|def|if|elif|else|return|while|loop|break|continue|let|for|import|use|packed|extern|from|match|todo|panic|as|true|false|mut|type|enum|real|float|int|string|bool|ptr)\b/)
         kw = m; kw = "fn" if kw == "func" || kw == "def"
         add_token(:keyword, kw)
