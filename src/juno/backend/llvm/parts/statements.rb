@@ -278,35 +278,6 @@ module LLVMStatementGenerator
     end
   end
 
-  def gen_llvm_match(node)
-    val = eval_expr(node[:expression])
-    end_label = next_label("match_end")
-    result_var = next_tmp
-    @output << "  %#{result_var} = alloca i64, align 8\n"
-    node[:cases].each_with_index do |c, idx|
-      next_case_label = next_label("match_case_#{idx}_next")
-      body_label = next_label("match_case_#{idx}_body")
-      cond = check_llvm_pattern(val, c[:pattern])
-      @output << "  br i1 #{cond}, label %#{body_label}, label %#{next_case_label}\n"
-      @output << "#{body_label}:\n"
-      bind_llvm_pattern_vars(val, c[:pattern])
-      if c[:body].is_a?(Array)
-        c[:body].each { |s| gen_statement(s) }
-        @output << "  store i64 0, i64* %#{result_var}, align 8\n"
-      else
-        body_val = eval_expr(c[:body])
-        @output << "  store i64 #{body_val}, i64* %#{result_var}, align 8\n"
-      end
-      @output << "  br label %#{end_label}\n"
-      @output << "#{next_case_label}:\n"
-    end
-    @output << "  br label %#{end_label}\n"
-    @output << "#{end_label}:\n"
-    res = next_tmp
-    @output << "  %#{res} = load i64, i64* %#{result_var}, align 8\n"
-    "%#{res}"
-  end
-
   def gen_llvm_insertC(node)
     raw_content = node[:content] || ""
     bytes = raw_content.scan(/0x[0-9a-fA-F]+|\d+/).map { |b|
@@ -318,9 +289,14 @@ module LLVMStatementGenerator
     
     first_param = @current_function[:params]&.[](0)
     if first_param
+      arg_register = case @arch
+                     when :aarch64 then "{x0}"
+                     when :riscv64, :riscv32 then "{a0}"
+                     else "{rdi}"
+                     end
       tmp_load = next_tmp
       @output << "  %#{tmp_load} = load i64, i64* %#{first_param}\n"
-      @output << "  call void asm sideeffect \"#{asm_instruction}\", \"{rdi}\"(i64 %#{tmp_load})\n"
+      @output << "  call void asm sideeffect \"#{asm_instruction}\", \"#{arg_register}\"(i64 %#{tmp_load})\n"
     else
       @output << "  call void asm sideeffect \"#{asm_instruction}\", \"\"()\n"
     end

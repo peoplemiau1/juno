@@ -15,10 +15,11 @@ class LLVMGenerator
     "\\".ord => "\\\\"
   }.freeze
 
-  def initialize(ast, source: "", filename: "main.juno")
+  def initialize(ast, source: "", filename: "main.juno", arch: :x86_64)
     @ast = ast
     @source = source
     @filename = filename
+    @arch = arch
     @output = ""
     @strings = {}
     @string_count = 0

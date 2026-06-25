@@ -61,7 +61,7 @@ module Juno
         generator = NativeGenerator.new(ast, target_os: @options[:os], arch: @options[:arch], source: code, filename: input_file)
         generator.generate(@options[:output])
       else
-        generator = LLVMGenerator.new(ast, source: code, filename: input_file)
+        generator = LLVMGenerator.new(ast, source: code, filename: input_file, arch: @options[:arch])
         llvm_ir = generator.generate
         @asm_log = [llvm_ir]
         ir_file = @options[:output] + ".ll"
@@ -77,6 +77,8 @@ module Juno
           optimized_ir_file = @options[:output] + ".opt.ll"
           pass_val = (opt_level == 's' || opt_level == 'z') ? opt_level : opt_level
           if system("#{opt_cmd} -passes='default<O#{pass_val}>' -S -o #{optimized_ir_file} #{ir_file}")
+            target_ir_file = optimized_ir_file
+          elsif system("#{opt_cmd} -O#{opt_level} -S -o #{optimized_ir_file} #{ir_file}")
             target_ir_file = optimized_ir_file
           end
         end
