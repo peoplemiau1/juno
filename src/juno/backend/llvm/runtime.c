@@ -4,7 +4,6 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
-#include <ctype.h>
 
 typedef struct {
     unsigned int id;
@@ -43,8 +42,15 @@ extern void DrawTextEx(J_Font font, const char *text, J_Vector2 position, float 
 extern J_Font LoadFont(const char *fileName);
 #endif
 
+static const char empty_str[1] = {0};
+
+static inline int isspace_fast(unsigned char c) {
+    return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f';
+}
+
 long juno_load_font(long filename_ptr) {
-    J_Font* f = malloc(sizeof(J_Font));
+    J_Font* f = (J_Font*)malloc(sizeof(J_Font));
+    if (!f) return 0;
     *f = LoadFont((char*)filename_ptr);
     return (long)f;
 }
@@ -52,57 +58,64 @@ long juno_load_font(long filename_ptr) {
 void juno_draw_text(long font_ptr, long text_ptr, long x, long y, long size, long spacing, long color) {
     J_Font* f = (J_Font*)font_ptr;
     J_Vector2 pos = { (float)x, (float)y };
-    J_Color clr = { (unsigned char)(color & 255), (unsigned char)((color >> 8) & 255), (unsigned char)((color >> 16) & 255), (unsigned char)((color >> 24) & 255) };
+    J_Color clr = { 
+        (unsigned char)(color & 255), 
+        (unsigned char)((color >> 8) & 255), 
+        (unsigned char)((color >> 16) & 255), 
+        (unsigned char)((color >> 24) & 255) 
+    };
     DrawTextEx(*f, (char*)text_ptr, pos, (float)size, (float)spacing, clr);
 }
 
 long concat(long s1_ptr, long s2_ptr) {
-    char* s1 = (char*)s1_ptr;
-    char* s2 = (char*)s2_ptr;
-    char empty[1] = {0};
-    if (!s1) s1 = empty;
-    if (!s2) s2 = empty;
+    const char* s1 = s1_ptr ? (const char*)s1_ptr : empty_str;
+    const char* s2 = s2_ptr ? (const char*)s2_ptr : empty_str;
     
     size_t len1 = strlen(s1);
     size_t len2 = strlen(s2);
-    char* res = malloc(len1 + len2 + 1);
-    strcpy(res, s1);
-    strcat(res, s2);
+    char* res = (char*)malloc(len1 + len2 + 1);
+    if (!res) return (long)empty_str;
+    
+    memcpy(res, s1, len1);
+    memcpy(res + len1, s2, len2);
+    res[len1 + len2] = '\0';
     return (long)res;
 }
 
 long trim(long s_ptr) {
     char* s = (char*)s_ptr;
-    if (!s || *s == 0) return s_ptr;
+    if (!s || *s == '\0') return s_ptr;
     
-    while (*s && isspace((unsigned char)*s)) s++;
-    if (*s == 0) return (long)s;
+    while (*s && isspace_fast((unsigned char)*s)) s++;
+    if (*s == '\0') return (long)s;
 
     char* end = s + strlen(s) - 1;
-    while (end > s && isspace((unsigned char)*end)) end--;
-    *(end + 1) = 0;
+    while (end > s && isspace_fast((unsigned char)*end)) end--;
+    *(end + 1) = '\0';
     
     return (long)s;
 }
 
 long file_read_all(long path_ptr) {
-    char* path = (char*)path_ptr;
-    if (!path) return (long)calloc(1, 1);
+    const char* path = (const char*)path_ptr;
+    if (!path) return (long)empty_str;
 
     int fd = open(path, O_RDONLY);
-    if (fd < 0) return (long)calloc(1, 1);
+    if (fd < 0) return (long)empty_str;
     
     struct stat st;
-    if (fstat(fd, &st) < 0) { close(fd); return (long)calloc(1, 1); }
+    if (fstat(fd, &st) < 0) { close(fd); return (long)empty_str; }
     
     size_t size = st.st_size;
     if (size == 0) size = 4096;
     
-    char* buf = malloc(size + 1);
-    if (!buf) { close(fd); return (long)calloc(1, 1); }
+    char* buf = (char*)malloc(size + 1);
+    if (!buf) { close(fd); return (long)empty_str; }
+    
     ssize_t n = read(fd, buf, size);
-    if (n < 0) { free(buf); close(fd); return (long)calloc(1, 1); }
-    buf[n] = 0;
+    if (n < 0) { free(buf); close(fd); return (long)empty_str; }
+    
+    buf[n] = '\0';
     close(fd);
     return (long)buf;
 }
@@ -112,41 +125,45 @@ long file_read_safe(long path_ptr) {
 }
 
 long exists(long path_ptr) {
-    char* path = (char*)path_ptr;
+    const char* path = (const char*)path_ptr;
     if (!path) return 0;
     return access(path, F_OK) == 0 ? 1 : 0;
 }
 
 long juno_strlen(long s_ptr) {
-    char* s = (char*)s_ptr;
+    const char* s = (const char*)s_ptr;
     if (!s) return 0;
     return (long)strlen(s);
 }
 
 long juno_pow(long base, long exp) {
     long res = 1;
-    for (long i = 0; i < exp; i++) res *= base;
+    while (exp > 0) {
+        if (exp & 1) res *= base;
+        base *= base;
+        exp >>= 1;
+    }
     return res;
 }
 
 long substr(long s_ptr, long start, long len) {
-    char* s = (char*)s_ptr;
-    if (!s) return (long)calloc(1, 1);
+    const char* s = (const char*)s_ptr;
+    if (!s) return (long)empty_str;
     size_t slen = strlen(s);
-    if (start >= slen) return (long)calloc(1, 1);
+    if (start >= slen) return (long)empty_str;
     if (start + len > slen) len = slen - start;
     
-    char* res = malloc(len + 1);
-    if (!res) return (long)calloc(1, 1);
+    char* res = (char*)malloc(len + 1);
+    if (!res) return (long)empty_str;
     memcpy(res, s + start, len);
-    res[len] = 0;
+    res[len] = '\0';
     return (long)res;
 }
 
 long prints(long s_ptr) {
-    char* s = (char*)s_ptr;
+    const char* s = (const char*)s_ptr;
     if (s) {
-        printf("%s\n", s);
+        puts(s);
         fflush(stdout);
     }
     return 0;

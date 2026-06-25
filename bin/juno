@@ -79,7 +79,7 @@ end
       parser = OptionParser.new do |opts|
         opts.on("-a", "--arch ARCH", [:x86_64, :aarch64, :arm, :riscv32, :riscv64]) { |a| options[:arch] = a }
         opts.on("-t", "--target TARGET", [:exe, :flat, :obj]) { |t| options[:target] = t }
-        opts.on("-O", "--opt LEVEL", Integer) { |o| options[:opt_level] = o }
+        opts.on("-O", "--opt LEVEL", String) { |o| options[:opt_level] = o }
         opts.on("-o", "--output FILE") { |o| options[:output] = o }
         opts.on("-r", "--run") { options[:run] = true }
         opts.on("--asm") { options[:show_asm] = true }
