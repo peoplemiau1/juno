@@ -1,5 +1,31 @@
 require_relative "../../errors"
 
+class CFGBlock
+  attr_reader :id, :instructions, :preds, :succs
+  attr_accessor :in_bindings, :in_values, :out_bindings, :out_values
+
+  def initialize(id)
+    @id = id
+    @instructions = []
+    @preds = []
+    @succs = []
+    @in_bindings = {}
+    @in_values = {}
+    @out_bindings = {}
+    @out_values = {}
+  end
+
+  def add_instruction(inst)
+    @instructions << inst
+  end
+
+  def link_to(other)
+    return if @succs.include?(other)
+    @succs << other
+    other.preds << self
+  end
+end
+
 class JunoSafetyChecker
   attr_reader :fn_effects
 
@@ -17,19 +43,29 @@ class JunoSafetyChecker
     @functions = functions
     @source = source
     @filename = filename
-    @var_states = {}
-    @fn_effects = {}
     @errors = []
-    @local_lets = []
+    @fn_effects = {}
     @allocators = ['malloc', 'open', 'os_open', 'os_alloc', 'mem_malloc', 'fopen', 'alloc']
     @consumers = ['free', 'close', 'os_close', 'os_free', 'mem_free', 'delete']
+    
+    @bindings = {}
+    @values = {}
+    @val_counter = 0
+    @block_counter = 0
+    @current_fn = nil
+    @scope_stack = []
+    @node_val_ids = {}
   end
 
   def check
     @errors = []
-    infer_resource_functions
+    infer_allocators
     analyze_all_fn_effects
-    @ast.each { |node| process_node(node) }
+    
+    @ast.each do |node|
+      next unless node[:type] == :function_definition
+      process_function_cfg(node)
+    end
 
     unless @errors.empty?
       @errors.each(&:display)
@@ -37,17 +73,541 @@ class JunoSafetyChecker
     end
   end
 
-  def allocates_resource?(name)
-    @allocators.include?(name)
-  end
-
-  def consumes_resource?(name)
-    @consumers.include?(name)
-  end
-
   private
 
-  def infer_resource_functions
+  def next_val_id
+    @val_counter += 1
+  end
+
+  def next_block_id
+    @block_counter += 1
+  end
+
+  def create_block
+    CFGBlock.new(next_block_id)
+  end
+
+  def deep_copy_states(states)
+    states.transform_values { |v| v.dup }
+  end
+
+  def get_or_create_val_id(node, type, state, pool)
+    id = @node_val_ids[node.object_id] ||= next_val_id
+    pool[id] ||= {
+      type: type,
+      state: state,
+      line: node[:line],
+      column: node[:column],
+      node: node
+    }
+    id
+  end
+
+  def build_cfg(statements, entry_block, exit_block)
+    current = entry_block
+    statements.each do |stmt|
+      current = build_stmt_cfg(stmt, current, exit_block)
+    end
+    current.link_to(exit_block) if current
+  end
+
+  def build_block_cfg(statements, current, exit_block)
+    return current unless statements.is_a?(Array)
+    scope_id = next_val_id
+    scope_start = { type: :scope_start, scope_id: scope_id }
+    scope_end = { type: :scope_end, scope_id: scope_id }
+    
+    current.add_instruction(scope_start)
+    statements.each do |stmt|
+      current = build_stmt_cfg(stmt, current, exit_block)
+    end
+    current.add_instruction(scope_end) if current
+    current
+  end
+
+  def build_stmt_cfg(stmt, current, exit_block)
+    return current unless stmt.is_a?(Hash)
+
+    case stmt[:type]
+    when :if_statement
+      then_block = create_block
+      else_block = create_block
+      merge_block = create_block
+
+      current.add_instruction(stmt[:condition]) if stmt[:condition]
+      current.link_to(then_block)
+      current.link_to(else_block)
+
+      then_terminal = build_block_cfg(stmt[:body] || [], then_block, merge_block)
+      then_terminal.link_to(merge_block) if then_terminal
+
+      else_terminal = build_block_cfg(stmt[:else_body] || [], else_block, merge_block)
+      else_terminal.link_to(merge_block) if else_terminal
+
+      merge_block
+    when :while_statement
+      cond_block = create_block
+      body_block = create_block
+      post_block = create_block
+
+      current.link_to(cond_block)
+
+      cond_block.add_instruction(stmt[:condition]) if stmt[:condition]
+      cond_block.link_to(body_block)
+      cond_block.link_to(post_block)
+
+      body_terminal = build_block_cfg(stmt[:body] || [], body_block, cond_block)
+      body_terminal.link_to(cond_block) if body_terminal
+
+      post_block
+    when :for_statement
+      init_block = create_block
+      cond_block = create_block
+      body_block = create_block
+      update_block = create_block
+      post_block = create_block
+
+      current.link_to(init_block)
+      init_block.add_instruction(stmt[:init]) if stmt[:init]
+      init_block.link_to(cond_block)
+
+      cond_block.add_instruction(stmt[:condition]) if stmt[:condition]
+      cond_block.link_to(body_block)
+      cond_block.link_to(post_block)
+
+      body_terminal = build_block_cfg(stmt[:body] || [], body_block, update_block)
+      body_terminal.link_to(update_block) if body_terminal
+
+      update_block.add_instruction(stmt[:update]) if stmt[:update]
+      update_block.link_to(cond_block)
+
+      post_block
+    else
+      current.add_instruction(stmt)
+      current
+    end
+  end
+
+  def resolve_access_path(expr)
+    return nil unless expr.is_a?(Hash)
+    case expr[:type]
+    when :variable
+      expr[:name]
+    when :field_access
+      receiver = resolve_access_path(expr[:receiver])
+      field = expr[:field] || expr[:name]
+      receiver && field ? "#{receiver}.#{field}" : nil
+    when :dereference
+      operand = expr[:operand] || expr[:expression]
+      path = resolve_access_path(operand)
+      path ? "*#{path}" : nil
+    when :address_of
+      operand = expr[:operand] || expr[:expression]
+      path = resolve_access_path(operand)
+      path ? "&#{path}" : nil
+    else
+      nil
+    end
+  end
+
+  def lookup_val_id(path, bindings, values)
+    return nil if path.nil?
+    return bindings[path] if bindings.key?(path)
+
+    parts = path.split('.')
+    if parts.size > 1
+      base_name = parts[0]
+      base_id = bindings[base_name]
+      if base_id && values[base_id]
+        target_path = [base_id, *parts[1..]].join('.')
+        return bindings[target_path] if bindings.key?(target_path)
+      end
+    end
+    nil
+  end
+
+  def resolve_val_id_in_pool(expr, bindings, values)
+    return nil unless expr.is_a?(Hash)
+    path = resolve_access_path(expr)
+    lookup_val_id(path, bindings, values)
+  end
+
+  def propagate_bindings(src_path, dest_path, bindings)
+    bindings.each do |path, val_id|
+      if path.start_with?("#{src_path}.")
+        sub_field = path[(src_path.length + 1)..-1]
+        bindings["#{dest_path}.#{sub_field}"] = val_id
+      end
+    end
+  end
+
+  def solve_cfg(entry_block)
+    worklist = [entry_block]
+    
+    while worklist.any?
+      block = worklist.shift
+      
+      merged_bindings, merged_values = join_preds(block)
+      block.in_bindings = merged_bindings
+      block.in_values = merged_values
+
+      curr_bindings = merged_bindings.dup
+      curr_values = deep_copy_states(merged_values)
+
+      block.instructions.each do |inst|
+        curr_bindings, curr_values = transfer_instruction(inst, curr_bindings, curr_values, false)
+      end
+
+      if out_state_changed?(block, curr_bindings, curr_values)
+        block.out_bindings = curr_bindings
+        block.out_values = curr_values
+        block.succs.each do |succ|
+          worklist << succ unless worklist.include?(succ)
+        end
+      end
+    end
+  end
+
+  def join_preds(block)
+    preds = block.preds.select { |p| p.out_bindings && !p.out_bindings.empty? }
+    if preds.empty?
+      return [block.in_bindings || {}, deep_copy_states(block.in_values || {})]
+    end
+    return [preds[0].out_bindings.dup, deep_copy_states(preds[0].out_values)] if preds.size == 1
+
+    merged_bindings = {}
+    merged_values = {}
+
+    preds.each do |pred|
+      pred.out_values.each do |id, val|
+        merged_values[id] ||= val.dup
+      end
+    end
+
+    all_paths = preds.flat_map { |p| p.out_bindings.keys }.uniq
+
+    all_paths.each do |path|
+      pred_ids = preds.map { |p| p.out_bindings[path] }
+      
+      if pred_ids.uniq.size == 1
+        val_id = pred_ids.first
+        merged_bindings[path] = val_id
+
+        states = preds.map { |p| p.out_values[val_id] ? p.out_values[val_id][:state] : :moved }
+        merged_values[val_id][:state] = states.reduce { |s1, s2| reconcile_states(s1, s2) }
+      else
+        merged_id = next_val_id
+        states = preds.map.with_index do |p, idx|
+          id = pred_ids[idx]
+          id && p.out_values[id] ? p.out_values[id][:state] : :moved
+        end
+        merged_state = states.reduce { |s1, s2| reconcile_states(s1, s2) }
+
+        types = preds.map.with_index do |p, idx|
+          id = pred_ids[idx]
+          id && p.out_values[id] ? p.out_values[id][:type] : :stack
+        end
+        merged_type = types.include?(:heap) ? :heap : :stack
+
+        merged_values[merged_id] = {
+          type: merged_type,
+          state: merged_state,
+          line: block.instructions.first ? block.instructions.first[:line] : 0,
+          node: block.instructions.first
+        }
+        merged_bindings[path] = merged_id
+      end
+    end
+
+    [merged_bindings, merged_values]
+  end
+
+  def reconcile_states(s1, s2)
+    return s1 if s1 == s2
+    return :maybe_freed if s1 == :freed || s2 == :freed || s1 == :maybe_freed || s2 == :maybe_freed
+    return :maybe_moved if s1 == :moved || s2 == :moved || s1 == :maybe_moved || s2 == :maybe_moved
+    if s1 == :returned || s2 == :returned
+      return (s1 == :owned || s2 == :owned || s1 == :maybe_owned || s2 == :maybe_owned) ? :maybe_owned : :returned
+    end
+    :maybe_owned
+  end
+
+  def out_state_changed?(block, new_bindings, new_values)
+    return true if block.out_bindings.nil? || block.out_bindings != new_bindings
+    block.out_values.each do |id, val|
+      new_val = new_values[id]
+      return true if new_val.nil? || new_val[:state] != val[:state]
+    end
+    false
+  end
+
+  def transfer_instruction(inst, bindings, values, validate = false)
+    return [bindings, values] unless inst.is_a?(Hash)
+
+    case inst[:type]
+    when :scope_start
+      @scope_stack.push({})
+    when :scope_end
+      exited_scope = @scope_stack.pop
+      if exited_scope && validate
+        exited_scope.each do |name, old_val_id|
+          val_id = bindings[name]
+          if val_id && values[val_id]
+            val = values[val_id]
+            if val[:type] == :heap && val[:state] == :owned
+              report_error("Resource leak: heap resource allocated at line #{val[:line]} is never freed or returned", val[:node], true)
+              val[:state] = :leaked
+            end
+          end
+          if old_val_id.nil?
+            bindings.delete(name)
+          else
+            bindings[name] = old_val_id
+          end
+        end
+      end
+    when :assignment
+      name = inst[:name]
+      expr = inst[:expression]
+
+      if validate
+        check_expression(expr, bindings, values) if expr.is_a?(Hash)
+        
+        if !inst[:let] && (old_id = lookup_val_id(name, bindings, values)) && values[old_id]
+          old_val = values[old_id]
+          if old_val[:type] == :heap && old_val[:state] == :owned
+            has_other_refs = bindings.any? { |path, id| path != name && id == old_id }
+            unless has_other_refs
+              report_error("Resource leak: variable '#{name}' is reassigned before freeing its previously allocated resource", inst, true)
+              old_val[:state] = :leaked
+            end
+          end
+        end
+      end
+
+      if inst[:let]
+        if @scope_stack.any? && !@scope_stack.last.key?(name)
+          @scope_stack.last[name] = bindings[name]
+        end
+        var_val_id = get_or_create_val_id(inst, :stack, :owned, values)
+        bindings[name] = var_val_id
+      end
+
+      rhs_val_id = resolve_val_id_in_pool(expr, bindings, values)
+
+      if validate && rhs_val_id
+        check_escape(name, rhs_val_id, bindings, values, inst)
+      end
+
+      if expr.is_a?(Hash) && expr[:type] == :address_of
+        operand = expr[:operand] || expr[:expression]
+        if operand && operand[:type] == :variable
+          target_id = lookup_val_id(operand[:name], bindings, values)
+          if target_id
+            ptr_val_id = get_or_create_val_id(expr, :stack_ptr, :owned, values)
+            values[ptr_val_id][:target_id] = target_id
+            bindings[name] = ptr_val_id
+          end
+        end
+      elsif expr.is_a?(Hash) && expr[:type] == :fn_call && @allocators.include?(expr[:name])
+        heap_val_id = get_or_create_val_id(expr, :heap, :owned, values)
+        bindings[name] = heap_val_id
+      elsif rhs_val_id
+        rhs_val = values[rhs_val_id]
+        if rhs_val
+          bindings[name] = rhs_val_id
+          rhs_path = resolve_access_path(expr)
+          propagate_bindings(rhs_path, name, bindings) if rhs_path
+        end
+      end
+
+    when :deref_assign
+      if validate
+        check_expression(inst[:target], bindings, values)
+        check_expression(inst[:value], bindings, values)
+      end
+
+      lhs_path = resolve_access_path(inst[:target])
+      rhs_id = resolve_val_id_in_pool(inst[:value], bindings, values)
+      
+      if validate && lhs_path && rhs_id
+        check_escape(lhs_path, rhs_id, bindings, values, inst)
+      end
+
+    when :fn_call
+      fn_name = inst[:name] || ""
+      args = inst[:args] || []
+      contract = get_function_contract(fn_name, args.size)
+
+      args.each_with_index do |arg, idx|
+        is_destr = (idx == 0 && @consumers.include?(fn_name))
+        check_expression(arg, bindings, values, is_destr) if validate
+
+        param_spec = contract[:params][idx] || :borrowed
+        if param_spec == :consumed
+          target_id = resolve_val_id_in_pool(arg, bindings, values)
+          if target_id && values[target_id]
+            val = values[target_id]
+            if val[:state] == :freed
+              report_error("Double free/close detected for value", inst) if validate
+            elsif val[:state] == :moved
+              report_error("Attempt to free already moved value", inst) if validate
+            else
+              values[target_id][:state] = :freed
+              values[target_id][:freed_line] = inst[:line]
+            end
+          end
+        end
+      end
+
+    when :return
+      expr = inst[:expression]
+      if expr
+        check_expression(expr, bindings, values) if validate
+        target_id = resolve_val_id_in_pool(expr, bindings, values)
+        if target_id && values[target_id]
+          val = values[target_id]
+          if val[:type] == :stack_ptr && val[:target_id]
+            target_val = values[val[:target_id]]
+            if target_val && target_val[:type] == :stack
+              report_error("Dangling pointer: returning pointer to local stack variable", inst) if validate
+            end
+          elsif val[:type] == :heap && val[:state] == :owned
+            values[target_id][:state] = :returned
+          end
+        end
+      end
+    end
+
+    [bindings, values]
+  end
+
+  def check_escape(lhs_path, rhs_val_id, bindings, values, node)
+    return unless rhs_val_id && values[rhs_val_id]
+    rhs_val = values[rhs_val_id]
+    
+    if rhs_val[:type] == :stack_ptr && rhs_val[:target_id]
+      target_val = values[rhs_val[:target_id]]
+      if target_val && target_val[:type] == :stack
+        lhs_base = lhs_path.split('.').first
+        lhs_base_id = lookup_val_id(lhs_base, bindings, values)
+        rhs_var_name = bindings.key(rhs_val[:target_id]) || "local variable"
+        if lhs_base_id && values[lhs_base_id] && values[lhs_base_id][:type] == :heap
+          report_error("Escape error: storing pointer to local stack variable '#{rhs_var_name}' into a heap-allocated resource", node)
+        elsif lhs_path.start_with?('*')
+          report_error("Escape error: storing pointer to local stack variable into a dereferenced target", node)
+        end
+      end
+    end
+  end
+
+  def get_function_contract(fn_name, args_count)
+    if fn_name == "malloc" || fn_name == "alloc" || fn_name == "os_alloc" || fn_name == "mem_malloc"
+      return { params: [], return: :owned }
+    elsif @consumers.include?(fn_name)
+      return { params: [:consumed], return: :void }
+    end
+
+    if @fn_effects.key?(fn_name)
+      param_specs = Array.new(args_count, :borrowed)
+      @fn_effects[fn_name].each do |idx|
+        param_specs[idx] = :consumed if idx < param_specs.size
+      end
+      return {
+        params: param_specs,
+        return: @allocators.include?(fn_name) ? :owned : :borrowed
+      }
+    end
+
+    {
+      params: Array.new(args_count, :borrowed),
+      return: @allocators.include?(fn_name) ? :owned : :borrowed
+    }
+  end
+
+  def process_function_cfg(fn_node)
+    @block_counter = 0
+    @scope_stack = [{}]
+    @current_fn = fn_node[:name]
+
+    entry_block = create_block
+    exit_block = create_block
+
+    params = fn_node[:params] || []
+    params.each do |param|
+      p_name = param.is_a?(Hash) ? param[:name] : param
+      param_val_id = get_or_create_val_id(fn_node, :stack, :owned, entry_block.in_values)
+      entry_block.in_bindings[p_name] = param_val_id
+    end
+
+    build_cfg(fn_node[:body] || [], entry_block, exit_block)
+
+    solve_cfg(entry_block)
+
+    verify_cfg(entry_block)
+
+    unless @current_fn.end_with?('.init')
+      exit_block.in_values.each do |id, val|
+        next unless val[:type] == :heap
+        case val[:state]
+        when :owned
+          report_error("Resource leak: heap resource allocated at line #{val[:line]} is never freed or returned", val[:node], true)
+        when :maybe_owned, :maybe_freed, :maybe_moved
+          report_error("Potential resource leak: heap resource allocated at line #{val[:line]} may not be freed or returned on all paths", val[:node], true)
+        end
+      end
+    end
+  end
+
+  def verify_cfg(entry_block)
+    visited = {}
+    queue = [entry_block]
+    while queue.any?
+      block = queue.shift
+      next if visited[block.id]
+      visited[block.id] = true
+
+      curr_bindings = block.in_bindings.dup
+      curr_values = deep_copy_states(block.in_values)
+
+      block.instructions.each do |inst|
+        curr_bindings, curr_values = transfer_instruction(inst, curr_bindings, curr_values, true)
+      end
+
+      block.succs.each { |succ| queue << succ unless visited[succ.id] }
+    end
+  end
+
+  def check_expression(expr, bindings, values, is_destructor_arg = false)
+    return unless expr.is_a?(Hash)
+
+    target_id = resolve_val_id_in_pool(expr, bindings, values)
+    if target_id && values[target_id]
+      val = values[target_id]
+      case val[:state]
+      when :freed
+        unless is_destructor_arg
+          report_error("Use-after-free: Value was freed at line #{val[:freed_line]}", expr)
+        end
+      when :maybe_freed
+        report_error("Conditional use-after-free: Value may have been freed at line #{val[:freed_line]}", expr)
+      when :moved
+        report_error("Use-after-move: Value was moved to #{val[:moved_to]} at line #{val[:moved_line]}", expr)
+      when :maybe_moved
+        report_error("Conditional use-after-move: Value may have been moved to #{val[:moved_to]} at line #{val[:moved_line]}", expr)
+      end
+    end
+
+    expr.values.each do |v|
+      if v.is_a?(Hash)
+        check_expression(v, bindings, values, is_destructor_arg)
+      elsif v.is_a?(Array)
+        v.each { |i| check_expression(i, bindings, values, is_destructor_arg) if i.is_a?(Hash) }
+      end
+    end
+  end
+
+  def infer_allocators
     changed = true
     while changed
       changed = false
@@ -64,24 +624,17 @@ class JunoSafetyChecker
   end
 
   def decides_to_allocate?(fn_node)
-    local_states = {}
     allocator_found = false
     walker = ->(node) {
-      if node.is_a?(Array)
-        node.each { |i| walker.call(i) }
-        return
-      end
       return unless node.is_a?(Hash)
       if node[:type] == :assignment
         expr = node[:expression]
         if expr.is_a?(Hash) && expr[:type] == :fn_call && @allocators.include?(expr[:name])
-          local_states[node[:name]] = :owned
+          allocator_found = true
         end
       elsif node[:type] == :return
         expr = node[:expression]
-        if expr.is_a?(Hash) && expr[:type] == :variable && local_states[expr[:name]] == :owned
-          allocator_found = true
-        elsif expr.is_a?(Hash) && expr[:type] == :fn_call && @allocators.include?(expr[:name])
+        if expr.is_a?(Hash) && expr[:type] == :fn_call && @allocators.include?(expr[:name])
           allocator_found = true
         end
       end
@@ -95,48 +648,6 @@ class JunoSafetyChecker
     }
     walker.call(fn_node[:body])
     allocator_found
-  end
-
-  def resolve_target_var(expr)
-    return nil unless expr.is_a?(Hash)
-    if expr[:type] == :variable
-      name = expr[:name]
-      if @var_states.key?(name) && @var_states[name][:state] == :local_ptr
-        return @var_states[name][:target]
-      end
-      return name
-    elsif expr[:type] == :address_of
-      operand = expr[:operand] || expr[:expression]
-      return operand[:type] == :variable ? operand[:name] : nil
-    elsif expr[:type] == :dereference
-      operand = expr[:operand] || expr[:expression]
-      return resolve_target_var(operand)
-    end
-    nil
-  end
-
-  def resolve_local_pointer(expr)
-    return nil unless expr.is_a?(Hash)
-    if expr[:type] == :address_of
-      operand = expr[:operand] || expr[:expression]
-      return operand[:type] == :variable ? operand[:name] : nil
-    elsif expr[:type] == :variable
-      name = expr[:name]
-      if @var_states.key?(name) && @var_states[name][:state] == :local_ptr
-        return @var_states[name][:target]
-      end
-    end
-    nil
-  end
-
-  def static_eval_bool(cond)
-    return nil unless cond.is_a?(Hash)
-    if cond[:type] == :literal
-      val = cond[:value]
-      return val != 0 if val.is_a?(Integer)
-      return val if val.is_a?(TrueClass) || val.is_a?(FalseClass)
-    end
-    nil
   end
 
   def analyze_all_fn_effects
@@ -161,58 +672,54 @@ class JunoSafetyChecker
     consumed_indices = []
     params = (fn_node[:params] || []).map { |p| p.is_a?(Hash) ? p[:name] : p }
     walker = ->(node) {
-      if node.is_a?(Array)
-        node.each { |i| walker.call(i) }
-        return
-      end
       return unless node.is_a?(Hash)
       if node[:type] == :fn_call
         fn_name = node[:name]
         if @consumers.include?(fn_name)
-          arg_var = resolve_target_var(node[:args]&.[](0))
-          if arg_var && params.include?(arg_var)
-            consumed_indices << params.index(arg_var)
+          arg_name = extract_variable_name(node[:args]&.[](0))
+          if arg_name && params.include?(arg_name)
+            consumed_indices << params.index(arg_name)
           end
         elsif @fn_effects[fn_name]
           node[:args]&.each_with_index do |arg, idx|
-            arg_var = resolve_target_var(arg)
-            if arg_var && params.include?(arg_var) && @fn_effects[fn_name].include?(idx)
-              consumed_indices << params.index(arg_var)
+            arg_name = extract_variable_name(arg)
+            if arg_name && params.include?(arg_name) && @fn_effects[fn_name].include?(idx)
+              consumed_indices << params.index(arg_name)
             end
           end
         end
       end
-      node.values.each { |v| v.is_a?(Array) ? v.each { |i| walker.call(i) } : walker.call(v) }
+      node.values.each do |v|
+        if v.is_a?(Array)
+          v.each { |i| walker.call(i) if i.is_a?(Hash) }
+        elsif v.is_a?(Hash)
+          walker.call(v)
+        end
+      end
     }
     walker.call(fn_node[:body])
     consumed_indices.uniq
   end
 
-  def block_returns?(body)
-    return false unless body.is_a?(Array)
-    body.each do |stmt|
-      next unless stmt.is_a?(Hash)
-      return true if [:return, :return_statement].include?(stmt[:type])
-      if stmt[:type] == :if_statement
-        return true if block_returns?(stmt[:body]) && block_returns?(stmt[:else_body])
-      end
+  def extract_variable_name(expr)
+    return nil unless expr.is_a?(Hash)
+    case expr[:type]
+    when :variable
+      expr[:name]
+    when :address_of, :dereference
+      operand = expr[:operand] || expr[:expression]
+      extract_variable_name(operand)
+    else
+      nil
     end
-    false
   end
 
   def report_error(message, node, is_warning = false)
-    line = node[:line]
-    col = node[:column]
-    if line.nil? || col.nil?
-      sub_node = node[:expression] || node[:value] || node[:target] || node[:operand]
-      if sub_node.is_a?(Hash)
-        line ||= sub_node[:line]
-        col ||= sub_node[:column]
-      end
-    end
-    node_filename = node[:filename] || @filename
+    line = node ? node[:line] : nil
+    col = node ? node[:column] : nil
+    node_filename = (node && node[:filename]) || @filename
     node_source = @source
-    if node[:filename] && node[:filename] != @filename
+    if node && node[:filename] && node[:filename] != @filename
       begin
         node_source = File.read(node[:filename])
       rescue
@@ -222,172 +729,6 @@ class JunoSafetyChecker
       JunoErrorReporter.warn(message, filename: node_filename, line_num: line || 0)
     else
       @errors << JunoTypeError.new(message, filename: node_filename, line_num: line, column: col, source: node_source)
-    end
-  end
-
-  def process_node(node)
-    return unless node.is_a?(Hash)
-    case node[:type]
-    when :function_definition
-      @var_states = {}
-      @local_lets = []
-      @current_fn = node[:name]
-      (node[:body] || []).each { |stmt| process_node(stmt) }
-      unless @current_fn.end_with?('.init')
-        @var_states.each do |name, info|
-          if info[:state] == :owned && @local_lets.include?(name)
-            report_error("Resource leak in function '#{@current_fn}': Resource '#{name}' (allocated at line #{info[:line]}) is never freed or closed", info[:node], true)
-          end
-        end
-      end
-    when :assignment
-      name = node[:name] || ""
-      expr = node[:expression]
-      @local_lets << name if node[:let]
-      check_expression(expr) if expr.is_a?(Hash)
-      if (local_var = resolve_local_pointer(expr))
-        @var_states[name] = { state: :local_ptr, target: local_var, line: node[:line], node: node }
-      elsif expr.is_a?(Hash) && expr[:type] == :fn_call && allocates_resource?(expr[:name])
-        if node[:let]
-          @var_states[name] = { state: :owned, line: node[:line], node: node }
-        end
-      elsif expr.is_a?(Hash) && expr[:type] == :variable
-        src_name = expr[:name]
-        if @var_states.key?(src_name)
-          state_info = @var_states[src_name]
-          report_error("Use of moved value '#{src_name}'", node) if state_info[:state] == :moved
-          report_error("Use of freed value '#{src_name}'", node) if state_info[:state] == :freed
-          if state_info[:state] == :owned
-            if name.include?('.') || !node[:let]
-              @var_states[src_name] = { state: :moved, line: node[:line], node: node }
-            else
-              @var_states[name] = { state: :owned, line: node[:line], node: node }
-              @var_states[src_name] = { state: :moved, line: node[:line], node: node }
-            end
-          end
-        end
-      end
-    when :deref_assign
-      check_expression(node[:target])
-      check_expression(node[:value])
-      if local_var = resolve_local_pointer(node[:value])
-        report_error("Escape error: storing pointer to local variable '#{local_var}' into a dereferenced pointer, causing it to escape function '#{@current_fn}' scope", node)
-      end
-    when :fn_call
-      fn_name = node[:name] || ""
-      args = node[:args] || []
-      if fn_name.include?('.')
-        receiver_name, method_name = fn_name.split('.', 2)
-        if consumes_resource?(method_name) || consumes_resource?(fn_name)
-          v_name = receiver_name
-          if @var_states.key?(v_name)
-            state_info = @var_states[v_name]
-            report_error("Attempt to free already moved value '#{v_name}'", node) if state_info[:state] == :moved
-            report_error("Double free/close detected for '#{v_name}'", node) if state_info[:state] == :freed
-            @var_states[v_name] = { state: :freed, line: node[:line], node: node }
-          end
-        end
-      elsif consumes_resource?(fn_name)
-        arg_var = resolve_target_var(args[0])
-        if arg_var && @var_states.key?(arg_var)
-          state_info = @var_states[arg_var]
-          report_error("Attempt to free already moved value '#{arg_var}'", node) if state_info[:state] == :moved
-          report_error("Double free/close detected for '#{arg_var}'", node) if state_info[:state] == :freed
-          @var_states[arg_var] = { state: :freed, line: node[:line], node: node }
-        end
-      else
-        args.each_with_index do |arg, idx|
-          check_expression(arg)
-          arg_var = resolve_target_var(arg)
-          if arg_var && @var_states.key?(arg_var) && @var_states[arg_var][:state] == :owned
-            if function_consumes_arg?(fn_name, idx)
-              @var_states[arg_var] = { state: :moved, line: node[:line], node: node }
-            end
-          end
-        end
-      end
-    when :return
-      expr = node[:expression]
-      if (local_var = resolve_local_pointer(expr))
-        report_error("Dangling pointer: returning pointer to local variable '#{local_var}' which will be destroyed when function '#{@current_fn}' returns", node)
-      elsif (ret_name = resolve_target_var(expr))
-        if @var_states.key?(ret_name) && @var_states[ret_name][:state] == :owned
-          @var_states[ret_name] = { state: :returned, line: node[:line], node: node }
-        end
-      end
-      check_expression(expr) if expr.is_a?(Hash)
-    when :if_statement
-      cond_val = static_eval_bool(node[:condition])
-      if cond_val == true
-        (node[:body] || []).each { |n| process_node(n) }
-      elsif cond_val == false
-        (node[:else_body] || []).each { |n| process_node(n) } if node[:else_body]
-      else
-        saved_state = @var_states.dup.transform_values(&:dup)
-        process_node(node[:condition])
-        (node[:body] || []).each { |n| process_node(n) }
-        then_state = @var_states
-        then_returns = block_returns?(node[:body])
-        @var_states = saved_state
-        (node[:else_body] || []).each { |n| process_node(n) }
-        else_state = @var_states
-        else_returns = block_returns?(node[:else_body])
-        if then_returns && else_returns
-          @var_states = else_state
-        elsif then_returns
-          @var_states = else_state
-        elsif else_returns
-          @var_states = then_state
-        else
-          then_state.each do |name, info|
-            if @var_states.key?(name)
-              current = @var_states[name]
-              if info[:state] != current[:state]
-                if info[:state] == :freed || current[:state] == :freed
-                  @var_states[name] = { state: :freed, line: node[:line], node: node }
-                elsif info[:state] == :moved || current[:state] == :moved
-                  @var_states[name] = { state: :moved, line: node[:line], node: node }
-                end
-              end
-            else
-              @var_states[name] = info
-            end
-          end
-        end
-      end
-    when :while_statement, :for_statement
-      process_node(node[:condition]) if node[:condition]
-      (node[:body] || []).each { |n| process_node(n) }
-    end
-  end
-
-  def function_consumes_arg?(fn_name, arg_idx)
-    return false if SAFE_FUNCTIONS.include?(fn_name)
-    return false if fn_name.include?('.')
-    if @fn_effects.key?(fn_name)
-      return @fn_effects[fn_name].include?(arg_idx)
-    end
-    @consumers.include?(fn_name) && arg_idx == 0
-  end
-
-  def check_expression(expr)
-    return unless expr.is_a?(Hash)
-    if (name = resolve_target_var(expr))
-      if @var_states.key?(name)
-        info = @var_states[name]
-        if info[:state] == :moved
-          report_error("Value '#{name}' was moved at line #{info[:line]} and is no longer available", expr)
-        elsif info[:state] == :freed
-          report_error("Value '#{name}' was freed at line #{info[:line]} and cannot be used", expr)
-        end
-      end
-    end
-    expr.values.each do |v|
-      if v.is_a?(Hash)
-        check_expression(v)
-      elsif v.is_a?(Array)
-        v.each { |i| check_expression(i) if i.is_a?(Hash) }
-      end
     end
   end
 end
