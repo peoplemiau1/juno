@@ -7,19 +7,32 @@ module AST
       @column = column
       @filename = filename
       @inferred_type = inferred_type
+      @dynamic_attributes = {}
     end
 
-    # Обратная совместимость с синтаксисом хэшей для безопасного перехода
+
     def [](key)
-      send(key) if respond_to?(key)
+      key_sym = key.to_sym
+      if respond_to?(key_sym)
+        send(key_sym)
+      else
+        @dynamic_attributes[key_sym]
+      end
     end
+
 
     def []=(key, val)
-      send("#{key}=", val) if respond_to?("#{key}=")
+      key_sym = key.to_sym
+      setter = "#{key_sym}="
+      if respond_to?(setter)
+        send(setter, val)
+      else
+        @dynamic_attributes[key_sym] = val
+      end
     end
 
     def key?(key)
-      respond_to?(key)
+      respond_to?(key.to_sym) || @dynamic_attributes.key?(key.to_sym)
     end
   end
 

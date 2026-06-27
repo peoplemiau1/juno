@@ -1,10 +1,11 @@
 require_relative "frontend/lexer"
 require_relative "frontend/parser"
+require_relative "frontend/preprocessor"
 require_relative "middle/importer"
 require_relative "middle/monomorphizer"
 require_relative "middle/semantic"
+require_relative "middle/analyzer/safety_checker"
 require_relative "backend/llvm/generator"
-require_relative "frontend/preprocessor"
 require_relative "errors"
 
 module Juno
@@ -16,6 +17,7 @@ module Juno
         arch: :x86_64,
         os: :linux,
         output: "build/output",
+        audit: true,
         stdlib_path: ENV['JUNO_STDLIB'] || File.expand_path("../../stdlib", __dir__)
       }.merge(options)
     end
@@ -26,6 +28,7 @@ module Juno
         code = "import \"std.juno\"\n" + code
       end
 
+      # Восстановление препроцессора
       preprocessor = Preprocessor.new
       preprocessor.define(@options[:os].to_s.upcase)
       preprocessor.define("__JUNO__")
@@ -45,6 +48,12 @@ module Juno
       analyzer = SemanticAnalyzer.new(ast, input_file, code)
       ast = analyzer.analyze
 
+      # Восстановление аудита безопасности (Safety Checker)
+      if @options[:audit]
+        safety_checker = JunoSafetyChecker.new(ast, analyzer.function_signatures, code, input_file)
+        safety_checker.check
+      end
+
       generator = LLVMGenerator.new(ast, source: code, filename: input_file, arch: @options[:arch])
       llvm_ir = generator.generate
       @asm_log = [llvm_ir]
@@ -53,11 +62,30 @@ module Juno
       obj_file = @options[:output] + ".o"
       File.write(ir_file, llvm_ir)
 
+      # Восстановление логики определения кросс-компиляции
       target_triple = detect_target_triple
       llc_cmd = `which llc-19 llc-18 llc-17 llc`.split("\n").first&.strip
+      opt_cmd = `which opt-19 opt-18 opt-17 opt`.split("\n").first&.strip
       
-      unless system("#{llc_cmd} -O2 -filetype=obj -mtriple=#{target_triple} -o #{obj_file} #{ir_file}")
-        raise "LLVM Compiler (llc) execution failed. Please verify LLVM installation."
+      raw_opt = @options[:opt_level].to_s
+      opt_level = (raw_opt == 's' || raw_opt == 'z') ? raw_opt : (raw_opt.to_i || 2)
+
+      target_ir_file = ir_file
+
+      # Восстановление проходов оптимизации LLVM (opt)
+      if opt_cmd && opt_level.to_s != "0"
+        optimized_ir_file = @options[:output] + ".opt.ll"
+        pass_val = (opt_level == 's' || opt_level == 'z') ? opt_level : opt_level
+        if system("#{opt_cmd} -passes='default<O#{pass_val}>' -S -o #{optimized_ir_file} #{ir_file}")
+          target_ir_file = optimized_ir_file
+        elsif system("#{opt_cmd} -O#{opt_level} -S -o #{optimized_ir_file} #{ir_file}")
+          target_ir_file = optimized_ir_file
+        end
+      end
+
+      llc_opt = (opt_level == 's' || opt_level == 'z') ? "-O2" : "-O#{opt_level}"
+      unless system("#{llc_cmd} #{llc_opt} -function-sections -data-sections -mtriple=#{target_triple} -relocation-model=pic -filetype=obj -o #{obj_file} #{target_ir_file}")
+        raise "LLVM backend (llc) compilation failed"
       end
 
       runtime_obj = File.expand_path("backend/llvm/runtime.o", __dir__)
@@ -75,11 +103,20 @@ module Juno
 
     private
 
+    # Восстановление полной кросс-платформенной поддержки архитектур
     def detect_target_triple
       arch = @options[:arch]
       os = @options[:os]
-      return "x86_64-apple-macos" if os == :macos
-      "x86_64-pc-linux-gnu"
+      return (arch == :x86_64 ? "x86_64-apple-macos" : "arm64-apple-macos") if os == :macos
+      
+      triples = {
+        x86_64: "x86_64-pc-linux-gnu",
+        aarch64: "aarch64-unknown-linux-gnu",
+        arm: "arm-unknown-linux-gnueabi",
+        riscv64: "riscv64-unknown-linux-gnu",
+        riscv32: "riscv32-unknown-linux-gnu"
+      }
+      triples[arch] || "x86_64-pc-linux-gnu"
     end
   end
 end
