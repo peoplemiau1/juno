@@ -3,11 +3,8 @@ require_relative "frontend/parser"
 require_relative "middle/importer"
 require_relative "middle/monomorphizer"
 require_relative "middle/semantic"
-require_relative "backend/codegen/native_generator"
 require_relative "backend/llvm/generator"
 require_relative "frontend/preprocessor"
-require_relative "middle/analyzer/safety_checker"
-require_relative "optimizer/turbo"
 require_relative "errors"
 
 module Juno
@@ -19,7 +16,6 @@ module Juno
         arch: :x86_64,
         os: :linux,
         output: "build/output",
-        audit: true,
         stdlib_path: ENV['JUNO_STDLIB'] || File.expand_path("../../stdlib", __dir__)
       }.merge(options)
     end
@@ -49,60 +45,31 @@ module Juno
       analyzer = SemanticAnalyzer.new(ast, input_file, code)
       ast = analyzer.analyze
 
-      if @options[:audit]
-        safety_checker = JunoSafetyChecker.new(ast, analyzer.function_signatures, code, input_file)
-        safety_checker.check
+      generator = LLVMGenerator.new(ast, source: code, filename: input_file, arch: @options[:arch])
+      llvm_ir = generator.generate
+      @asm_log = [llvm_ir]
+
+      ir_file = @options[:output] + ".ll"
+      obj_file = @options[:output] + ".o"
+      File.write(ir_file, llvm_ir)
+
+      target_triple = detect_target_triple
+      llc_cmd = `which llc-19 llc-18 llc-17 llc`.split("\n").first&.strip
+      
+      unless system("#{llc_cmd} -O2 -filetype=obj -mtriple=#{target_triple} -o #{obj_file} #{ir_file}")
+        raise "LLVM Compiler (llc) execution failed. Please verify LLVM installation."
       end
 
-      raw_opt = @options[:opt_level].to_s
-      opt_level = (raw_opt == 's' || raw_opt == 'z') ? raw_opt : (raw_opt.to_i || 2)
-
-      if @options[:native]
-        generator = NativeGenerator.new(ast, target_os: @options[:os], arch: @options[:arch], source: code, filename: input_file)
-        generator.generate(@options[:output])
-      else
-        generator = LLVMGenerator.new(ast, source: code, filename: input_file, arch: @options[:arch])
-        llvm_ir = generator.generate
-        @asm_log = [llvm_ir]
-        ir_file = @options[:output] + ".ll"
-        obj_file = @options[:output] + ".o"
-        File.write(ir_file, llvm_ir)
-
-        target_triple = detect_target_triple
-        llc_cmd = `which llc-19 llc-18 llc-17 llc`.split("\n").first&.strip
-        opt_cmd = `which opt-19 opt-18 opt-17 opt`.split("\n").first&.strip
-        
-        target_ir_file = ir_file
-        if opt_cmd && opt_level.to_s != "0"
-          optimized_ir_file = @options[:output] + ".opt.ll"
-          pass_val = (opt_level == 's' || opt_level == 'z') ? opt_level : opt_level
-          if system("#{opt_cmd} -passes='default<O#{pass_val}>' -S -o #{optimized_ir_file} #{ir_file}")
-            target_ir_file = optimized_ir_file
-          elsif system("#{opt_cmd} -O#{opt_level} -S -o #{optimized_ir_file} #{ir_file}")
-            target_ir_file = optimized_ir_file
-          end
-        end
-
-        llc_opt = (opt_level == 's' || opt_level == 'z') ? "-O2" : "-O#{opt_level}"
-        unless system("#{llc_cmd} #{llc_opt} -function-sections -data-sections -mtriple=#{target_triple} -relocation-model=pic -filetype=obj -o #{obj_file} #{target_ir_file}")
-          raise "llc failed"
-        end
-
-        runtime_obj = File.expand_path("backend/llvm/runtime.o", __dir__)
-        system("rm -f #{runtime_obj}")
-
-        runtime_src = File.expand_path("backend/llvm/runtime.c", __dir__)
-        unless system("gcc -fPIC -ffunction-sections -fdata-sections -Os -c -o #{runtime_obj} #{runtime_src}")
-          raise "Failed to compile runtime"
-        end
-
-        link_cmd = "gcc -s -Wl,--gc-sections -o #{@options[:output]} #{obj_file} #{runtime_obj}"
-        system(link_cmd)
-
-        if File.exist?(@options[:output])
-          system("objcopy --remove-section=.comment --remove-section=.note.ABI-tag #{@options[:output]}")
-        end
+      runtime_obj = File.expand_path("backend/llvm/runtime.o", __dir__)
+      runtime_src = File.expand_path("backend/llvm/runtime.c", __dir__)
+      
+      unless File.exist?(runtime_obj)
+        system("gcc -fPIC -O2 -c -o #{runtime_obj} #{runtime_src}")
       end
+
+      link_cmd = "gcc -no-pie -o #{@options[:output]} #{obj_file} #{runtime_obj}"
+      system(link_cmd)
+
       @options[:output]
     end
 
@@ -111,9 +78,8 @@ module Juno
     def detect_target_triple
       arch = @options[:arch]
       os = @options[:os]
-      return (arch == :x86_64 ? "x86_64-apple-macos" : "arm64-apple-macos") if os == :macos
-      triples = { x86_64: "x86_64-pc-linux-gnu", aarch64: "aarch64-unknown-linux-gnu", arm: "arm-unknown-linux-gnueabi", riscv64: "riscv64-unknown-linux-gnu", riscv32: "riscv32-unknown-linux-gnu" }
-      triples[arch] || "x86_64-pc-linux-gnu"
+      return "x86_64-apple-macos" if os == :macos
+      "x86_64-pc-linux-gnu"
     end
   end
 end

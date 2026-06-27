@@ -1,3 +1,5 @@
+require_relative "../../ast"
+
 module ParserExpressions
   def parse_expression
     parse_logical_or
@@ -8,7 +10,7 @@ module ParserExpressions
     while (t = match_operator?('||')) && on_same_line?
       consume_symbol
       right = parse_logical_and
-      node = with_loc({ type: :binary_op, op: '||', left: node, right: right }, t)
+      node = with_loc(AST::BinaryOp.new('||', node, right), t)
     end
     node
   end
@@ -18,7 +20,7 @@ module ParserExpressions
     while (t = match_operator?('&&')) && on_same_line?
       consume_symbol
       right = parse_bitwise_or
-      node = with_loc({ type: :binary_op, op: '&&', left: node, right: right }, t)
+      node = with_loc(AST::BinaryOp.new('&&', node, right), t)
     end
     node
   end
@@ -28,7 +30,7 @@ module ParserExpressions
     while (t = peek) && on_same_line? && t[:type] == :bitor
       consume(:bitor)
       right = parse_bitwise_xor
-      node = with_loc({ type: :binary_op, op: '|', left: node, right: right }, t)
+      node = with_loc(AST::BinaryOp.new('|', node, right), t)
     end
     node
   end
@@ -38,7 +40,7 @@ module ParserExpressions
     while (t = peek) && on_same_line? && t[:type] == :bitxor
       consume(:bitxor)
       right = parse_bitwise_and
-      node = with_loc({ type: :binary_op, op: '^', left: node, right: right }, t)
+      node = with_loc(AST::BinaryOp.new('^', node, right), t)
     end
     node
   end
@@ -48,7 +50,7 @@ module ParserExpressions
     while (t = match_operator?('&')) && on_same_line?
       consume(:ampersand)
       right = parse_equality
-      node = with_loc({ type: :binary_op, op: '&', left: node, right: right }, t)
+      node = with_loc(AST::BinaryOp.new('&', node, right), t)
     end
     node
   end
@@ -58,7 +60,7 @@ module ParserExpressions
     while (t = peek) && on_same_line? && is_op?(t) && ['==', '!='].include?(t[:value])
       op = consume_symbol[:value]
       right = parse_comparison
-      node = with_loc({ type: :binary_op, op: op, left: node, right: right }, t)
+      node = with_loc(AST::BinaryOp.new(op, node, right), t)
     end
     node
   end
@@ -69,7 +71,7 @@ module ParserExpressions
           ['<', '>', '<=', '>='].include?(t[:value])
       op = consume_symbol[:value]
       right = parse_shift
-      node = with_loc({ type: :binary_op, op: op, left: node, right: right }, t)
+      node = with_loc(AST::BinaryOp.new(op, node, right), t)
     end
     node
   end
@@ -79,7 +81,7 @@ module ParserExpressions
     while (t = peek) && on_same_line? && is_op?(t) && ['<<', '>>'].include?(t[:value])
       op = consume_symbol[:value]
       right = parse_additive
-      node = with_loc({ type: :binary_op, op: op, left: node, right: right }, t)
+      node = with_loc(AST::BinaryOp.new(op, node, right), t)
     end
     node
   end
@@ -89,7 +91,7 @@ module ParserExpressions
     while (t = peek) && on_same_line? && is_op?(t) && ['+', '-'].include?(t[:value])
       op = consume_symbol[:value]
       right = parse_term
-      node = with_loc({ type: :binary_op, op: op, left: node, right: right }, t)
+      node = with_loc(AST::BinaryOp.new(op, node, right), t)
     end
     node
   end
@@ -99,7 +101,7 @@ module ParserExpressions
     while (t = peek) && on_same_line? && (is_op?(t) || t[:type] == :star) && ['*', '/', '%'].include?(t[:value])
       op = consume_symbol[:value]
       right = parse_unary
-      node = with_loc({ type: :binary_op, op: op, left: node, right: right }, t)
+      node = with_loc(AST::BinaryOp.new(op, node, right), t)
     end
     node
   end
@@ -108,19 +110,19 @@ module ParserExpressions
     t = peek
     if match?(:ampersand)
       consume(:ampersand)
-      return with_loc({ type: :address_of, operand: parse_unary }, t)
+      return with_loc(AST::AddressOf.new(parse_unary), t)
     elsif match?(:star)
       consume(:star)
-      return with_loc({ type: :dereference, operand: parse_unary }, t)
+      return with_loc(AST::Dereference.new(parse_unary), t)
     elsif match_operator?('!')
       consume_symbol
-      return with_loc({ type: :unary_op, op: '!', operand: parse_unary }, t)
+      return with_loc(AST::UnaryOp.new('!', parse_unary), t)
     elsif match?(:bitnot)
       consume(:bitnot)
-      return with_loc({ type: :unary_op, op: '~', operand: parse_unary }, t)
+      return with_loc(AST::UnaryOp.new('~', parse_unary), t)
     elsif match_operator?('-')
       consume_symbol
-      return with_loc({ type: :binary_op, op: '*', left: with_loc({type: :literal, value: -1}, t), right: parse_unary }, t)
+      return with_loc(AST::BinaryOp.new('*', with_loc(AST::Literal.new(-1), t), parse_unary), t)
     end
     parse_factor
   end
@@ -139,15 +141,15 @@ module ParserExpressions
             consume_symbol(',') if match_symbol?(',')
           end
           consume_symbol(')')
-          left = with_loc({ type: :fn_call, name: "#{extract_name(left)}.#{member}", args: args }, t)
+          left = with_loc(AST::FnCall.new("#{extract_name(left)}.#{member}", args), t)
         else
-          left = with_loc({ type: :member_access, receiver: extract_name(left), member: member }, t)
+          left = with_loc(AST::MemberAccess.new(extract_name(left), member), t)
         end
       elsif match?(:lbracket)
         consume(:lbracket)
         index = parse_expression
         consume(:rbracket)
-        left = with_loc({ type: :array_access, name: extract_name(left), index: index }, t)
+        left = with_loc(AST::ArrayAccess.new(extract_name(left), index), t)
       else
         break
       end
@@ -157,45 +159,45 @@ module ParserExpressions
 
   def extract_name(node)
     return "unknown" unless node
-    case node[:type]
-    when :variable then node[:name] || "unknown_var"
-    when :member_access then "#{node[:receiver] || 'unknown'}.#{node[:member] || 'unknown'}"
-    when :fn_call then node[:name] || "unknown_call"
-    when :address_of then "(&#{extract_name(node[:operand])})"
-    when :dereference then "(*#{extract_name(node[:operand])})"
-    when :array_access then node[:name]
+    case node.type
+    when :variable then node.name || "unknown_var"
+    when :member_access then "#{node.receiver || 'unknown'}.#{node.member || 'unknown'}"
+    when :fn_call then node.name || "unknown_call"
+    when :address_of then "(&#{extract_name(node.operand)})"
+    when :dereference then "(*#{extract_name(node.operand)})"
+    when :array_access then node.name
     else 
-      "unknown_#{node[:type]}"
+      "unknown_#{node.type}"
     end
   end
 
   def parse_primary
     t = peek
     if match?(:number)
-      return with_loc({ type: :literal, value: consume(:number)[:value] }, t)
+      return with_loc(AST::Literal.new(consume(:number)[:value]), t)
     end
     if match?(:float_literal)
-      return with_loc({ type: :float_literal, value: consume(:float_literal)[:value] }, t)
+      return with_loc(AST::FloatLiteral.new(consume(:float_literal)[:value]), t)
     end
     if match?(:string)
-      return with_loc({ type: :string_literal, value: consume(:string)[:value] }, t)
+      return with_loc(AST::StringLiteral.new(consume(:string)[:value]), t)
     end
 
-    if match?(:ident) || (match?(:keyword) && ["malloc", "free", "realloc", "realloc_header", "sleep", "os_sleep", "thread_create", "spin_lock", "spin_unlock"].include?(peek[:value]))
+    if match?(:ident) || (match?(:keyword) && ["malloc", "free", "realloc", "sleep", "spin_lock", "spin_unlock"].include?(peek[:value]))
       name = (match?(:ident) ? consume_ident : consume[:value])
 
       if match_symbol?('(')
          args = []
          consume_symbol('(')
          until match_symbol?(')')
-           if peek.nil? then error_eof("Expected ')'") end
+           error_eof("Expected ')'") if peek.nil?
            args << parse_expression
            consume_symbol(',') if match_symbol?(',')
          end
          consume_symbol(')')
-         return with_loc({ type: :fn_call, name: name, args: args }, t)
+         return with_loc(AST::FnCall.new(name, args), t)
       end
-      return with_loc({ type: :variable, name: name }, t)
+      return with_loc(AST::Variable.new(name), t)
     end
 
     if match_symbol?('(')

@@ -1,23 +1,11 @@
+require_relative "../../ast"
+
 module ParserStatements
   def consume_type
     if match?(:keyword) && ["int", "string", "bool", "real", "ptr"].include?(peek[:value])
       name = consume[:value]
     else
       name = consume_ident
-    end
-    if match?(:langle)
-      name += "<"
-      consume(:langle)
-      until match?(:rangle)
-        error_eof("Expected '>'") if peek.nil?
-        name += consume_type
-        if match_symbol?(',')
-          consume_symbol(',')
-          name += ","
-        end
-      end
-      consume(:rangle)
-      name += ">"
     end
     name
   end
@@ -27,41 +15,27 @@ module ParserStatements
       consume_symbol(";")
     end
     token = peek
-    if token.nil? || match_symbol?("}")
-      return nil
-    end
+    return nil if token.nil? || match_symbol?("}")
+
     if token[:type] == :keyword
       case token[:value]
       when 'if'     then parse_if
       when 'while'  then parse_while
       when 'for'    then parse_for
-      when 'loop'   then parse_loop
       when 'let'    then parse_let
       when 'return' then parse_return
-      when 'break'    then parse_break
-      when 'continue' then parse_continue
+      when 'break'  then with_loc(AST::BreakStatement.new, token)
+      when 'continue' then with_loc(AST::ContinueStatement.new, token)
       when 'fn'     then parse_fn_definition
       when 'struct' then parse_struct_definition
-      when 'enum'   then parse_enum
-      when 'type'   then parse_type_alias
-      when 'packed' then parse_packed_struct
-      when 'union'  then parse_union_definition
-      when 'import' then parse_import
-      when 'use'    then parse_use
       when 'extern' then parse_extern_definition
-      when 'pub'
-        consume_keyword('pub')
-        stmt = parse_statement
-        stmt[:public] = true if stmt.is_a?(Hash)
-        stmt
-      when 'match'  then parse_match
       when 'panic'  then parse_panic
       when 'todo'   then parse_todo
       else error_unexpected(token, "Unknown keyword")
       end
     elsif token[:type] == :insertC
       consume(:insertC)
-      { type: :insertC, content: token[:content] }
+      with_loc(AST::InsertC.new(token[:content]), token)
     elsif token[:type] == :star
       parse_deref_assign
     elsif token[:type] == :ident
@@ -71,21 +45,11 @@ module ParserStatements
         parse_assignment
       elsif peek_next && (peek_next[:value] == '++' || peek_next[:value] == '--')
         parse_increment
-      elsif peek_next && peek_next[:value] == '.'
-        expr = parse_expression
-        if match_symbol?('=')
-           consume_symbol('=')
-           val = parse_expression
-           { type: :assignment, name: "#{expr[:receiver]}.#{expr[:member]}", expression: val }
-        else
-           expr
-        end
       else
         parse_expression
       end
     else
-      token = peek
-      error_unexpected(token, "Expected statement")
+      error_unexpected(peek, "Expected statement")
     end
   end
 
@@ -97,20 +61,20 @@ module ParserStatements
     if match_symbol?('=')
       consume_symbol('=')
       value = parse_expression
-      { type: :array_assign, name: name, index: index, value: value }
+      AST::ArrayAssign.new(name, index, value)
     else
-      { type: :array_access, name: name, index: index }
+      AST::ArrayAccess.new(name, index)
     end
   end
 
   def parse_assignment
     name = consume_ident
     consume_symbol('=')
-    { type: :assignment, name: name, expression: (match_symbol?(";") ? {type: :literal, value: 0} : parse_expression) }
+    AST::Assignment.new(name, parse_expression)
   end
 
   def parse_if
-    consume_keyword('if')
+    token = consume_keyword('if')
     has_paren = match_symbol?('(')
     consume_symbol('(') if has_paren
     cond = parse_expression
@@ -124,24 +88,6 @@ module ParserStatements
     end
     consume_symbol('}')
 
-    elif_branches = []
-    while match_keyword?('elif')
-      consume_keyword('elif')
-      e_has_paren = match_symbol?('(')
-      consume_symbol('(') if e_has_paren
-      e_cond = parse_expression
-      consume_symbol(')') if e_has_paren
-      consume_symbol('{')
-      e_body = []
-      until match_symbol?('}')
-        error_eof("Expected '}'") if peek.nil?
-        stmt = parse_statement
-        e_body << stmt if stmt
-      end
-      consume_symbol('}')
-      elif_branches << { condition: e_cond, body: e_body }
-    end
-
     else_body = nil
     if match_keyword?('else')
       consume_keyword('else')
@@ -154,42 +100,28 @@ module ParserStatements
       end
       consume_symbol('}')
     end
-    { type: :if_statement, condition: cond, body: body, elif_branches: elif_branches, else_body: else_body }
+    with_loc(AST::IfStatement.new(cond, body, else_body: else_body), token)
   end
 
   def parse_return
-    consume_keyword('return')
-    { type: :return, expression: (match_symbol?(";") ? {type: :literal, value: 0} : parse_expression) }
+    token = consume_keyword('return')
+    expr = match_symbol?(";") ? AST::Literal.new(0) : parse_expression
+    with_loc(AST::ReturnStatement.new(expr), token)
   end
 
   def parse_fn_definition
-    consume_keyword('fn')
+    token = consume_keyword('fn')
     name = consume_ident
     if match_symbol?('.')
       consume_symbol('.')
       method = consume_ident
       name = "#{name}.#{method}"
     end
-    type_params = []
-    if match?(:langle)
-      consume(:langle)
-      until match?(:rangle)
-        error_eof("Expected '>'") if peek.nil?
-        type_params << consume_ident
-        consume_symbol(',') if match_symbol?(',')
-      end
-      consume(:rangle)
-    end
     consume_symbol('(')
     params = []
     param_types = {}
     until match_symbol?(')')
       error_eof("Expected ')'") if peek.nil?
-      is_mut = false
-      if match_keyword?('mut')
-        consume_keyword('mut')
-        is_mut = true
-      end
       param_name = consume_ident
       if match?(:colon)
         consume(:colon)
@@ -203,9 +135,6 @@ module ParserStatements
     if match?(:colon)
       consume(:colon)
       return_type = consume_type
-    elsif match_symbol?('->')
-      consume_symbol('->')
-      return_type = consume_type
     end
 
     consume_symbol('{')
@@ -216,35 +145,18 @@ module ParserStatements
       body << stmt if stmt
     end
     consume_symbol('}')
-    node = { type: :function_definition, name: name, params: params, body: body }
-    node[:type_params] = type_params unless type_params.empty?
-    node[:param_types] = param_types unless param_types.empty?
-    node[:return_type] = return_type if return_type
-    node
+    with_loc(AST::FunctionDefinition.new(name, params, body, param_types: param_types, return_type: return_type), token)
   end
 
   def parse_struct_definition
-    consume_keyword('struct')
+    token = consume_keyword('struct')
     name = consume_ident
-    type_params = []
-    if match?(:langle)
-      consume(:langle)
-      until match?(:rangle)
-        error_eof("Expected '>'") if peek.nil?
-        type_params << consume_ident
-        consume_symbol(',') if match_symbol?(',')
-      end
-      consume(:rangle)
-    end
     consume_symbol('{')
     fields = []
     field_types = {}
     until match_symbol?('}')
       error_eof("Expected '}'") if peek.nil?
       consume_keyword('let') if match_keyword?('let')
-      if match_keyword?('mut')
-         consume_keyword('mut')
-      end
       field_name = consume_ident
       if match?(:colon)
         consume(:colon)
@@ -254,68 +166,7 @@ module ParserStatements
       consume_symbol(",") if match_symbol?(",")
     end
     consume_symbol('}')
-    { type: :struct_definition, name: name, fields: fields, field_types: field_types, type_params: type_params }
-  end
-
-  def parse_packed_struct
-    consume_keyword('packed')
-    consume_keyword('struct')
-    name = consume_ident
-    type_params = []
-    if match?(:langle)
-      consume(:langle)
-      until match?(:rangle)
-        error_eof("Expected '>'") if peek.nil?
-        type_params << consume_ident
-        consume_symbol(',') if match_symbol?(',')
-      end
-      consume(:rangle)
-    end
-    consume_symbol('{')
-    fields = []
-    field_types = {}
-    until match_symbol?('}')
-      error_eof("Expected '}'") if peek.nil?
-      field_name = consume_ident
-      if match?(:colon)
-        consume(:colon)
-        field_types[field_name] = consume_type
-      end
-      fields << field_name
-      consume_symbol(",") if match_symbol?(",")
-    end
-    consume_symbol('}')
-    { type: :struct_definition, name: name, fields: fields, field_types: field_types, packed: true, type_params: type_params }
-  end
-
-  def parse_union_definition
-    consume_keyword('union')
-    name = consume_ident
-    type_params = []
-    if match?(:langle)
-      consume(:langle)
-      until match?(:rangle)
-        error_eof("Expected '>'") if peek.nil?
-        type_params << consume_ident
-        consume_symbol(',') if match_symbol?(',')
-      end
-      consume(:rangle)
-    end
-    consume_symbol('{')
-    fields = []
-    field_types = {}
-    until match_symbol?('}')
-      error_eof("Expected '}'") if peek.nil?
-      field_name = consume_ident
-      if match?(:colon)
-        consume(:colon)
-        field_types[field_name] = consume_type
-      end
-      fields << field_name
-      consume_symbol(",") if match_symbol?(",")
-    end
-    consume_symbol('}')
-    { type: :union_definition, name: name, fields: fields, field_types: field_types, type_params: type_params }
+    with_loc(AST::StructDefinition.new(name, fields, field_types: field_types), token)
   end
 
   def parse_let
@@ -330,7 +181,7 @@ module ParserStatements
       consume(:lbracket)
       size = consume(:number)[:value]
       consume(:rbracket)
-      return { type: :array_decl, name: name, size: size }
+      return with_loc(AST::ArrayDecl.new(name, size), token)
     end
     var_type = nil
     if match?(:colon)
@@ -338,66 +189,14 @@ module ParserStatements
       var_type = consume_type
     end
     consume_symbol('=')
-    node = { type: :assignment, name: name, expression: (match_symbol?(";") ? {type: :literal, value: 0} : parse_expression) }
-    node[:let] = true
-    node[:mut] = is_mut
-    node[:var_type] = var_type if var_type
-    with_loc(node, token)
-  end
-
-  def parse_increment
-    name = consume_ident
-    op = consume(:operator)[:value]
-    { type: :increment, name: name, op: op }
-  end
-
-  def parse_while
-    consume_keyword('while')
-    has_paren = match_symbol?('(')
-    consume_symbol('(') if has_paren
-    cond = parse_expression
-    consume_symbol(')') if has_paren
-    consume_symbol('{')
-    body = []
-    until match_symbol?('}')
-      error_eof("Expected '}'") if peek.nil?
-      stmt = parse_statement
-      body << stmt if stmt
-    end
-    consume_symbol('}')
-    { type: :while_statement, condition: cond, body: body }
-  end
-
-  def parse_for
-    consume_keyword('for')
-    consume_symbol('(')
-    init_name = consume_ident
-    consume_symbol('=')
-    init_expr = parse_expression
-    init = { type: :assignment, name: init_name, expression: init_expr }
-    consume_symbol(';')
-    cond = parse_expression
-    consume_symbol(';')
-    update_name = consume_ident
-    update_op = consume(:operator)[:value]
-    update = { type: :increment, name: update_name, op: update_op }
-    consume_symbol(')')
-    consume_symbol('{')
-    body = []
-    until match_symbol?('}')
-      error_eof("Expected '}'") if peek.nil?
-      stmt = parse_statement
-      body << stmt if stmt
-    end
-    consume_symbol('}')
-    { type: :for_statement, init: init, condition: cond, update: update, body: body }
+    expr = match_symbol?(";") ? AST::Literal.new(0) : parse_expression
+    with_loc(AST::Assignment.new(name, expr, let: true, mut: is_mut, var_type: var_type), token)
   end
 
   def parse_extern_definition
-    consume_keyword('extern')
+    token = consume_keyword('extern')
     consume_keyword('fn')
     name = consume_ident
-
     consume_symbol('(')
     params = []
     param_types = {}
@@ -417,9 +216,6 @@ module ParserStatements
     if match?(:colon)
       consume(:colon)
       return_type = consume_type
-    elsif match_symbol?('->')
-      consume_symbol('->')
-      return_type = consume_type
     end
 
     lib_name = "libc.so.6"
@@ -428,30 +224,7 @@ module ParserStatements
       lib_name = consume(:string)[:value]
     end
 
-    { type: :extern_definition, name: name, params: params, param_types: param_types, return_type: return_type, lib: lib_name }
-  end
-
-  def parse_import
-    consume_keyword('import')
-    if match?(:string)
-      path = consume(:string)[:value]
-      { type: :import, path: path, system: false }
-    else
-      path = ""
-      while match?(:ident) || match_symbol?('/') || match_symbol?('.')
-        if match?(:ident)
-          path += consume_ident
-        elsif match_symbol?('/')
-          path += consume_symbol('/')[:value]
-        elsif match_symbol?('.')
-          path += consume_symbol('.')[:value]
-        end
-      end
-      if path.empty?
-        error_unexpected(peek, "Expected string or system path for import")
-      end
-      { type: :import, path: path, system: true }
-    end
+    with_loc(AST::ExternDefinition.new(name, params, param_types: param_types, return_type: return_type, lib: lib_name), token)
   end
 
   def parse_deref_assign
@@ -459,169 +232,18 @@ module ParserStatements
     target = parse_primary
     consume_symbol('=')
     value = parse_expression
-    { type: :deref_assign, target: target, value: value }
-  end
-
-  def parse_break
-    consume_keyword('break')
-    { type: :break }
-  end
-
-  def parse_continue
-    consume_keyword('continue')
-    { type: :continue }
-  end
-
-  def parse_loop
-    consume_keyword('loop')
-    consume_symbol('{')
-    body = []
-    until match_symbol?('}')
-      error_eof("Expected '}'") if peek.nil?
-      stmt = parse_statement
-      body << stmt if stmt
-    end
-    consume_symbol('}')
-    {
-      type: :while_statement,
-      condition: { type: :literal, value: 1 },
-      body: body
-    }
-  end
-
-  def parse_enum
-    consume_keyword('enum')
-    name = consume_ident
-    consume_symbol('{')
-    variants = []
-    until match_symbol?('}')
-      error_eof("Expected '}'") if peek.nil?
-      v_name = consume_ident
-      params = []
-      if match_symbol?('(')
-        consume_symbol('(')
-        until match_symbol?(')')
-          error_eof("Expected ')'") if peek.nil?
-          params << consume_type
-          consume_symbol(',') if match_symbol?(',')
-        end
-        consume_symbol(')')
-      end
-      variants << { name: v_name, params: params }
-      consume_symbol(',') if match_symbol?(',')
-    end
-    consume_symbol('}')
-    { type: :enum_definition, name: name, variants: variants }
-  end
-
-  def parse_type_alias
-    consume_keyword('type')
-    alias_name = consume_ident
-    consume_symbol('=')
-    target_type = consume_type
-    { type: :type_alias, name: alias_name, target: target_type }
-  end
-
-  def parse_use
-    consume_keyword('use')
-    path = ""
-    if match?(:string)
-      path = consume(:string)[:value]
-      { type: :import, path: path, system: false }
-    else
-      while match?(:ident) || match_symbol?('/') || match_symbol?('.')
-        if match?(:ident)
-          path += consume_ident
-        elsif match_symbol?('/')
-          path += consume_symbol('/')[:value]
-        elsif match_symbol?('.')
-          path += consume_symbol('.')[:value]
-        end
-      end
-      { type: :import, path: path, system: true }
-    end
+    AST::ArrayAssign.new(target, AST::Literal.new(0), value)
   end
 
   def parse_panic
-    consume_keyword('panic')
-    msg = nil
-    if match?(:string)
-      msg = consume(:string)[:value]
-    end
-    { type: :panic, message: msg }
+    token = consume_keyword('panic')
+    msg = match?(:string) ? consume(:string)[:value] : nil
+    with_loc(AST::PanicStatement.new(msg), token)
   end
 
   def parse_todo
-    consume_keyword('todo')
-    msg = nil
-    if match?(:string)
-      msg = consume(:string)[:value]
-    end
-    { type: :todo, message: msg }
-  end
-
-  def parse_match
-    consume_keyword('match')
-    expr = parse_expression
-    consume_symbol('{')
-    cases = []
-    until match_symbol?('}')
-      error_eof("Expected '}'") if peek.nil?
-      pattern = parse_pattern
-      consume_symbol('=>')
-      body = []
-      if match_symbol?('{')
-        consume_symbol('{')
-        until match_symbol?('}')
-          error_eof("Expected '}'") if peek.nil?
-          stmt = parse_statement
-          body << stmt if stmt
-        end
-        consume_symbol('}')
-      else
-        stmt = parse_statement
-        body << stmt if stmt
-      end
-      cases << { pattern: pattern, body: body }
-    end
-    consume_symbol('}')
-    { type: :match_expression, expression: expr, cases: cases }
-  end
-
-  def parse_pattern
-    if match?(:ident)
-      name = consume_ident
-      if name == "_"
-        return { type: :wildcard_pattern }
-      elsif match_symbol?('.')
-        consume_symbol('.')
-        variant = consume_ident
-        fields = []
-        if match_symbol?('(')
-          consume_symbol('(')
-          until match_symbol?(')')
-            error_eof("Expected ')'") if peek.nil?
-            fields << consume_ident
-            consume_symbol(',') if match_symbol?(',')
-          end
-          consume_symbol(')')
-        end
-        return { type: :variant_pattern, enum: name, variant: variant, fields: fields }
-      else
-        return { type: :bind_pattern, name: name }
-      end
-    elsif match?(:number)
-      return { type: :literal_pattern, value: consume(:number)[:value] }
-    elsif match?(:string)
-      return { type: :literal_pattern, value: consume(:string)[:value] }
-    elsif match_keyword?('true')
-      consume_keyword('true')
-      return { type: :literal_pattern, value: true }
-    elsif match_keyword?('false')
-      consume_keyword('false')
-      return { type: :literal_pattern, value: false }
-    else
-      error_unexpected(peek, "Expected pattern")
-    end
+    token = consume_keyword('todo')
+    msg = match?(:string) ? consume(:string)[:value] : nil
+    with_loc(AST::TodoStatement.new(msg), token)
   end
 end
