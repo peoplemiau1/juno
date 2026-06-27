@@ -286,20 +286,7 @@ module LLVMStatementGenerator
     return if bytes.empty?
     byte_str = bytes.map { |b| "0x%02X" % b }.join(", ")
     asm_instruction = ".byte #{byte_str}"
+    
     @output << "  call void asm sideeffect \"#{asm_instruction}\", \"\"()\n"
-  
-    first_param = @current_function[:params]&.[](0)
-    if first_param
-      arg_register = case @arch
-                     when :aarch64 then "{x0}"
-                     when :riscv64, :riscv32 then "{a0}"
-                     else "{rdi}"
-                     end
-      tmp_load = next_tmp
-      @output << "  %#{tmp_load} = load i64, i64* %#{first_param}\n"
-      @output << "  call void asm sideeffect \"#{asm_instruction}\", \"#{arg_register}\"(i64 %#{tmp_load})\n"
-    else
-      @output << "  call void asm sideeffect \"#{asm_instruction}\", \"\"()\n"
-    end
   end
 end
