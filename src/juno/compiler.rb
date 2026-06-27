@@ -28,7 +28,7 @@ module Juno
         code = "import \"std.juno\"\n" + code
       end
 
-      # Восстановление препроцессора
+      # Выполнение предварительной обработки кода препроцессором
       preprocessor = Preprocessor.new
       preprocessor.define(@options[:os].to_s.upcase)
       preprocessor.define("__JUNO__")
@@ -48,7 +48,7 @@ module Juno
       analyzer = SemanticAnalyzer.new(ast, input_file, code)
       ast = analyzer.analyze
 
-      # Восстановление аудита безопасности (Safety Checker)
+      # Проверка безопасности управления памятью
       if @options[:audit]
         safety_checker = JunoSafetyChecker.new(ast, analyzer.function_signatures, code, input_file)
         safety_checker.check
@@ -62,7 +62,7 @@ module Juno
       obj_file = @options[:output] + ".o"
       File.write(ir_file, llvm_ir)
 
-      # Восстановление логики определения кросс-компиляции
+      # Конфигурация компиляции под целевую платформу
       target_triple = detect_target_triple
       llc_cmd = `which llc-19 llc-18 llc-17 llc`.split("\n").first&.strip
       opt_cmd = `which opt-19 opt-18 opt-17 opt`.split("\n").first&.strip
@@ -72,7 +72,7 @@ module Juno
 
       target_ir_file = ir_file
 
-      # Восстановление проходов оптимизации LLVM (opt)
+      # Запуск оптимизатора LLVM IR (opt)
       if opt_cmd && opt_level.to_s != "0"
         optimized_ir_file = @options[:output] + ".opt.ll"
         pass_val = (opt_level == 's' || opt_level == 'z') ? opt_level : opt_level
@@ -103,7 +103,7 @@ module Juno
 
     private
 
-    # Восстановление полной кросс-платформенной поддержки архитектур
+    # Определение целевой платформы (target triple) с учетом архитектуры и ОС
     def detect_target_triple
       arch = @options[:arch]
       os = @options[:os]
