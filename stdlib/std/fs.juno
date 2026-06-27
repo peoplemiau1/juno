@@ -10,10 +10,10 @@ struct File {
 fn File.open(path, mode) -> File {
     let mut m = 0
     if (streq(mode, "r")) { m = 0 }
-    if (streq(mode, "w")) { m = 1 }
-    if (streq(mode, "a")) { m = 2 }
+    if (streq(mode, "w")) { m = 65 }
+    if (streq(mode, "a")) { m = 1089 }
 
-    let fd = open(path, m, 0)
+    let fd = open(path, m, 420)
     if (fd < 0) { return 0 }
 
     let self: File = malloc(16)

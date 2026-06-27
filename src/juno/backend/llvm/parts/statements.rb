@@ -286,7 +286,8 @@ module LLVMStatementGenerator
     return if bytes.empty?
     byte_str = bytes.map { |b| "0x%02X" % b }.join(", ")
     asm_instruction = ".byte #{byte_str}"
-    
+    @output << "  call void asm sideeffect \"#{asm_instruction}\", \"\"()\n"
+  
     first_param = @current_function[:params]&.[](0)
     if first_param
       arg_register = case @arch

@@ -57,6 +57,22 @@ class LLVMGenerator
       process_node(node)
     end
 
+    has_main = @ast.any? { |n| n[:type] == :function_definition && n[:name] == "main" }
+    unless has_main
+      first_root_func = @ast.find { |n| n[:type] == :function_definition && (n[:filename] == @filename || n[:filename].nil?) }
+      if first_root_func
+        entry_name = first_root_func[:name].gsub('.', '_')
+        params = first_root_func[:params] || []
+        args = params.map { "i64 0" }.join(", ")
+
+        @output << "define i64 @main() {\n"
+        @output << "entry:\n"
+        @output << "  %res = call i64 @#{entry_name}(#{args})\n"
+        @output << "  ret i64 %res\n"
+        @output << "}\n\n"
+      end
+    end
+
     @output
   end
 
