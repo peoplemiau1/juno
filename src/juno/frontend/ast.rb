@@ -1,39 +1,54 @@
 module AST
-  class Node
+  class Node < Hash
     attr_accessor :line, :column, :filename, :inferred_type
 
     def initialize(line: nil, column: nil, filename: nil, inferred_type: nil)
+      super()
       @line = line
       @column = column
       @filename = filename
       @inferred_type = inferred_type
-      @dynamic_attributes = {}
+      
+      self[:line] = line if line
+      self[:column] = column if column
+      self[:filename] = filename if filename
+      self[:inferred_type] = inferred_type if inferred_type
+      self[:type] = type if respond_to?(:type)
     end
-
 
     def [](key)
       key_sym = key.to_sym
-      if respond_to?(key_sym)
+      if respond_to?(key_sym) && key_sym != :[]
         send(key_sym)
       else
-        @dynamic_attributes[key_sym]
+        super(key)
       end
     end
-
 
     def []=(key, val)
       key_sym = key.to_sym
       setter = "#{key_sym}="
-      if respond_to?(setter)
+      if respond_to?(setter) && setter != "[]="
         send(setter, val)
-      else
-        @dynamic_attributes[key_sym] = val
       end
+      super(key, val)
     end
 
     def key?(key)
-      respond_to?(key.to_sym) || @dynamic_attributes.key?(key.to_sym)
+      respond_to?(key.to_sym) || super(key)
     end
+  end
+
+  class Import < Node
+    attr_accessor :path, :system
+    def initialize(path, system: false, **opts)
+      super(**opts)
+      @path = path
+      @system = system
+      self[:path] = path
+      self[:system] = system
+    end
+    def type; :import; end
   end
 
   class Literal < Node
@@ -41,6 +56,7 @@ module AST
     def initialize(value, **opts)
       super(**opts)
       @value = value
+      self[:value] = value
     end
     def type; :literal; end
   end
@@ -50,6 +66,7 @@ module AST
     def initialize(value, **opts)
       super(**opts)
       @value = value
+      self[:value] = value
     end
     def type; :float_literal; end
   end
@@ -59,6 +76,7 @@ module AST
     def initialize(value, **opts)
       super(**opts)
       @value = value
+      self[:value] = value
     end
     def type; :string_literal; end
   end
@@ -68,6 +86,7 @@ module AST
     def initialize(name, **opts)
       super(**opts)
       @name = name
+      self[:name] = name
     end
     def type; :variable; end
   end
@@ -79,6 +98,9 @@ module AST
       @op = op
       @left = left
       @right = right
+      self[:op] = op
+      self[:left] = left
+      self[:right] = right
     end
     def type; :binary_op; end
   end
@@ -89,6 +111,8 @@ module AST
       super(**opts)
       @op = op
       @operand = operand
+      self[:op] = op
+      self[:operand] = operand
     end
     def type; :unary_op; end
   end
@@ -103,6 +127,11 @@ module AST
       @mut = mut
       @var_type = var_type
       @struct_name = nil
+      self[:name] = name
+      self[:expression] = expression
+      self[:let] = let
+      self[:mut] = mut
+      self[:var_type] = var_type
     end
     def type; :assignment; end
   end
@@ -113,6 +142,8 @@ module AST
       super(**opts)
       @name = name
       @size = size
+      self[:name] = name
+      self[:size] = size
     end
     def type; :array_decl; end
   end
@@ -124,6 +155,9 @@ module AST
       @name = name
       @index = index
       @value = value
+      self[:name] = name
+      self[:index] = index
+      self[:value] = value
     end
     def type; :array_assign; end
   end
@@ -134,6 +168,8 @@ module AST
       super(**opts)
       @name = name
       @index = index
+      self[:name] = name
+      self[:index] = index
     end
     def type; :array_access; end
   end
@@ -149,6 +185,12 @@ module AST
       @param_types = param_types
       @return_type = return_type
       @stack_size = 0
+      self[:name] = name
+      self[:params] = params
+      self[:body] = body
+      self[:type_params] = type_params
+      self[:param_types] = param_types
+      self[:return_type] = return_type
     end
     def type; :function_definition; end
   end
@@ -162,6 +204,11 @@ module AST
       @field_types = field_types
       @packed = packed
       @type_params = type_params
+      self[:name] = name
+      self[:fields] = fields
+      self[:field_types] = field_types
+      self[:packed] = packed
+      self[:type_params] = type_params
     end
     def type; :struct_definition; end
   end
@@ -174,6 +221,10 @@ module AST
       @fields = fields
       @field_types = field_types
       @type_params = type_params
+      self[:name] = name
+      self[:fields] = fields
+      self[:field_types] = field_types
+      self[:type_params] = type_params
     end
     def type; :union_definition; end
   end
@@ -184,6 +235,8 @@ module AST
       super(**opts)
       @name = name
       @variants = variants
+      self[:name] = name
+      self[:variants] = variants
     end
     def type; :enum_definition; end
   end
@@ -196,6 +249,10 @@ module AST
       @body = body
       @elif_branches = elif_branches
       @else_body = else_body
+      self[:condition] = condition
+      self[:body] = body
+      self[:elif_branches] = elif_branches
+      self[:else_body] = else_body
     end
     def type; :if_statement; end
   end
@@ -206,6 +263,8 @@ module AST
       super(**opts)
       @condition = condition
       @body = body
+      self[:condition] = condition
+      self[:body] = body
     end
     def type; :while_statement; end
   end
@@ -218,6 +277,10 @@ module AST
       @condition = condition
       @update = update
       @body = body
+      self[:init] = init
+      self[:condition] = condition
+      self[:update] = update
+      self[:body] = body
     end
     def type; :for_statement; end
   end
@@ -227,6 +290,7 @@ module AST
     def initialize(expression, **opts)
       super(**opts)
       @expression = expression
+      self[:expression] = expression
     end
     def type; :return; end
   end
@@ -239,6 +303,9 @@ module AST
       @args = args
       @receiver_type = nil
       @type_args = type_args
+      self[:name] = name
+      self[:args] = args
+      self[:type_args] = type_args
     end
     def type; :fn_call; end
   end
@@ -251,6 +318,8 @@ module AST
       @member = member
       @receiver_type = nil
       @struct_name = nil
+      self[:receiver] = receiver
+      self[:member] = member
     end
     def type; :member_access; end
   end
@@ -260,6 +329,7 @@ module AST
     def initialize(operand, **opts)
       super(**opts)
       @operand = operand
+      self[:operand] = operand
     end
     def type; :address_of; end
   end
@@ -269,6 +339,7 @@ module AST
     def initialize(operand, **opts)
       super(**opts)
       @operand = operand
+      self[:operand] = operand
     end
     def type; :dereference; end
   end
@@ -279,6 +350,8 @@ module AST
       super(**opts)
       @expression = expression
       @cases = cases
+      self[:expression] = expression
+      self[:cases] = cases
     end
     def type; :match_expression; end
   end
@@ -292,6 +365,11 @@ module AST
       @param_types = param_types
       @return_type = return_type
       @lib = lib
+      self[:name] = name
+      self[:params] = params
+      self[:param_types] = param_types
+      self[:return_type] = return_type
+      self[:lib] = lib
     end
     def type; :extern_definition; end
   end
@@ -309,6 +387,7 @@ module AST
     def initialize(message, **opts)
       super(**opts)
       @message = message
+      self[:message] = message
     end
     def type; :panic; end
   end
@@ -318,6 +397,7 @@ module AST
     def initialize(message, **opts)
       super(**opts)
       @message = message
+      self[:message] = message
     end
     def type; :todo; end
   end
@@ -327,6 +407,7 @@ module AST
     def initialize(content, **opts)
       super(**opts)
       @content = content
+      self[:content] = content
     end
     def type; :insertC; end
   end
@@ -337,7 +418,33 @@ module AST
       super(**opts)
       @name = name
       @target = target
+      self[:name] = name
+      self[:target] = target
     end
     def type; :type_alias; end
+  end
+
+  class Increment < Node
+    attr_accessor :name, :op
+    def initialize(name, op, **opts)
+      super(**opts)
+      @name = name
+      @op = op
+      self[:name] = name
+      self[:op] = op
+    end
+    def type; :increment; end
+  end
+
+  class DerefAssign < Node
+    attr_accessor :target, :value
+    def initialize(target, value, **opts)
+      super(**opts)
+      @target = target
+      @value = value
+      self[:target] = target
+      self[:value] = value
+    end
+    def type; :deref_assign; end
   end
 end

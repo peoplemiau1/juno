@@ -53,10 +53,16 @@ class Parser
   def match_keyword?(val); peek && peek[:type] == :keyword && peek[:value] == val; end
 
   def with_loc(node, token)
-    return node unless node.is_a?(Hash) && token
-    node[:line] = token[:line]
-    node[:column] = token[:column]
-    node[:filename] = @filename
+    return node unless node && token
+    if node.is_a?(Hash)
+      node[:line] = token[:line]
+      node[:column] = token[:column]
+      node[:filename] = @filename
+    elsif node.is_a?(AST::Node)
+      node.line = token[:line]
+      node.column = token[:column]
+      node.filename = @filename
+    end
     node
   end
 

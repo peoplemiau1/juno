@@ -17,7 +17,9 @@ class Lexer
   def tokenize
     scanner = StringScanner.new(@code)
     until scanner.eos?
-      @column = (scanner.pos - (@code.rindex("\n", scanner.pos - 1) || -1))
+      current_pos = scanner.pos
+      last_newline = current_pos > 0 ? @code.rindex("\n", current_pos - 1) : nil
+      @column = last_newline ? (current_pos - last_newline) : (current_pos + 1)
       
       if scanner.scan(/\n/)
         @line += 1

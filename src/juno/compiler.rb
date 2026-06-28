@@ -18,7 +18,7 @@ module Juno
         os: :linux,
         output: "build/output",
         audit: true,
-        stdlib_path: ENV['JUNO_STDLIB'] || File.expand_path("../../stdlib", __dir__)
+        stdlib_path: find_stdlib_path
       }.merge(options)
     end
 
@@ -28,8 +28,7 @@ module Juno
         code = "import \"std.juno\"\n" + code
       end
 
-      # Выполнение предварительной обработки кода препроцессором
-      preprocessor = Preprocessor.new
+            preprocessor = Preprocessor.new
       preprocessor.define(@options[:os].to_s.upcase)
       preprocessor.define("__JUNO__")
       code = preprocessor.process(code, input_file)
@@ -48,8 +47,7 @@ module Juno
       analyzer = SemanticAnalyzer.new(ast, input_file, code)
       ast = analyzer.analyze
 
-      # Проверка безопасности управления памятью
-      if @options[:audit]
+            if @options[:audit]
         safety_checker = JunoSafetyChecker.new(ast, analyzer.function_signatures, code, input_file)
         safety_checker.check
       end
@@ -62,8 +60,7 @@ module Juno
       obj_file = @options[:output] + ".o"
       File.write(ir_file, llvm_ir)
 
-      # Конфигурация компиляции под целевую платформу
-      target_triple = detect_target_triple
+            target_triple = detect_target_triple
       llc_cmd = `which llc-19 llc-18 llc-17 llc`.split("\n").first&.strip
       opt_cmd = `which opt-19 opt-18 opt-17 opt`.split("\n").first&.strip
       
@@ -72,8 +69,7 @@ module Juno
 
       target_ir_file = ir_file
 
-      # Запуск оптимизатора LLVM IR (opt)
-      if opt_cmd && opt_level.to_s != "0"
+            if opt_cmd && opt_level.to_s != "0"
         optimized_ir_file = @options[:output] + ".opt.ll"
         pass_val = (opt_level == 's' || opt_level == 'z') ? opt_level : opt_level
         if system("#{opt_cmd} -passes='default<O#{pass_val}>' -S -o #{optimized_ir_file} #{ir_file}")
@@ -103,8 +99,28 @@ module Juno
 
     private
 
-    # Определение целевой платформы (target triple) с учетом архитектуры и ОС
-    def detect_target_triple
+        def find_stdlib_path
+      real_path = nil
+      begin
+        real_path = File.expand_path("../../stdlib", File.dirname(File.realdirpath(__FILE__)))
+      rescue
+        nil
+      end
+
+      paths = [
+        ENV['JUNO_STDLIB'],
+        File.expand_path("../../stdlib", __dir__),
+        real_path,
+        File.expand_path("~/juno/stdlib"),
+        File.expand_path("../stdlib", Dir.pwd),
+        "/usr/local/lib/juno/stdlib",
+        "/usr/lib/juno/stdlib"
+      ].compact
+
+      paths.find { |p| File.directory?(p) && File.exist?(File.join(p, "std.juno")) } || File.expand_path("../../stdlib", __dir__)
+    end
+
+        def detect_target_triple
       arch = @options[:arch]
       os = @options[:os]
       return (arch == :x86_64 ? "x86_64-apple-macos" : "arm64-apple-macos") if os == :macos

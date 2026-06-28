@@ -54,6 +54,7 @@ class VariableRenamer
   end
 
   def resolve(name)
+    @scopes.reverse_each { |scope| return scope[name] if scope.key?(scope[name]) }
     @scopes.reverse_each { |scope| return scope[name] if scope.key?(name) }
     name
   end
@@ -337,6 +338,11 @@ class JunoSafetyChecker
     return nil if path.nil?
     return bindings[path] if bindings.key?(path)
 
+        if path =~ /^[a-zA-Z_]\w*$/
+      renamed = bindings.keys.find { |k| k =~ /^scoped_#{path}_\d+$/ }
+      return bindings[renamed] if renamed
+    end
+
     parts = path.split('.')
     return nil if parts.size <= 1
 
@@ -568,7 +574,15 @@ class JunoSafetyChecker
 
   def transfer_fn_call(inst, bindings, values, validate)
     fn_name  = inst[:name] || ""
-    args     = inst[:args] || []
+    args     = (inst[:args] || []).dup
+
+        if fn_name.include?('.') && inst[:receiver_type]
+      receiver, method = fn_name.split('.')
+      fn_name = "#{inst[:receiver_type]}.#{method}"
+      receiver_node = AST::Variable.new(receiver, line: inst[:line], column: inst[:column], filename: inst[:filename])
+      args.unshift(receiver_node)
+    end
+
     contract = get_function_contract(fn_name, args.size)
 
     args.each_with_index do |arg, idx|
@@ -860,7 +874,14 @@ class JunoSafetyChecker
 
   def collect_consumed_args(call_node, params, consumed)
     fn_name = call_node[:name]
-    args    = call_node[:args] || []
+    args    = (call_node[:args] || []).dup
+
+        if fn_name.include?('.') && call_node[:receiver_type]
+      receiver, method = fn_name.split('.')
+      fn_name = "#{call_node[:receiver_type]}.#{method}"
+      receiver_node = AST::Variable.new(receiver)
+      args.unshift(receiver_node)
+    end
 
     if @consumers.include?(fn_name)
       idx = params.index(extract_variable_name(args[0]))

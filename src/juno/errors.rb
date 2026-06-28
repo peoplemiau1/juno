@@ -46,8 +46,8 @@ class JunoError < StandardError
 
       if ln == @line_num
         puts " #{RED}#{line_num_str}#{RESET} #{GRAY}|#{RESET} #{line_content}"
-        if @column
-          padding = " " * (@column - 1)
+        if @column && @column > 0
+          padding = " " * [@column - 1, 0].max
           puts "     #{GRAY}|#{RESET} #{padding}#{RED}#{BOLD}^#{@message.length > 0 ? '' : '~~~'}#{RESET}"
         end
       else
