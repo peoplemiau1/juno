@@ -31,7 +31,7 @@ class LLVMGenerator
     @global_types = {}
   end
 
-  BUILTINS = %w(printf malloc realloc free concat trim file_read_all file_read_safe exists write read open close getpid juno_strlen juno_pow time rand srand substr syscall spin_lock spin_unlock prints)
+  BUILTINS = %w(printf malloc realloc free concat trim file_read_all file_read_safe exists write read open close getpid juno_strlen juno_pow time rand srand substr syscall prints)
 
   def generate
     @output = ""
@@ -53,13 +53,34 @@ class LLVMGenerator
     emit_strings
     emit_globals
 
+    # Разделение глобальных объявлений и свободных инструкций верхнего уровня
+    defs = []
+    stmts = []
     @ast.each do |node|
-      process_node(node)
+      next if node.nil?
+      case node[:type]
+      when :function_definition, :extern_definition, :struct_definition, :union_definition, :enum_definition
+        defs << node
+      when :assignment, :return, :fn_call, :method_call, :if_statement, :while_statement, :for_statement, :increment, :insertC
+        stmts << node
+      end
     end
 
-    has_main = @ast.any? { |n| n[:type] == :function_definition && n[:name] == "main" }
-    unless has_main
-      first_root_func = @ast.find { |n| n[:type] == :function_definition && (n[:filename] == @filename || n[:filename].nil?) }
+    # Генерация глобальных определений
+    defs.each { |node| process_node(node) }
+
+    # Определение точки входа
+    has_main = defs.any? { |n| n[:type] == :function_definition && n[:name] == "main" }
+
+    if has_main
+      # Если функция main уже объявлена пользователем, генерация идет штатно
+    elsif !stmts.empty?
+      # Если обнаружен код на верхнем уровне — автоматически упаковываем его в @main()
+      main_fn = AST::FunctionDefinition.new("main", [], stmts, line: 1, column: 1, filename: @filename)
+      gen_function(main_fn)
+    else
+      # Если свободных инструкций нет, запускаем механизм фоллбека на первую функцию
+      first_root_func = defs.find { |n| n[:type] == :function_definition && (n[:filename] == @filename || n[:filename].nil?) }
       if first_root_func
         entry_name = first_root_func[:name].gsub('.', '_')
         params = first_root_func[:params] || []
@@ -218,7 +239,8 @@ class LLVMGenerator
     collect_locals(node[:body] || [], locals, arrays)
 
     locals.uniq.each do |var|
-      unless (node[:params] || []).include?(var)
+      # Исключаем глобальные переменные из аллокации на локальном стеке
+      unless (node[:params] || []).include?(var) || (@globals && @globals.key?(var))
         @output << "  %#{var} = alloca i64\n"
       end
     end
