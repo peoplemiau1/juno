@@ -555,9 +555,18 @@ class JunoSafetyChecker
       bindings[name] = get_or_create_val_id(expr, :heap, :owned, values)
 
     elsif rhs_val_id && values[rhs_val_id]
-      bindings[name] = rhs_val_id
-      rhs_path = resolve_access_path(expr)
-      propagate_bindings(rhs_path, name, bindings) if rhs_path
+      old_val = values[rhs_val_id]
+      if old_val[:type] == :heap && old_val[:state] == :owned
+        new_id = get_or_create_val_id(inst, :heap, :owned, values)
+        bindings[name] = new_id
+        old_val[:state] = :moved
+        old_val[:moved_to] = name
+        old_val[:moved_line] = inst[:line]
+      else
+        bindings[name] = rhs_val_id
+        rhs_path = resolve_access_path(expr)
+        propagate_bindings(rhs_path, name, bindings) if rhs_path
+      end
     end
   end
 
@@ -683,9 +692,11 @@ class JunoSafetyChecker
     when :maybe_freed
       report_error("Conditional use-after-free: Value may have been freed at line #{val[:freed_line]}", expr)
     when :moved
-      report_error("Use-after-move: Value was moved to #{val[:moved_to]} at line #{val[:moved_line]}", expr)
+      moved_to_orig = val[:moved_to].to_s.sub(/^scoped_/, '').sub(/_\d+$/, '')
+      report_error("Use-after-move: Value was moved to '#{moved_to_orig}' at line #{val[:moved_line]}", expr)
     when :maybe_moved
-      report_error("Conditional use-after-move: Value may have been moved to #{val[:moved_to]} at line #{val[:moved_line]}", expr)
+      moved_to_orig = val[:moved_to].to_s.sub(/^scoped_/, '').sub(/_\d+$/, '')
+      report_error("Conditional use-after-move: Value may have been moved to '#{moved_to_orig}' at line #{val[:moved_line]}", expr)
     end
   end
 
