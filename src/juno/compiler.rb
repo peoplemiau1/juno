@@ -88,7 +88,7 @@ module Juno
         raise "LLVM backend (llc) compilation failed"
       end
 
-      runtime_obj = File.expand_path("backend/llvm/runtime.o", __dir__)
+      runtime_obj = File.expand_path("backend/llvm/runtime_#{@options[:os]}_#{@options[:arch]}.o", __dir__)
       runtime_src = File.expand_path("backend/llvm/runtime.c", __dir__)
       
       unless File.exist?(runtime_obj)
@@ -100,7 +100,11 @@ module Juno
       elsif @options[:target] == :obj || @options[:target].to_s == "obj"
         File.binwrite(@options[:output], File.binread(obj_file))
       else
-        link_cmd = "gcc -no-pie -o #{@options[:output]} #{obj_file} #{runtime_obj}"
+        if @options[:os] == :macos
+          link_cmd = "gcc -o #{@options[:output]} #{obj_file} #{runtime_obj}"
+        else
+          link_cmd = "gcc -no-pie -o #{@options[:output]} #{obj_file} #{runtime_obj}"
+        end
         system(link_cmd)
       end
 

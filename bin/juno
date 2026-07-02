@@ -74,10 +74,22 @@ end
     
     require_relative "../src/juno/compiler"
     
-    options = { arch: :x86_64, os: :linux, output: nil, run: false, show_asm: false, target: :exe, opt_level: 2 }
+    default_arch = :x86_64
+    if RUBY_PLATFORM =~ /arm64|aarch64/i
+      default_arch = :aarch64
+    end
+    default_os = :linux
+    if RUBY_PLATFORM =~ /darwin/i
+      default_os = :macos
+    elsif RUBY_PLATFORM =~ /mswin|mingw|cygwin/i
+      default_os = :windows
+    end
+
+    options = { arch: default_arch, os: default_os, output: nil, run: false, show_asm: false, target: :exe, opt_level: 2 }
     begin
       parser = OptionParser.new do |opts|
         opts.on("-a", "--arch ARCH", [:x86_64, :aarch64, :arm, :riscv32, :riscv64]) { |a| options[:arch] = a }
+        opts.on("--os OS", [:linux, :macos, :windows]) { |o| options[:os] = o }
         opts.on("-t", "--target TARGET", [:exe, :flat, :obj]) { |t| options[:target] = t }
         opts.on("-O", "--opt LEVEL", String) { |o| options[:opt_level] = o }
         opts.on("-o", "--output FILE") { |o| options[:output] = o }

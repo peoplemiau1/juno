@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <stdarg.h>
 
 typedef struct {
     unsigned int id;
@@ -168,3 +169,35 @@ long prints(long s_ptr) {
     }
     return 0;
 }
+
+#ifdef __APPLE__
+#include <sys/mman.h>
+#include <time.h>
+#include <sys/time.h>
+
+long syscall(long num, ...) {
+    va_list args;
+    va_start(args, num);
+    long arg1 = va_arg(args, long);
+    long arg2 = va_arg(args, long);
+    long arg3 = va_arg(args, long);
+    long arg4 = va_arg(args, long);
+    long arg5 = va_arg(args, long);
+    long arg6 = va_arg(args, long);
+    va_end(args);
+
+    if (num == 228) {
+        return clock_gettime((clockid_t)arg1, (struct timespec *)arg2);
+    }
+    if (num == 9) {
+        int flags = 0;
+        if (arg4 & 0x02) flags |= MAP_PRIVATE;
+        if (arg4 & 0x20) flags |= MAP_ANON;
+        return (long)mmap((void*)arg1, (size_t)arg2, (int)arg3, flags, (int)arg5, (off_t)arg6);
+    }
+    if (num == 11) {
+        return munmap((void*)arg1, (size_t)arg2);
+    }
+    return -1;
+}
+#endif
