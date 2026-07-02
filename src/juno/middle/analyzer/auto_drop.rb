@@ -10,7 +10,7 @@ module Juno
     end
 
     def run
-      @ast.map { |node| process_node(node) }
+      @ast.map { |node| process_node(node) }.compact
     end
 
     private
@@ -24,10 +24,14 @@ module Juno
     end
 
     def add_ownership(var_name)
+      return unless var_name
+      return if var_name.include?('.')
       @scopes.last[:owned] << var_name if @scopes.last
     end
 
     def remove_ownership(var_name)
+      return unless var_name
+      return if var_name.include?('.')
       @scopes.reverse_each do |scope|
         if scope[:owned].include?(var_name)
           scope[:owned].delete(var_name)
@@ -37,30 +41,39 @@ module Juno
     end
 
     def owned?(var_name)
+      return false unless var_name
+      return false if var_name.include?('.')
       @scopes.any? { |scope| scope[:owned].include?(var_name) }
     end
 
     def allocates?(expr)
-      return false unless expr.is_a?(Hash)
-      if expr[:type] == :fn_call
+      return false unless expr.is_a?(Hash) && expr.key?(:type)
+      case expr[:type]
+      when :fn_call
         return true if ALLOCATORS.include?(expr[:name])
-        return true if expr[:name].end_with?(".init") || expr[:name].end_with?(".new")
+        return true if expr[:name].is_a?(String) && (expr[:name].end_with?(".init") || expr[:name].end_with?(".new"))
       end
       false
     end
 
     def create_free_node(var_name, original_node)
+      orig_line = original_node.is_a?(Hash) ? original_node[:line] : nil
+      orig_col = original_node.is_a?(Hash) ? original_node[:column] : nil
       AST::FnCall.new(
-        "free", 
-        [AST::Variable.new(var_name, line: original_node[:line], column: original_node[:column])],
-        line: original_node[:line],
-        column: original_node[:column]
+        "free",
+        [AST::Variable.new(var_name, line: orig_line, column: orig_col)],
+        line: orig_line,
+        column: orig_col
       )
+    end
+
+    def returns?(stmt)
+      stmt.is_a?(Hash) && stmt.key?(:type) && stmt[:type] == :return
     end
 
     def process_node(node)
       return nil if node.nil?
-      return node unless node.is_a?(Hash)
+      return node unless node.is_a?(Hash) && node.key?(:type)
 
       case node[:type]
       when :function_definition then process_function(node)
@@ -68,7 +81,11 @@ module Juno
       when :if_statement        then process_if(node)
       when :while_statement     then process_while(node)
       when :for_statement       then process_for(node)
-      when :return              then process_return(node)
+      when :match_expression    then process_match(node)
+      when :fn_call             then process_fn_call(node)
+      when :return
+        node[:expression] = process_node(node[:expression]) if node[:expression]
+        node
       else
         process_children(node)
         node
@@ -78,63 +95,86 @@ module Juno
     def process_statements(stmts)
       return [] unless stmts.is_a?(Array)
       new_stmts = []
+
       stmts.each do |stmt|
-        res = process_node(stmt)
-        if res.is_a?(Array)
-          new_stmts.concat(res)
-        elsif res
-          new_stmts << res
+        next if stmt.nil?
+
+        if stmt.is_a?(Hash) && stmt.key?(:type)
+          if stmt[:type] == :return
+            stmt[:expression] = process_node(stmt[:expression]) if stmt[:expression]
+            ret_expr = stmt[:expression]
+            returned_var = ret_expr && ret_expr.is_a?(Hash) && ret_expr[:type] == :variable ? ret_expr[:name] : nil
+
+            @scopes.reverse_each do |scope|
+              scope[:owned].each do |var|
+                next if var == returned_var
+                new_stmts << create_free_node(var, stmt)
+              end
+            end
+            new_stmts << stmt
+
+          elsif stmt[:type] == :assignment && !stmt[:let]
+            name = stmt[:name]
+            expr = stmt[:expression]
+
+            if owned?(name)
+              new_stmts << create_free_node(name, stmt)
+              remove_ownership(name)
+            end
+
+            stmt[:expression] = process_node(expr)
+
+            if allocates?(expr)
+              add_ownership(name)
+            elsif expr.is_a?(Hash) && expr.key?(:type) && expr[:type] == :variable && owned?(expr[:name])
+              remove_ownership(expr[:name])
+              add_ownership(name)
+            end
+
+            new_stmts << stmt
+
+          else
+            res = process_node(stmt)
+            new_stmts << res if res
+          end
+        else
+          new_stmts << stmt
         end
       end
+
       new_stmts
+    end
+
+    def drain_scope_frees(body, scope)
+      return body if body.last && returns?(body.last)
+      scope[:owned].dup.each do |var|
+        body << create_free_node(var, body.last || {})
+      end
+      body
     end
 
     def process_function(node)
       push_scope
       node[:body] = process_statements(node[:body])
-
-      unless node[:body].last&.[](:type) == :return
-        leftovers = @scopes.last[:owned].dup
-        leftovers.each do |var|
-          node[:body] << create_free_node(var, node)
-        end
-      end
-
+      drain_scope_frees(node[:body], @scopes.last)
       pop_scope
       node
     end
 
     def process_assignment(node)
+      node[:expression] = process_node(node[:expression])
       name = node[:name]
       expr = node[:expression]
 
       if node[:let]
         if allocates?(expr)
           add_ownership(name)
-        elsif expr && expr[:type] == :variable && owned?(expr[:name])
+        elsif expr.is_a?(Hash) && expr.key?(:type) && expr[:type] == :variable && owned?(expr[:name])
           remove_ownership(expr[:name])
           add_ownership(name)
         end
-        node[:expression] = process_node(expr)
-        node
-      else
-        injected = []
-        if owned?(name)
-          injected << create_free_node(name, node)
-          remove_ownership(name)
-        end
-
-        if allocates?(expr)
-          add_ownership(name)
-        elsif expr && expr[:type] == :variable && owned?(expr[:name])
-          remove_ownership(expr[:name])
-          add_ownership(name)
-        end
-
-        node[:expression] = process_node(expr)
-        injected << node
-        injected
       end
+      node
     end
 
     def process_if(node)
@@ -142,21 +182,13 @@ module Juno
 
       push_scope
       node[:body] = process_statements(node[:body])
-      unless node[:body].last&.[](:type) == :return
-        @scopes.last[:owned].dup.each do |var|
-          node[:body] << create_free_node(var, node)
-        end
-      end
+      drain_scope_frees(node[:body], @scopes.last)
       pop_scope
 
       if node[:else_body]
         push_scope
         node[:else_body] = process_statements(node[:else_body])
-        unless node[:else_body].last&.[](:type) == :return
-          @scopes.last[:owned].dup.each do |var|
-            node[:else_body] << create_free_node(var, node)
-          end
-        end
+        drain_scope_frees(node[:else_body], @scopes.last)
         pop_scope
       end
 
@@ -167,9 +199,7 @@ module Juno
       node[:condition] = process_node(node[:condition])
       push_scope
       node[:body] = process_statements(node[:body])
-      @scopes.last[:owned].dup.each do |var|
-        node[:body] << create_free_node(var, node)
-      end
+      drain_scope_frees(node[:body], @scopes.last)
       pop_scope
       node
     end
@@ -179,35 +209,43 @@ module Juno
       node[:init] = process_node(node[:init])
       node[:condition] = process_node(node[:condition])
       node[:update] = process_node(node[:update])
-      
+
       node[:body] = process_statements(node[:body])
-      @scopes.last[:owned].dup.each do |var|
-        node[:body] << create_free_node(var, node)
-      end
+      drain_scope_frees(node[:body], @scopes.last)
       pop_scope
       node
     end
 
-    def process_return(node)
-      ret_expr = node[:expression]
-      returned_var = nil
-      if ret_expr && ret_expr[:type] == :variable
-        returned_var = ret_expr[:name]
-      end
-
-      injected_frees = []
-      @scopes.reverse_each do |scope|
-        scope[:owned].each do |var|
-          next if var == returned_var 
-          injected_frees << create_free_node(var, node)
+    def process_match(node)
+      node[:expression] = process_node(node[:expression])
+      if node[:cases].is_a?(Array)
+        node[:cases].each do |c|
+          next unless c.is_a?(Hash)
+          push_scope
+          c[:body] = process_statements(c[:body])
+          drain_scope_frees(c[:body], @scopes.last)
+          pop_scope
         end
       end
+      node
+    end
 
-      injected_frees + [node]
+    def process_fn_call(node)
+      if node[:name] == "free" && node[:args]&.any? && node[:args].first.is_a?(Hash) && node[:args].first[:type] == :variable
+        remove_ownership(node[:args].first[:name])
+      end
+
+      if node[:args].is_a?(Array)
+        node[:args] = node[:args].map { |arg| process_node(arg) }.compact
+      end
+
+      node
     end
 
     def process_children(node)
-      node.each do |k, v|
+      return unless node.is_a?(Hash)
+      node.keys.each do |k|
+        v = node[k]
         if v.is_a?(Hash)
           node[k] = process_node(v)
         elsif v.is_a?(Array)

@@ -1,0 +1,19 @@
+fn test_leak(x: int) {
+    let buf = malloc(64)
+    
+    if x == 1 {
+        prints("Early return trigger\n")
+        return 0
+    }
+    
+    prints("Normal return trigger\n")
+    return 0
+}
+
+fn main() {
+    prints("=== Starting Auto-Drop Test ===\n")
+    test_leak(1)
+    test_leak(0)
+    prints("=== Finished ===\n")
+    return 0
+}
