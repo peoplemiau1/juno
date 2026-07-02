@@ -105,7 +105,8 @@ module Juno
       end
 
       if @options[:target] == :flat || @options[:target].to_s == "flat"
-        system("objcopy -O binary #{obj_file} #{@options[:output]}")
+        objcopy_cmd = RUBY_PLATFORM =~ /darwin/i ? "llvm-objcopy" : "objcopy"
+        system("#{objcopy_cmd} -O binary #{obj_file} #{@options[:output]}")
       elsif @options[:target] == :obj || @options[:target].to_s == "obj"
         File.binwrite(@options[:output], File.binread(obj_file))
       else
