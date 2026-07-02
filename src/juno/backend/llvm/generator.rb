@@ -219,7 +219,11 @@ class LLVMGenerator
 
   def gen_function(node)
     @current_function = node
-    params = (node[:params] || []).map { |p| "i64 %#{p}_in" }.join(", ")
+    fn_params = (node[:params] || []).dup
+    if node[:name].include?('.') && !fn_params.include?("self")
+      fn_params.unshift("self")
+    end
+    params = fn_params.map { |p| "i64 %#{p}_in" }.join(", ")
     
     has_insertC = node[:body]&.any? { |s| s.is_a?(Hash) && s[:type] == :insertC }
     attrs = has_insertC ? " noinline" : ""
@@ -229,7 +233,7 @@ class LLVMGenerator
     @label_count = 0
 
     @output << "entry:\n"
-    (node[:params] || []).each do |p|
+    fn_params.each do |p|
       @output << "  %#{p} = alloca i64\n"
       @output << "  store i64 %#{p}_in, i64* %#{p}\n"
     end
@@ -240,7 +244,7 @@ class LLVMGenerator
 
     locals.uniq.each do |var|
       # Исключаем глобальные переменные из аллокации на локальном стеке
-      unless (node[:params] || []).include?(var) || (@globals && @globals.key?(var))
+      unless fn_params.include?(var) || (@globals && @globals.key?(var))
         @output << "  %#{var} = alloca i64\n"
       end
     end

@@ -17,7 +17,11 @@ class SemanticAnalyzer
   end
 
   def analyze
+    @ast.compact!
+
     @ast.each do |node|
+      next unless node.is_a?(Hash)
+
       case node[:type]
       when :function_definition
         if @symbol_table.key?(node[:name])
@@ -71,14 +75,17 @@ class SemanticAnalyzer
     end
 
     @ast.each do |node|
+      next unless node.is_a?(Hash)
+
       if node[:type] == :function_definition
         @local_vars_count = 0
 
-        @local_vars_count = scan_decls(node[:body] || [])
+        node[:body] ||= []
+        @local_vars_count = scan_decls(node[:body])
 
         analyze_node(node, {})
         params_count = (node[:params] || []).length
-        params_count += 1 if node[:name].include?('.')
+        params_count += 1 if node[:name].to_s.include?('.')
 
         stack_size = (@local_vars_count + params_count) * 8
         node[:stack_size] = (stack_size + 15) & ~15
@@ -90,11 +97,12 @@ class SemanticAnalyzer
   private
 
   def scan_decls(body)
+    return 0 unless body.is_a?(Array)
     count = 0
     body.each do |s|
       next unless s.is_a?(Hash)
       if s[:type] == :array_decl
-        count += s[:size] + 1
+        count += (s[:size] || 0) + 1
       elsif s[:type] == :assignment && s[:let]
         count += 1
       elsif s[:type] == :if_statement
@@ -107,8 +115,16 @@ class SemanticAnalyzer
     count
   end
 
+  def each_stmt(arr, local_vars)
+    return unless arr.is_a?(Array)
+    arr.each do |s|
+      next if s.nil?
+      analyze_node(s, local_vars)
+    end
+  end
+
   def analyze_node(node, local_vars)
-    return "int" if node.nil?
+    return "int" if node.nil? || !node.is_a?(Hash)
     node[:inferred_type] = case node[:type]
     when :function_definition
       params = (node[:params] || []).dup
@@ -118,14 +134,14 @@ class SemanticAnalyzer
         type = (node[:param_types] && node[:param_types][p_name]) || (p_name == "self" ? node[:name].split('.')[0] : "int")
         local_vars[p_name] = { type: type, mut: true }
       end
-      node[:body].each { |stmt| analyze_node(stmt, local_vars) }
+      each_stmt(node[:body], local_vars)
       "void"
     when :assignment
       type = analyze_node(node[:expression], local_vars)
       if node[:let]
         local_vars[node[:name]] = { type: node[:var_type] || type, mut: node[:mut] }
         @local_vars_count += 1
-      elsif node[:name].include?('.')
+      elsif node[:name].to_s.include?('.')
         parts = node[:name].split('.', 2)
         receiver_name = parts[0]
         field_name = parts[1]
@@ -168,7 +184,7 @@ class SemanticAnalyzer
       if ["==", "!=", "<", ">", "<=", ">="].include?(node[:op])
         "bool"
       elsif ["+", "-"].include?(node[:op]) && (left_type == "ptr" || right_type == "ptr" || left_type == "str" || right_type == "str")
-        if node[:op] == "+" && (left_type == "str" || left_type == "ptr" && node[:left][:type] == :string_literal) && (right_type == "str" || right_type == "ptr" && node[:right][:type] == :string_literal)
+        if node[:op] == "+" && (left_type == "str" || left_type == "ptr" && node[:left] && node[:left][:type] == :string_literal) && (right_type == "str" || right_type == "ptr" && node[:right] && node[:right][:type] == :string_literal)
           "str"
         else
           "ptr"
@@ -210,13 +226,13 @@ class SemanticAnalyzer
     when :fn_call
       (node[:args] || []).each { |a| analyze_node(a, local_vars) }
 
-      name = node[:name]
+      name = node[:name].to_s
       sym = @symbol_table[name]
 
       if name.include?('.') && !sym
         receiver, method = name.split('.')
         receiver_type = "int"
-        if local_vars.key?(receiver)
+        if local_vars.key?(receiver) && local_vars[receiver].is_a?(Hash)
            receiver_type = local_vars[receiver][:type]
         end
         node[:receiver_type] = receiver_type
@@ -248,20 +264,20 @@ class SemanticAnalyzer
       end
     when :if_statement
       analyze_node(node[:condition], local_vars)
-      node[:body].each { |s| analyze_node(s, local_vars) }
-      node[:else_body]&.each { |s| analyze_node(s, local_vars) }
+      each_stmt(node[:body], local_vars)
+      each_stmt(node[:else_body], local_vars) if node[:else_body]
       "void"
     when :while_statement
       analyze_node(node[:condition], local_vars)
-      node[:body].each { |s| analyze_node(s, local_vars) }
+      each_stmt(node[:body], local_vars)
       "void"
     when :for_statement
-      if node[:init] && node[:init][:type] == :assignment
+      if node[:init] && node[:init].is_a?(Hash) && node[:init][:type] == :assignment
         local_vars[node[:init][:name]] = { type: "int", mut: true }
       end
       analyze_node(node[:condition], local_vars)
       analyze_node(node[:update], local_vars)
-      node[:body].each { |s| analyze_node(s, local_vars) }
+      each_stmt(node[:body], local_vars)
       "void"
     when :return
       analyze_node(node[:expression], local_vars)
@@ -276,14 +292,18 @@ class SemanticAnalyzer
       analyze_node(node[:expression], local_vars)
       node[:target_type] || "int"
     when :member_access
-      receiver_type = analyze_node({type: :variable, name: node[:receiver]}, local_vars)
+      receiver_type = analyze_node({ type: :variable, name: node[:receiver] }, local_vars)
       node[:receiver_type] = receiver_type
       if @structs.key?(receiver_type)
         node[:struct_name] = receiver_type
         struct_def = @structs[receiver_type]
-        field_idx = struct_def[:fields].index(node[:member])
-        if field_idx
-          struct_def[:field_types] ? (struct_def[:field_types][node[:member]] || "int") : "int"
+        if struct_def[:fields]
+          field_idx = struct_def[:fields].index(node[:member])
+          if field_idx
+            struct_def[:field_types] ? (struct_def[:field_types][node[:member]] || "int") : "int"
+          else
+            "int"
+          end
         else
           "int"
         end
@@ -306,8 +326,8 @@ class SemanticAnalyzer
     error = JunoTypeError.new(
       message,
       filename: @filename,
-      line_num: node[:line],
-      column: node[:column],
+      line_num: node.is_a?(Hash) ? node[:line] : nil,
+      column: node.is_a?(Hash) ? node[:column] : nil,
       source: @source
     )
     JunoErrorReporter.report(error)

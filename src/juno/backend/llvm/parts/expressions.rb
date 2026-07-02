@@ -88,7 +88,7 @@ module LLVMExpressionGenerator
         receiver_name = operand[:receiver]
         member = operand[:member]
         struct_name = operand[:struct_name] || find_struct_for_field(member)
-        if struct_name
+        if struct_name && @structs[struct_name]
           ptr = next_tmp
           ptr_sigil = (@globals && @globals.key?(receiver_name)) ? "@" : "%"
           @output << "  %#{ptr} = load i64, i64* #{ptr_sigil}#{receiver_name}\n"
@@ -237,7 +237,11 @@ module LLVMExpressionGenerator
     receiver_name = node[:receiver]
     member = node[:member]
     struct_name = node[:struct_name] || find_struct_for_field(member)
-    if struct_name
+    if struct_name && @enums && @enums.key?(struct_name)
+      return gen_llvm_enum_variant_init(struct_name, member, [])
+    elsif receiver_name && @enums && @enums.key?(receiver_name)
+      return gen_llvm_enum_variant_init(receiver_name, member, [])
+    elsif struct_name && @structs[struct_name]
       ptr = next_tmp
       @output << "  %#{ptr} = load i64, i64* %#{receiver_name}\n"
       struct_ptr = next_tmp

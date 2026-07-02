@@ -73,7 +73,7 @@ module LLVMStatementGenerator
       receiver = parts[0]
       field_name = parts[1]
       struct_name = node[:struct_name] || find_struct_for_field(field_name)
-      if struct_name
+      if struct_name && @structs[struct_name]
         ptr = next_tmp
         ptr_sigil = (@globals && @globals.key?(receiver)) ? "@" : "%"
         @output << "  %#{ptr} = load i64, i64* #{ptr_sigil}#{receiver}\n"

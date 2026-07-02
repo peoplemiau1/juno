@@ -147,7 +147,7 @@ class VariableRenamer
     push_scope
     node[:init]      = rename_node(node[:init])      if node[:init]
     node[:condition] = rename_node(node[:condition]) if node[:condition]
-    node[:update]    = rename_node(node[:update])    if node[:update]
+    node[:update] = rename_node(node[:update]) if node[:update]
     node[:body]      = rename(node[:body])           if node[:body]
     pop_scope
     node
@@ -338,7 +338,7 @@ class JunoSafetyChecker
     return nil if path.nil?
     return bindings[path] if bindings.key?(path)
 
-        if path =~ /^[a-zA-Z_]\w*$/
+    if path =~ /^[a-zA-Z_]\w*$/
       renamed = bindings.keys.find { |k| k =~ /^scoped_#{path}_\d+$/ }
       return bindings[renamed] if renamed
     end
@@ -576,7 +576,7 @@ class JunoSafetyChecker
     fn_name  = inst[:name] || ""
     args     = (inst[:args] || []).dup
 
-        if fn_name.include?('.') && inst[:receiver_type]
+    if fn_name.include?('.') && inst[:receiver_type]
       receiver, method = fn_name.split('.')
       fn_name = "#{inst[:receiver_type]}.#{method}"
       receiver_node = AST::Variable.new(receiver, line: inst[:line], column: inst[:column], filename: inst[:filename])
@@ -798,7 +798,8 @@ class JunoSafetyChecker
         decls << n[:init] if n[:init] && n[:init][:type] == :assignment
         decls += try_all_decls(n[:body])
       elsif n[:type] == :match_expression
-        n[:cases].each do |c|
+        (n[:cases] || []).each do |c|
+          next unless c.is_a?(Hash)
           decls += try_decls_in_pattern(c[:pattern])
           decls += try_all_decls(c[:body]) if c[:body].is_a?(Array)
         end
@@ -808,6 +809,7 @@ class JunoSafetyChecker
   end
 
   def try_decls_in_pattern(pattern)
+    return [] unless pattern.is_a?(Hash) && pattern.key?(:type)
     case pattern[:type]
     when :bind_pattern
       [{ type: :assignment, let: true, name: pattern[:name] }]
@@ -876,7 +878,7 @@ class JunoSafetyChecker
     fn_name = call_node[:name]
     args    = (call_node[:args] || []).dup
 
-        if fn_name.include?('.') && call_node[:receiver_type]
+    if fn_name.include?('.') && call_node[:receiver_type]
       receiver, method = fn_name.split('.')
       fn_name = "#{call_node[:receiver_type]}.#{method}"
       receiver_node = AST::Variable.new(receiver)
