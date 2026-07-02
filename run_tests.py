@@ -64,6 +64,7 @@ POSITIVE_TESTS = [
     "tests/test_new_features.juno",
     "tests/test_predictive_borrow.juno",
     "tests/test_autodrop.juno",
+    "tests/test_safety_loopholes.juno",
 ]
 
 FLAT_TESTS = [

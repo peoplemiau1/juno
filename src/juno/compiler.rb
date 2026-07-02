@@ -95,8 +95,14 @@ module Juno
         system("gcc -fPIC -O2 -c -o #{runtime_obj} #{runtime_src}")
       end
 
-      link_cmd = "gcc -no-pie -o #{@options[:output]} #{obj_file} #{runtime_obj}"
-      system(link_cmd)
+      if @options[:target] == :flat || @options[:target].to_s == "flat"
+        system("objcopy -O binary #{obj_file} #{@options[:output]}")
+      elsif @options[:target] == :obj || @options[:target].to_s == "obj"
+        File.binwrite(@options[:output], File.binread(obj_file))
+      else
+        link_cmd = "gcc -no-pie -o #{@options[:output]} #{obj_file} #{runtime_obj}"
+        system(link_cmd)
+      end
 
       @options[:output]
     end
