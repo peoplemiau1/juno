@@ -4,6 +4,7 @@ require_relative "frontend/preprocessor"
 require_relative "middle/importer"
 require_relative "middle/monomorphizer"
 require_relative "middle/semantic"
+require_relative "middle/analyzer/auto_drop"
 require_relative "middle/analyzer/safety_checker"
 require_relative "backend/llvm/generator"
 require_relative "errors"
@@ -28,7 +29,7 @@ module Juno
         code = "import \"std.juno\"\n" + code
       end
 
-            preprocessor = Preprocessor.new
+      preprocessor = Preprocessor.new
       preprocessor.define(@options[:os].to_s.upcase)
       preprocessor.define("__JUNO__")
       code = preprocessor.process(code, input_file)
@@ -47,7 +48,10 @@ module Juno
       analyzer = SemanticAnalyzer.new(ast, input_file, code)
       ast = analyzer.analyze
 
-            if @options[:audit]
+      auto_drop = AutoDropPass.new(ast)
+      ast = auto_drop.run
+
+      if @options[:audit]
         safety_checker = JunoSafetyChecker.new(ast, analyzer.function_signatures, code, input_file)
         safety_checker.check
       end
@@ -60,7 +64,7 @@ module Juno
       obj_file = @options[:output] + ".o"
       File.write(ir_file, llvm_ir)
 
-            target_triple = detect_target_triple
+      target_triple = detect_target_triple
       llc_cmd = `which llc-19 llc-18 llc-17 llc`.split("\n").first&.strip
       opt_cmd = `which opt-19 opt-18 opt-17 opt`.split("\n").first&.strip
       
@@ -69,7 +73,7 @@ module Juno
 
       target_ir_file = ir_file
 
-            if opt_cmd && opt_level.to_s != "0"
+      if opt_cmd && opt_level.to_s != "0"
         optimized_ir_file = @options[:output] + ".opt.ll"
         pass_val = (opt_level == 's' || opt_level == 'z') ? opt_level : opt_level
         if system("#{opt_cmd} -passes='default<O#{pass_val}>' -S -o #{optimized_ir_file} #{ir_file}")
@@ -99,7 +103,7 @@ module Juno
 
     private
 
-        def find_stdlib_path
+    def find_stdlib_path
       real_path = nil
       begin
         real_path = File.expand_path("../../stdlib", File.dirname(File.realdirpath(__FILE__)))
@@ -120,7 +124,7 @@ module Juno
       paths.find { |p| File.directory?(p) && File.exist?(File.join(p, "std.juno")) } || File.expand_path("../../stdlib", __dir__)
     end
 
-        def detect_target_triple
+    def detect_target_triple
       arch = @options[:arch]
       os = @options[:os]
       return (arch == :x86_64 ? "x86_64-apple-macos" : "arm64-apple-macos") if os == :macos
