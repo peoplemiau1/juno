@@ -5,3 +5,4 @@
 *.o.opt.ll
 out.c
 a.out
+build/

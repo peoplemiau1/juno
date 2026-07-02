@@ -14,7 +14,10 @@ fn File.open(path, mode) -> File {
     if (streq(mode, "a")) { m = 1089 }
 
     let fd = open(path, m, 420)
-    if (fd < 0) { return 0 }
+    if (fd < 0) {
+        close(fd)
+        return 0
+    }
 
     let self: File = malloc(16)
     self.fd = fd

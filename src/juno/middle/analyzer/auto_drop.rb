@@ -231,8 +231,14 @@ module Juno
     end
 
     def process_fn_call(node)
-      if node[:name] == "free" && node[:args]&.any? && node[:args].first.is_a?(Hash) && node[:args].first[:type] == :variable
+      name = node[:name]
+      if name == "free" && node[:args]&.any? && node[:args].first.is_a?(Hash) && node[:args].first[:type] == :variable
         remove_ownership(node[:args].first[:name])
+      elsif name.is_a?(String) && name.include?('.')
+        parts = name.split('.')
+        if parts[1] == "free"
+          remove_ownership(parts[0])
+        end
       end
 
       if node[:args].is_a?(Array)
