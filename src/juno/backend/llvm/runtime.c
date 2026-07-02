@@ -1,7 +1,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef __APPLE__
+#define syscall _macos_syscall
 #include <unistd.h>
+#undef syscall
+#else
+#include <unistd.h>
+#endif
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <stdarg.h>
@@ -174,6 +180,8 @@ long prints(long s_ptr) {
 #include <sys/mman.h>
 #include <time.h>
 #include <sys/time.h>
+#include <sys/types.h>
+#include <sys/event.h>
 
 long syscall(long num, ...) {
     va_list args;
@@ -200,4 +208,51 @@ long syscall(long num, ...) {
     }
     return -1;
 }
+
+// Simple epoll shim via kqueue for macOS
+int epoll_create(int size) {
+    return kqueue();
+}
+
+int epoll_ctl(int epfd, int op, int fd, void *event) {
+    struct kevent ev;
+    int events = *(int*)event;
+    int filter = 0;
+    if (events & 1) filter |= EVFILT_READ;
+    if (events & 4) filter |= EVFILT_WRITE;
+    
+    // op 1 = EPOLL_CTL_ADD, 2 = EPOLL_CTL_DEL, 3 = EPOLL_CTL_MOD
+    int flags = (op == 2) ? EV_DELETE : (EV_ADD | EV_ENABLE);
+    if (op == 3) flags = EV_ADD | EV_ENABLE; // rough approximation
+    
+    EV_SET(&ev, fd, filter != 0 ? filter : EVFILT_READ, flags, 0, 0, NULL);
+    return kevent(epfd, &ev, 1, NULL, 0, NULL);
+}
+
+int epoll_wait(int epfd, void *events, int maxevents, int timeout) {
+    struct timespec ts;
+    struct timespec *tsp = NULL;
+    if (timeout >= 0) {
+        ts.tv_sec = timeout / 1000;
+        ts.tv_nsec = (timeout % 1000) * 1000000;
+        tsp = &ts;
+    }
+    
+    struct kevent *evlist = malloc(maxevents * sizeof(struct kevent));
+    int n = kevent(epfd, NULL, 0, evlist, maxevents, tsp);
+    
+    if (n > 0) {
+        int *out_events = (int*)events;
+        for (int i = 0; i < n; i++) {
+            int ep_ev = 0;
+            if (evlist[i].filter == EVFILT_READ) ep_ev |= 1;
+            if (evlist[i].filter == EVFILT_WRITE) ep_ev |= 4;
+            out_events[i*2] = ep_ev;
+            out_events[i*2+1] = evlist[i].ident;
+        }
+    }
+    free(evlist);
+    return n;
+}
+
 #endif

@@ -10,8 +10,13 @@ struct File {
 fn File.open(path, mode) -> File {
     let mut m = 0
     if (streq(mode, "r")) { m = 0 }
+#ifdef MACOS
+    if (streq(mode, "w")) { m = 513 }
+    if (streq(mode, "a")) { m = 521 }
+#else
     if (streq(mode, "w")) { m = 65 }
     if (streq(mode, "a")) { m = 1089 }
+#endif
 
     let fd = open(path, m, 420)
     if (fd < 0) {

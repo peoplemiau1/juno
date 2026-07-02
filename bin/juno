@@ -63,11 +63,17 @@ when "-h", "--help", "help"
       --no-audit        Disable resource safety auditing
       --native          Enable experimental native backend (non-LLVM)
 
-    #{BOLD}Examples:#{RESET}
-      juno main.juno                         # Compile for host
-      juno -O3 main.juno                      # Compile with max optimization
-      juno -a aarch64 -t flat kernel.juno    # Compile raw ARM binary
-      juno -r tests/test_simple.juno         # Compile and run
+      --os OS           Target OS:
+                        \e[32mlinux, macos, windows\e[0m (default: auto-detected)
+      --no-std          Do not implicitly import stdlib
+      --darling         Use Darling shell for macOS cross-compilation on Linux
+
+    \e[1mExamples:\e[0m
+      juno main.juno
+      juno -O3 main.juno
+      juno -a aarch64 -t flat kernel.juno
+      juno --os macos --darling main.juno    # Cross-compile for macOS using Darling
+      juno -r tests/test_simple.juno
   HELP
   exit 0
 end
@@ -85,7 +91,7 @@ end
       default_os = :windows
     end
 
-    options = { arch: default_arch, os: default_os, output: nil, run: false, show_asm: false, target: :exe, opt_level: 2 }
+    options = { arch: default_arch, os: default_os, output: nil, run: false, show_asm: false, target: :exe, opt_level: 2, no_std: false, darling: false }
     begin
       parser = OptionParser.new do |opts|
         opts.on("-a", "--arch ARCH", [:x86_64, :aarch64, :arm, :riscv32, :riscv64]) { |a| options[:arch] = a }
@@ -97,6 +103,8 @@ end
         opts.on("--asm") { options[:show_asm] = true }
         opts.on("--no-audit") { options[:no_audit] = true }
         opts.on("--native") { options[:native] = true }
+        opts.on("--no-std") { options[:no_std] = true }
+        opts.on("--darling") { options[:darling] = true }
       end
     
       parser.parse!
@@ -134,7 +142,9 @@ end
         native: options[:native],
         target: options[:target],
         opt_level: options[:opt_level],
-        stdlib_path: stdlib_path
+        stdlib_path: stdlib_path,
+        no_std: options[:no_std],
+        darling: options[:darling]
       )
     
       compiler.compile(input_file)
@@ -151,14 +161,17 @@ end
           puts "#{RED}#{BOLD}warning#{RESET}: cannot run non-executable target: #{options[:target]}"
         else
           puts "     #{GREEN}#{BOLD}Running#{RESET} #{output_path}..."
-          exec(output_path)
+          if options[:darling] && RUBY_PLATFORM !~ /darwin/i
+            darling_output = "/Volumes/SystemRoot" + File.expand_path(output_path)
+            exec("darling shell #{darling_output}")
+          else
+            exec(output_path)
+          end
         end
       end
     rescue => e
       puts "\n#{RED}#{BOLD}error#{RESET}: #{e.message}"
-      # Only show backtrace for internal compiler errors, not user/cli errors
       if e.message.include?("Linker") || e.message.include?("failed")
-        # Keep it clean
       else
         puts e.backtrace.join("\n") if ENV['JUNO_DEBUG']
       end

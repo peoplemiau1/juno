@@ -8,11 +8,13 @@ import "ds/collections.juno"
 import "std/format.juno"
 import "std/fs.juno"
 
+#ifndef MACOS
 fn OS_CLONE_THREAD() { return 0x10000 }
 fn OS_CLONE_VM()     { return 0x100 }
 fn OS_CLONE_FS()     { return 0x200 }
 fn OS_CLONE_FILES()  { return 0x400 }
 fn OS_CLONE_SIGHAND() { return 0x800 }
+#endif
 
 fn get_thread_flags() {
     return 0x10F00

@@ -19,14 +19,17 @@ module Juno
         os: :linux,
         output: "build/output",
         audit: true,
-        stdlib_path: find_stdlib_path
+        stdlib_path: find_stdlib_path,
+        no_std: false
       }.merge(options)
     end
 
     def compile(input_file)
       code = File.read(input_file)
-      if input_file != File.join(@options[:stdlib_path], "std.juno") && !code.include?("import \"std\"")
-        code = "import \"std.juno\"\n" + code
+      unless @options[:no_std]
+        if input_file != File.join(@options[:stdlib_path], "std.juno") && !code.include?("import \"std\"")
+          code = "import \"std.juno\"\n" + code
+        end
       end
 
       preprocessor = Preprocessor.new
@@ -92,7 +95,13 @@ module Juno
       runtime_src = File.expand_path("backend/llvm/runtime.c", __dir__)
       
       unless File.exist?(runtime_obj)
-        system("gcc -fPIC -O2 -c -o #{runtime_obj} #{runtime_src}")
+        if @options[:os] == :macos && RUBY_PLATFORM !~ /darwin/i && @options[:darling]
+          darling_runtime_obj = "/Volumes/SystemRoot" + runtime_obj
+          darling_runtime_src = "/Volumes/SystemRoot" + runtime_src
+          system("darling shell clang -fPIC -O2 -c -o #{darling_runtime_obj} #{darling_runtime_src}")
+        else
+          system("gcc -fPIC -O2 -c -o #{runtime_obj} #{runtime_src}")
+        end
       end
 
       if @options[:target] == :flat || @options[:target].to_s == "flat"
@@ -101,7 +110,14 @@ module Juno
         File.binwrite(@options[:output], File.binread(obj_file))
       else
         if @options[:os] == :macos
-          link_cmd = "gcc -o #{@options[:output]} #{obj_file} #{runtime_obj}"
+          if RUBY_PLATFORM !~ /darwin/i && @options[:darling]
+            darling_output = "/Volumes/SystemRoot" + File.expand_path(@options[:output])
+            darling_obj_file = "/Volumes/SystemRoot" + File.expand_path(obj_file)
+            darling_runtime_obj = "/Volumes/SystemRoot" + runtime_obj
+            link_cmd = "darling shell clang -o #{darling_output} #{darling_obj_file} #{darling_runtime_obj}"
+          else
+            link_cmd = "gcc -o #{@options[:output]} #{obj_file} #{runtime_obj}"
+          end
         else
           link_cmd = "gcc -no-pie -o #{@options[:output]} #{obj_file} #{runtime_obj}"
         end

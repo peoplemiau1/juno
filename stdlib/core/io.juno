@@ -62,7 +62,11 @@ fn print_newline() { write(1, "\n", 1) }
 fn print_space() { write(1, " ", 1) }
 
 fn os_write_file(path, content, len) {
+#ifdef MACOS
+    let fd = open(path, 513, 420)
+#else
     let fd = open(path, 65, 420)
+#endif
     if (fd < 0) { return fd }
     write(fd, content, len)
     close(fd)
