@@ -62,6 +62,7 @@ when "-h", "--help", "help"
       --asm             Dump generated LLVM/Assembly to log
       --no-audit        Disable resource safety auditing
       --native          Enable experimental native backend (non-LLVM)
+      --static          Enable fully static linking (Linux only)
 
       --os OS           Target OS:
                         \e[32mlinux, macos, windows\e[0m (default: auto-detected)
@@ -71,6 +72,7 @@ when "-h", "--help", "help"
     \e[1mExamples:\e[0m
       juno main.juno
       juno -O3 main.juno
+      juno -O3 --static main.juno            # Compile fully static standalone binary
       juno -a aarch64 -t flat kernel.juno
       juno --os macos --darling main.juno    # Cross-compile for macOS using Darling
       juno -r tests/test_simple.juno
@@ -78,102 +80,104 @@ when "-h", "--help", "help"
   exit 0
 end
     
-    require_relative "../src/juno/compiler"
+require_relative "../src/juno/compiler"
     
-    default_arch = :x86_64
-    if RUBY_PLATFORM =~ /arm64|aarch64/i
-      default_arch = :aarch64
-    end
-    default_os = :linux
-    if RUBY_PLATFORM =~ /darwin/i
-      default_os = :macos
-    elsif RUBY_PLATFORM =~ /mswin|mingw|cygwin/i
-      default_os = :windows
-    end
+default_arch = :x86_64
+if RUBY_PLATFORM =~ /arm64|aarch64/i
+  default_arch = :aarch64
+end
+default_os = :linux
+if RUBY_PLATFORM =~ /darwin/i
+  default_os = :macos
+elsif RUBY_PLATFORM =~ /mswin|mingw|cygwin/i
+  default_os = :windows
+end
 
-    options = { arch: default_arch, os: default_os, output: nil, run: false, show_asm: false, target: :exe, opt_level: 2, no_std: false, darling: false }
-    begin
-      parser = OptionParser.new do |opts|
-        opts.on("-a", "--arch ARCH", [:x86_64, :aarch64, :arm, :riscv32, :riscv64]) { |a| options[:arch] = a }
-        opts.on("--os OS", [:linux, :macos, :windows]) { |o| options[:os] = o }
-        opts.on("-t", "--target TARGET", [:exe, :flat, :obj]) { |t| options[:target] = t }
-        opts.on("-O", "--opt LEVEL", String) { |o| options[:opt_level] = o }
-        opts.on("-o", "--output FILE") { |o| options[:output] = o }
-        opts.on("-r", "--run") { options[:run] = true }
-        opts.on("--asm") { options[:show_asm] = true }
-        opts.on("--no-audit") { options[:no_audit] = true }
-        opts.on("--native") { options[:native] = true }
-        opts.on("--no-std") { options[:no_std] = true }
-        opts.on("--darling") { options[:darling] = true }
-      end
-    
-      parser.parse!
-    rescue OptionParser::ParseError => e
-      puts "#{RED}#{BOLD}error#{RESET}: #{e.message}"
-      puts "Run 'juno --help' for usage information."
-      exit 1
-    end
-    
-    input_file = ARGV[0]
-    if !input_file
-      puts "#{RED}#{BOLD}error#{RESET}: no input file specified"
-      puts "Usage: juno [options] <input_file>"
-      exit 1
-    end
-    
-    if !File.exist?(input_file)
-      puts "#{RED}#{BOLD}error#{RESET}: file not found: #{input_file}"
-      exit 1
-    end
-    
-    output_path = options[:output] || File.join(PROJECT_ROOT, "build", "output")
-    FileUtils.mkdir_p(File.dirname(output_path))
-    
-    begin
-      puts "   #{GREEN}#{BOLD}Compiling#{RESET} #{input_file} (#{options[:arch]} -> #{options[:target]})"
-    
-      stdlib_path = ENV['JUNO_STDLIB'] || File.join(PROJECT_ROOT, "stdlib")
-    
-      compiler = Juno::Compiler.new(
-        arch: options[:arch], 
-        os: options[:os], 
-        output: output_path, 
-        audit: !options[:no_audit],
-        native: options[:native],
-        target: options[:target],
-        opt_level: options[:opt_level],
-        stdlib_path: stdlib_path,
-        no_std: options[:no_std],
-        darling: options[:darling]
-      )
-    
-      compiler.compile(input_file)
-      
-      puts "    #{GREEN}#{BOLD}Finished#{RESET} #{options[:target]} output at #{output_path}"
-    
-      if options[:show_asm]
-        puts "\n#{BOLD}Generated Log (#{options[:arch]}):#{RESET}"
-        puts (compiler.asm_log || ["No log generated."]).join("\n")
-      end
-    
-      if options[:run]
-        if options[:target] != :exe
-          puts "#{RED}#{BOLD}warning#{RESET}: cannot run non-executable target: #{options[:target]}"
-        else
-          puts "     #{GREEN}#{BOLD}Running#{RESET} #{output_path}..."
-          if options[:darling] && RUBY_PLATFORM !~ /darwin/i
-            darling_output = "/Volumes/SystemRoot" + File.expand_path(output_path)
-            exec("darling shell #{darling_output}")
-          else
-            exec(output_path)
-          end
-        end
-      end
-    rescue => e
-      puts "\n#{RED}#{BOLD}error#{RESET}: #{e.message}"
-      if e.message.include?("Linker") || e.message.include?("failed")
+options = { arch: default_arch, os: default_os, output: nil, run: false, show_asm: false, target: :exe, opt_level: 2, no_std: false, darling: false, static: false }
+begin
+  parser = OptionParser.new do |opts|
+    opts.on("-a", "--arch ARCH", [:x86_64, :aarch64, :arm, :riscv32, :riscv64]) { |a| options[:arch] = a }
+    opts.on("--os OS", [:linux, :macos, :windows]) { |o| options[:os] = o }
+    opts.on("-t", "--target TARGET", [:exe, :flat, :obj]) { |t| options[:target] = t }
+    opts.on("-O", "--opt LEVEL", String) { |o| options[:opt_level] = o }
+    opts.on("-o", "--output FILE") { |o| options[:output] = o }
+    opts.on("-r", "--run") { options[:run] = true }
+    opts.on("--asm") { options[:show_asm] = true }
+    opts.on("--no-audit") { options[:no_audit] = true }
+    opts.on("--native") { options[:native] = true }
+    opts.on("--no-std") { options[:no_std] = true }
+    opts.on("--darling") { options[:darling] = true }
+    opts.on("--static") { options[:static] = true }
+  end
+
+  parser.parse!
+rescue OptionParser::ParseError => e
+  puts "#{RED}#{BOLD}error#{RESET}: #{e.message}"
+  puts "Run 'juno --help' for usage information."
+  exit 1
+end
+
+input_file = ARGV[0]
+if !input_file
+  puts "#{RED}#{BOLD}error#{RESET}: no input file specified"
+  puts "Usage: juno [options] <input_file>"
+  exit 1
+end
+
+if !File.exist?(input_file)
+  puts "#{RED}#{BOLD}error#{RESET}: file not found: #{input_file}"
+  exit 1
+end
+
+output_path = options[:output] || File.join(PROJECT_ROOT, "build", "output")
+FileUtils.mkdir_p(File.dirname(output_path))
+
+begin
+  puts "   #{GREEN}#{BOLD}Compiling#{RESET} #{input_file} (#{options[:arch]} -> #{options[:target]})"
+
+  stdlib_path = ENV['JUNO_STDLIB'] || File.join(PROJECT_ROOT, "stdlib")
+
+  compiler = Juno::Compiler.new(
+    arch: options[:arch], 
+    os: options[:os], 
+    output: output_path, 
+    audit: !options[:no_audit],
+    native: options[:native],
+    target: options[:target],
+    opt_level: options[:opt_level],
+    stdlib_path: stdlib_path,
+    no_std: options[:no_std],
+    darling: options[:darling],
+    static: options[:static]
+  )
+
+  compiler.compile(input_file)
+  
+  puts "    #{GREEN}#{BOLD}Finished#{RESET} #{options[:target]} output at #{output_path}"
+
+  if options[:show_asm]
+    puts "\n#{BOLD}Generated Log (#{options[:arch]}):#{RESET}"
+    puts (compiler.asm_log || ["No log generated."]).join("\n")
+  end
+
+  if options[:run]
+    if options[:target] != :exe
+      puts "#{RED}#{BOLD}warning#{RESET}: cannot run non-executable target: #{options[:target]}"
+    else
+      puts "     #{GREEN}#{BOLD}Running#{RESET} #{output_path}..."
+      if options[:darling] && RUBY_PLATFORM !~ /darwin/i
+        darling_output = "/Volumes/SystemRoot" + File.expand_path(output_path)
+        exec("darling shell #{darling_output}")
       else
-        puts e.backtrace.join("\n") if ENV['JUNO_DEBUG']
+        exec(output_path)
       end
-      exit 1
     end
+  end
+rescue => e
+  puts "\n#{RED}#{BOLD}error#{RESET}: #{e.message}"
+  if e.message.include?("Linker") || e.message.include?("failed")
+  else
+    puts e.backtrace.join("\n") if ENV['JUNO_DEBUG']
+  end
+  exit 1
+end

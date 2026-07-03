@@ -5,7 +5,6 @@ require_relative "middle/importer"
 require_relative "middle/monomorphizer"
 require_relative "middle/semantic"
 require_relative "middle/analyzer/auto_drop"
-require_relative "middle/analyzer/safety_checker"
 require_relative "backend/llvm/generator"
 require_relative "errors"
 
@@ -18,9 +17,9 @@ module Juno
         arch: :x86_64,
         os: :linux,
         output: "build/output",
-        audit: true,
         stdlib_path: find_stdlib_path,
-        no_std: false
+        no_std: false,
+        static: ARGV.include?("--static") || ARGV.include?("-static")
       }.merge(options)
     end
 
@@ -53,11 +52,6 @@ module Juno
 
       auto_drop = AutoDropPass.new(ast)
       ast = auto_drop.run
-
-      if @options[:audit]
-        safety_checker = JunoSafetyChecker.new(ast, analyzer.function_signatures, code, input_file)
-        safety_checker.check
-      end
 
       generator = LLVMGenerator.new(ast, source: code, filename: input_file, arch: @options[:arch])
       llvm_ir = generator.generate
@@ -110,18 +104,106 @@ module Juno
       elsif @options[:target] == :obj || @options[:target].to_s == "obj"
         File.binwrite(@options[:output], File.binread(obj_file))
       else
+        libs = []
+        collect_libs = ->(n) do
+          return unless n.is_a?(Hash)
+          if n[:type] == :extern_definition && n[:lib]
+            lib_clean = n[:lib].to_s.sub(/^lib/, '').sub(/\.(so|dylib|dll)(\.\d+)*$/, '')
+            libs << "-l#{lib_clean}" unless %w[c libc].include?(lib_clean)
+          end
+          n.each_value do |v|
+            if v.is_a?(Hash)
+              collect_libs.call(v)
+            elsif v.is_a?(Array)
+              v.each { |it| collect_libs.call(it) if it.is_a?(Hash) }
+            end
+          end
+        end
+        ast.each { |n| collect_libs.call(n) }
+
+        lib_search_paths = [
+          ".",
+          "/usr/lib",
+          "/usr/local/lib",
+          "/lib",
+          "/lib64",
+          "/usr/lib/x86_64-linux-gnu",
+          "/usr/lib/aarch64-linux-gnu"
+        ]
+
+        static_libs = []
+        dynamic_libs = []
+
+        if @options[:static]
+          has_external_dynamic_libs = libs.any? do |lib|
+            lib_name = lib.sub(/^-l/, '')
+            next false if %w[c m].include?(lib_name)
+            static_exists = lib_search_paths.any? do |dir|
+              File.exist?(File.join(dir, "lib#{lib_name}.a")) || File.exist?(File.join(dir, "#{lib_name}.a"))
+            end
+            !static_exists
+          end
+
+          (libs + ["-lm", "-lc"]).uniq.each do |lib|
+            lib_name = lib.sub(/^-l/, '')
+            if %w[c m].include?(lib_name)
+              if has_external_dynamic_libs
+                dynamic_libs << lib
+              else
+                static_libs << lib
+              end
+            else
+              static_exists = lib_search_paths.any? do |dir|
+                File.exist?(File.join(dir, "lib#{lib_name}.a")) || File.exist?(File.join(dir, "#{lib_name}.a"))
+              end
+              if static_exists
+                static_libs << lib
+              else
+                dynamic_libs << lib
+              end
+            end
+          end
+        else
+          dynamic_libs = (libs + ["-lm"]).uniq
+        end
+
+        if @options[:static] && @options[:os] == :macos
+          $stderr.puts "Warning: macOS does not support fully static linking. Falling back to dynamic linking."
+          @options[:static] = false
+        end
+
         if @options[:os] == :macos
+          libs_str = (libs + ["-lm"]).uniq.join(" ")
           if RUBY_PLATFORM !~ /darwin/i && @options[:darling]
             darling_output = "/Volumes/SystemRoot" + File.expand_path(@options[:output])
             darling_obj_file = "/Volumes/SystemRoot" + File.expand_path(obj_file)
             darling_runtime_obj = "/Volumes/SystemRoot" + runtime_obj
-            link_cmd = "darling shell clang -o #{darling_output} #{darling_obj_file} #{darling_runtime_obj}"
+            link_cmd = "darling shell clang -o #{darling_output} #{darling_obj_file} #{darling_runtime_obj} -L. -Wl,-rpath,'\$ORIGIN' -Wl,--gc-sections #{libs_str} -lm"
           else
-            link_cmd = "gcc -o #{@options[:output]} #{obj_file} #{runtime_obj}"
+            link_cmd = "gcc -o #{@options[:output]} #{obj_file} #{runtime_obj} -L. -Wl,-rpath,'\$ORIGIN' -Wl,--gc-sections #{libs_str} -lm"
           end
         else
-          link_cmd = "gcc -no-pie -o #{@options[:output]} #{obj_file} #{runtime_obj}"
+          if @options[:static]
+            libs_str = "-Wl,-Bstatic "
+            libs_str << static_libs.uniq.join(" ")
+            if !dynamic_libs.empty?
+              libs_str << " -Wl,-Bdynamic "
+              libs_str << dynamic_libs.uniq.join(" ")
+            end
+            link_cmd = "gcc -no-pie -o #{@options[:output]} #{obj_file} #{runtime_obj} -L. -Wl,--gc-sections #{libs_str}"
+          else
+            libs_str = (dynamic_libs + ["-lm"]).uniq.join(" ")
+            link_cmd = "gcc -no-pie -o #{@options[:output]} #{obj_file} #{runtime_obj} -L. -Wl,-rpath,'\$ORIGIN' -Wl,--gc-sections #{libs_str}"
+          end
         end
+
+        if ENV['JUNO_DEBUG']
+          $stderr.puts "DEBUG: Collected libraries: #{libs.inspect}"
+          $stderr.puts "DEBUG: Static libs: #{static_libs.inspect}"
+          $stderr.puts "DEBUG: Dynamic libs: #{dynamic_libs.inspect}"
+          $stderr.puts "DEBUG: Linking command: #{link_cmd}"
+        end
+
         system(link_cmd)
       end
 

@@ -19,6 +19,7 @@ module ParserStatements
 
     if token[:type] == :keyword
       case token[:value]
+     when 'import_c' then parse_import_c
       when 'if'       then parse_if
       when 'while'    then parse_while
       when 'for'      then parse_for
@@ -576,3 +577,14 @@ module ParserStatements
     with_loc(AST::ContinueStatement.new, token)
   end
 end
+
+def parse_import_c
+    token = consume_keyword('import_c')
+    header_path = consume(:string)[:value]
+    lib_name = "libc.so.6"
+    if match_keyword?('from')
+      consume_keyword('from')
+      lib_name = consume(:string)[:value]
+    end
+    with_loc(AST::ImportC.new(header_path, lib_name), token)
+  end

@@ -148,6 +148,18 @@ module AST
     def type; :array_decl; end
   end
 
+  class ImportC < Node
+    attr_accessor :header_path, :lib_name
+    def initialize(header_path, lib_name, **opts)
+      super(**opts)
+      @header_path = header_path
+      @lib_name = lib_name
+      self[:header_path] = header_path
+      self[:lib_name] = lib_name
+    end
+    def type; :import_c; end
+  end
+
   class ArrayAssign < Node
     attr_accessor :name, :index, :value
     def initialize(name, index, value, **opts)

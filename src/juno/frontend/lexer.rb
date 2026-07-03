@@ -33,7 +33,7 @@ class Lexer
         end
         scanner.getch if !scanner.eos?
         add_token(:insertC, "insertC", content)
-      elsif m = scanner.scan(/(struct|union|fn|func|def|if|elif|else|return|while|loop|break|continue|let|for|import|use|packed|extern|from|match|todo|panic|as|true|false|mut|type|enum|real|float|int|string|bool|ptr)\b/)
+      elsif m = scanner.scan(/(struct|union|fn|func|def|if|elif|else|return|while|loop|break|continue|let|for|import|use|packed|extern|from|match|todo|panic|as|true|false|mut|type|enum|real|float|int|string|bool|ptr|import_c|import_ffi|importC|import_c|import_raw|import_c|import_lib|import_dll|import_so|import_dylib|import_h|import_header|import_headers|import_libs|import_lib|import_libs|import_dll|import_so|import_dylib|import_a|import_lib|import_libs)\b/)
         kw = m; kw = "fn" if kw == "func" || kw == "def"
         add_token(:keyword, kw)
       elsif scanner.scan(/"/)
