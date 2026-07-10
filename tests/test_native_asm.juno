@@ -1,0 +1,17 @@
+fn asm_add_ten(p: ptr) -> int {
+    let val = load_ptr(p)
+    asm clobbers(rax, memory) {
+        mov rax, [rdi]
+        add rax, 10
+        mov [rdi], rax
+    }
+    return val
+}
+
+fn main() {
+    output("Running Native ASM Test...")
+    let val = 5
+    let old = asm_add_ten(&val)
+    output_int(val)
+    return val - 15
+}

@@ -120,7 +120,7 @@ module Juno
           if v.is_a?(Hash)
             var_ref?(v, name) || scan_expr(v, name)
           elsif v.is_a?(Array)
-            v.any? { |it| it.is_a?(Hash) && (var_ref?(it, name) || scan_expr(it, name)) }
+            v.any? { |it| it.is_a?(Hash) && scan_call_args(it, name) }
           else
             false
           end
@@ -224,9 +224,367 @@ module Juno
       end
     end
 
+    class StructResourceGen
+      def initialize(ast)
+        @ast = ast
+        @structs = {}
+        @existing_fns = {}
+      end
+
+      def run
+        collect
+        return @ast if @structs.empty?
+        build_graph
+        detect_cycles
+
+        generated = []
+        @structs.each_key do |name|
+          generated << gen_drop(name) unless @existing_fns["#{name}_drop"]
+          generated << gen_dup(name) unless @existing_fns["#{name}_dup"]
+        end
+        @ast.concat(generated)
+        @ast
+      end
+
+      private
+
+      def collect
+        @ast.each do |n|
+          next unless n.is_a?(Hash)
+          if n[:type] == :struct_definition
+            fields = (n[:fields] || []).map do |f|
+              if f.is_a?(Hash)
+                { name: f[:name], type: (f[:type] || f[:type_name]).to_s }
+              else
+                { name: f.to_s, type: "int" }
+              end
+            end
+            @structs[n[:name]] = fields
+          elsif n[:type] == :function_definition
+            @existing_fns[n[:name]] = true
+          end
+        end
+      end
+
+      def build_graph
+        @graph = {}
+        @structs.each do |name, fields|
+          @graph[name] = fields.map { |f| f[:type] }.uniq.select { |t| @structs.key?(t) }
+        end
+      end
+
+      def detect_cycles
+        @recursive = {}
+        @structs.each_key { |name| @recursive[name] = path_exists?(name, name, {}) }
+      end
+
+      def path_exists?(from, to, visited)
+        (@graph[from] || []).each do |nxt|
+          return true if nxt == to
+          next if visited[nxt]
+          visited[nxt] = true
+          return true if path_exists?(nxt, to, visited)
+        end
+        false
+      end
+
+      def field_size
+        8
+      end
+
+      def struct_size(name)
+        (@structs[name]&.size || 0) * field_size
+      end
+
+      def is_ptr_type?(t)
+        !@structs.key?(t) && Scan.resource_type?(t)
+      end
+
+      def v(name)
+        { type: :variable, name: name }
+      end
+
+      def member(receiver, field_name)
+        { type: :member_access, receiver: receiver, member: field_name }
+      end
+
+      def call(name, args)
+        { type: :fn_call, name: name, args: args }
+      end
+
+      def assign(name, expr, let: false)
+        { type: :assignment, let: let, name: name, expression: expr }
+      end
+
+      def lit_null
+        { type: :null_literal }
+      end
+
+      def lit_int(n)
+        { type: :int_literal, value: n }
+      end
+
+      def bin(op, l, r)
+        { type: :binary_op, op: op, left: l, right: r }
+      end
+
+      def stack_helpers(prefix, word_count)
+        buf = "#{prefix}_buf"
+        cap = "#{prefix}_cap"
+        sp  = "#{prefix}_sp"
+        init_cap = 64
+
+        init = [
+          assign(buf, call("malloc", [lit_int(init_cap * word_count * 8)]), let: true),
+          assign(cap, lit_int(init_cap), let: true),
+          assign(sp, lit_int(0), let: true)
+        ]
+
+        grow_stmt = lambda do
+          newcap = "#{prefix}_newcap"
+          newbuf = "#{prefix}_newbuf"
+          ci = "#{prefix}_ci"
+          {
+            type: :if_statement,
+            condition: bin("==", v(sp), v(cap)),
+            body: [
+              assign(newcap, bin("*", v(cap), lit_int(2)), let: true),
+              assign(newbuf, call("malloc", [bin("*", bin("*", v(newcap), lit_int(word_count)), lit_int(8))]), let: true),
+              assign(ci, lit_int(0), let: true),
+              {
+                type: :while_statement,
+                condition: bin("<", v(ci), bin("*", v(sp), lit_int(word_count))),
+                body: [
+                  call("store_i64", [
+                    bin("+", v(newbuf), bin("*", v(ci), lit_int(8))),
+                    call("load_i64", [bin("+", v(buf), bin("*", v(ci), lit_int(8)))])
+                  ]),
+                  assign(ci, bin("+", v(ci), lit_int(1)))
+                ]
+              },
+              call("free", [v(buf)]),
+              assign(buf, v(newbuf)),
+              assign(cap, v(newcap))
+            ],
+            else_body: []
+          }
+        end
+
+        push = lambda do |value_exprs|
+          stmts = [grow_stmt.call]
+          value_exprs.each_with_index do |val, i|
+            stmts << call("store_i64", [
+              bin("+", v(buf), bin("*", bin("+", bin("*", v(sp), lit_int(word_count)), lit_int(i)), lit_int(8))),
+              val
+            ])
+          end
+          stmts << assign(sp, bin("+", v(sp), lit_int(1)))
+          stmts
+        end
+
+        pop = lambda do |target_names|
+          stmts = [assign(sp, bin("-", v(sp), lit_int(1)))]
+          target_names.each_with_index do |name, i|
+            stmts << assign(name, call("load_i64", [
+              bin("+", v(buf), bin("*", bin("+", bin("*", v(sp), lit_int(word_count)), lit_int(i)), lit_int(8)))
+            ]), let: true)
+          end
+          stmts
+        end
+
+        {
+          buf: buf, sp: sp, cap: cap,
+          init: init, push: push, pop: pop,
+          empty_cond: bin("==", v(sp), lit_int(0)),
+          not_empty_cond: bin("!=", v(sp), lit_int(0)),
+          free: call("free", [v(buf)])
+        }
+      end
+
+      def gen_drop(name)
+        fields = @structs[name]
+        body =
+          if @recursive[name]
+            iterative_drop_body(name, fields)
+          else
+            b = []
+            fields.each do |f|
+              t = f[:type]
+              if @structs.key?(t)
+                b << call("#{t}_drop", [member("self", f[:name])])
+              elsif is_ptr_type?(t)
+                b << call("free", [member("self", f[:name])])
+              end
+            end
+            b << call("free", [v("self")])
+            b
+          end
+
+        {
+          type: :function_definition, name: "#{name}_drop",
+          params: ["self"], param_types: { "self" => name },
+          body: body, skip_perceus: true
+        }
+      end
+
+      def iterative_drop_body(name, fields)
+        self_ref_fields = fields.select { |f| f[:type] == name }
+        other_fields = fields.reject { |f| f[:type] == name }
+
+        st = stack_helpers("__ds_#{name}", 1)
+        cur = "__cur_#{name}"
+
+        body = []
+        body.concat(st[:init])
+        body.concat(st[:push].call([v("self")]))
+
+        inner = []
+        other_fields.each do |f|
+          t = f[:type]
+          if @structs.key?(t)
+            inner << call("#{t}_drop", [member(cur, f[:name])])
+          elsif is_ptr_type?(t)
+            inner << call("free", [member(cur, f[:name])])
+          end
+        end
+        self_ref_fields.each do |f|
+          inner.concat(st[:push].call([member(cur, f[:name])]))
+        end
+        inner << call("free", [v(cur)])
+
+        loop_body = st[:pop].call([cur])
+        loop_body << {
+          type: :if_statement,
+          condition: bin("!=", v(cur), lit_null),
+          body: inner,
+          else_body: []
+        }
+
+        body << { type: :while_statement, condition: st[:not_empty_cond], body: loop_body }
+        body << st[:free]
+        body
+      end
+
+      def gen_dup(name)
+        fields = @structs[name]
+        self_ref_fields = fields.select { |f| f[:type] == name }
+
+        if @recursive[name] && !self_ref_fields.empty?
+          return gen_iterative_dup_nary(name, fields, self_ref_fields)
+        end
+
+        body = []
+        body << assign("__new", call("malloc", [lit_int(struct_size(name))]), let: true)
+        fields.each do |f|
+          t = f[:type]
+          src = member("self", f[:name])
+          value =
+            if @structs.key?(t)
+              call("#{t}_dup", [src])
+            elsif %w[str string].include?(t) || is_ptr_type?(t)
+              call("strdup", [src])
+            else
+              src
+            end
+          body << assign("__new.#{f[:name]}", value)
+        end
+        body << { type: :return, expression: v("__new") }
+
+        {
+          type: :function_definition, name: "#{name}_dup",
+          params: ["self"], param_types: { "self" => name },
+          body: body, skip_perceus: true
+        }
+      end
+
+      def gen_iterative_dup_nary(name, fields, self_ref_fields)
+        other_fields = fields.reject { |f| f[:type] == name }
+        k = self_ref_fields.size
+
+        st = stack_helpers("__dp_#{name}", 3)
+        orig = "__orig_#{name}"
+        parent = "__parent_#{name}"
+        tag = "__tag_#{name}"
+        newn = "__newn_#{name}"
+
+        body = []
+        body << assign("__head", lit_null, let: true)
+        body.concat(st[:init])
+        body.concat(st[:push].call([v("self"), lit_null, lit_int(-1)]))
+
+        build_new = []
+        other_fields.each do |f|
+          t = f[:type]
+          src = member(orig, f[:name])
+          value =
+            if @structs.key?(t)
+              call("#{t}_dup", [src])
+            elsif %w[str string].include?(t) || is_ptr_type?(t)
+              call("strdup", [src])
+            else
+              src
+            end
+          build_new << assign("#{newn}.#{f[:name]}", value)
+        end
+        self_ref_fields.each_with_index do |f, i|
+          build_new.concat(st[:push].call([member(orig, f[:name])]))
+        end
+
+        non_null_branch = [assign(newn, call("malloc", [lit_int(struct_size(name))]), let: true)]
+        non_null_branch.concat(build_new)
+
+        null_branch = [assign(newn, lit_null, let: true)]
+
+        dispatch =
+          if k == 1
+            f = self_ref_fields[0]
+            {
+              type: :if_statement,
+              condition: bin("==", v(tag), lit_int(-1)),
+              body: [assign("__head", v(newn))],
+              else_body: [assign("#{parent}.#{f[:name]}", v(newn))]
+            }
+          else
+            elif_branches = self_ref_fields.each_with_index.filter_map do |f, i|
+              next nil if i == 0
+              { condition: bin("==", v(tag), lit_int(i)), body: [assign("#{parent}.#{f[:name]}", v(newn))] }
+            end
+            {
+              type: :if_statement,
+              condition: bin("==", v(tag), lit_int(-1)),
+              body: [assign("__head", v(newn))],
+              elif_branches: [
+                { condition: bin("==", v(tag), lit_int(0)), body: [assign("#{parent}.#{self_ref_fields[0][:name]}", v(newn))] },
+                *elif_branches
+              ],
+              else_body: []
+            }
+          end
+
+        loop_body = st[:pop].call([orig, parent, tag])
+        loop_body << {
+          type: :if_statement,
+          condition: bin("==", v(orig), lit_null),
+          body: null_branch,
+          else_body: non_null_branch
+        }
+        loop_body << dispatch
+
+        body << { type: :while_statement, condition: st[:not_empty_cond], body: loop_body }
+        body << st[:free]
+        body << { type: :return, expression: v("__head") }
+
+        {
+          type: :function_definition, name: "#{name}_dup",
+          params: ["self"], param_types: { "self" => name },
+          body: body, skip_perceus: true
+        }
+      end
+    end
+
     class Perceus
       ScopeFrame = Struct.new(:kind, :bindings)
-      Binding = Struct.new(:shared, :stack, :type_name)
+      Binding = Struct.new(:shared, :stack, :type_name, :aliased)
 
       def initialize(ast, signatures = {})
         @ast = ast
@@ -257,10 +615,23 @@ module Juno
         nil
       end
 
-      def forget(name)
+      def owner_frame_for(name)
+        base = name.to_s.split('.').first
+        scope_of(base) || current_frame
+      end
+
+      def forget_with_fields(name)
         return unless Scan.linear_name?(name)
-        f = scope_of(name)
-        f.bindings.delete(name) if f
+        prefix = "#{name}."
+        @scopes.each do |f|
+          f.bindings.keys.each do |k|
+            f.bindings.delete(k) if k == name || k.start_with?(prefix)
+          end
+        end
+      end
+
+      def ordered_keys(bindings)
+        bindings.keys.sort_by { |k| -k.count('.') }
       end
 
       def clone_scopes(frames)
@@ -278,10 +649,15 @@ module Juno
         sig[index]
       end
 
-      def dup_node(name, ref)
+      def dup_node(name, ref, binding)
         l = ref.is_a?(Hash) ? ref[:line] : nil
         c = ref.is_a?(Hash) ? ref[:column] : nil
-        { type: :fn_call, name: "dup", args: [{ type: :variable, name: name, line: l, column: c }], line: l, column: c }
+        {
+          type: :fn_call, name: "dup",
+          args: [{ type: :variable, name: name, line: l, column: c }],
+          stack: binding&.stack, resource_type: binding&.type_name,
+          line: l, column: c
+        }
       end
 
       def drop_node(name, ref, binding)
@@ -315,13 +691,19 @@ module Juno
         return nil unless binding
         return nil unless owning
 
+        if binding.aliased
+          return { moved: false, shared: true, stack: binding.stack, type_name: binding.type_name }
+        end
+
         if Scan.references?(remaining, name)
-          pending << dup_node(name, node)
+          tmp = fresh_name("dup")
+          pending << let_node(tmp, dup_node(name, node, binding), node)
           binding.shared = true
+          node[:name] = tmp if node.is_a?(Hash)
           { moved: false, shared: true, stack: false, type_name: binding.type_name }
         else
           info = { moved: true, shared: binding.shared, stack: binding.stack, type_name: binding.type_name }
-          forget(name)
+          forget_with_fields(name)
           info
         end
       end
@@ -350,7 +732,12 @@ module Juno
           expr[:expression] = visit_expr(expr[:expression], remaining, pending, owning: false)
           expr
         when :borrow
-          expr[:expression] = visit_expr(expr[:expression], remaining, pending, owning: false)
+          inner = expr[:expression]
+          if inner.is_a?(Hash) && inner[:type] == :variable
+            b = find(inner[:name])
+            b.aliased = true if b
+          end
+          expr[:expression] = visit_expr(inner, remaining, pending, owning: false)
           expr
         when :match_expression
           process_match(expr, remaining, pending)
@@ -362,13 +749,19 @@ module Juno
 
       def visit_call(node, remaining, pending)
         if release_call?(node)
-          var = node[:args].first[:name]
-          if find(var)
+          var = nil
+          if node[:name] == "free" && node[:args]&.first.is_a?(Hash)
+            var = node[:args].first[:name]
+          elsif node[:name].is_a?(String) && node[:name].include?('.')
+            var = node[:name].split('.', 2).first
+          end
+
+          if var && find(var)
             if Scan.references?(remaining, var)
               return nil
             else
               b = find(var)
-              forget(var)
+              forget_with_fields(var)
               return drop_node(var, node, b)
             end
           end
@@ -404,6 +797,8 @@ module Juno
       end
 
       def process_function(node)
+        return node if node[:skip_perceus]
+
         push_scope(:function)
         (node[:params] || []).each_with_index do |p, i|
           p_name = p.is_a?(Hash) ? p[:name] : p
@@ -411,7 +806,7 @@ module Juno
           next if borrowed_param?(node[:name], i)
           type_name = p.is_a?(Hash) ? p[:type_name] : nil
           next unless Scan.resource_type?(type_name)
-          current_frame.bindings[p_name] = Binding.new(false, false, type_name)
+          current_frame.bindings[p_name] = Binding.new(false, false, type_name, false)
         end
         node[:body] = process_statements(node[:body] || [], [])
         drain_scope(node[:body], current_frame)
@@ -467,8 +862,9 @@ module Juno
 
         drops = []
         @scopes.each do |f|
-          f.bindings.keys.dup.each do |n|
-            drops << drop_node(n, stmt, f.bindings[n])
+          ordered_keys(f.bindings).each do |n|
+            b = f.bindings[n]
+            drops << drop_node(n, stmt, b) unless b.aliased
             f.bindings.delete(n)
           end
         end
@@ -482,8 +878,9 @@ module Juno
 
       def process_break_continue(stmt, pending)
         @scopes.reverse_each do |frame|
-          frame.bindings.keys.dup.each do |n|
-            pending << drop_node(n, stmt, frame.bindings[n])
+          ordered_keys(frame.bindings).each do |n|
+            b = frame.bindings[n]
+            pending << drop_node(n, stmt, b) unless b.aliased
             frame.bindings.delete(n)
           end
           break if frame.kind == :loop
@@ -505,21 +902,22 @@ module Juno
 
         return stmt unless Scan.linear_name?(name)
 
-        frame = stmt[:let] ? current_frame : (scope_of(name) || current_frame)
+        frame = stmt[:let] ? current_frame : (scope_of(name) || owner_frame_for(name))
 
         old_alive = !stmt[:let] && frame.bindings.key?(name)
         post = []
         if old_alive
-          post << drop_node(name, stmt, frame.bindings[name])
+          old_b = frame.bindings[name]
+          post << drop_node(name, stmt, old_b) unless old_b.aliased
           frame.bindings.delete(name)
         end
 
         if Scan.allocator_call?(stmt[:expression])
-          frame.bindings[name] = Binding.new(false, !!stmt[:expression][:stack_promotable] || !!stmt[:stack_promotable], stmt[:type_name])
+          frame.bindings[name] = Binding.new(false, !!stmt[:expression][:stack_promotable] || !!stmt[:stack_promotable], stmt[:type_name], false)
         elsif Scan.allocates_result?(stmt[:expression])
-          frame.bindings[name] = Binding.new(false, false, stmt[:type_name])
+          frame.bindings[name] = Binding.new(false, false, stmt[:type_name], false)
         elsif info
-          frame.bindings[name] = Binding.new(info[:shared], info[:moved] ? info[:stack] : false, info[:type_name])
+          frame.bindings[name] = Binding.new(info[:shared], info[:moved] ? info[:stack] : false, info[:type_name], false)
         end
 
         post.empty? ? stmt : [stmt, *post]
@@ -527,8 +925,9 @@ module Juno
 
       def drain_scope(body, frame)
         return body if Scan.diverges?(body)
-        frame.bindings.keys.dup.each do |n|
-          body << drop_node(n, body.last || {}, frame.bindings[n])
+        ordered_keys(frame.bindings).each do |n|
+          b = frame.bindings[n]
+          body << drop_node(n, body.last || {}, b) unless b.aliased
           frame.bindings.delete(n)
         end
         body
@@ -698,7 +1097,7 @@ module Juno
           node[:name] = "__dup_noop"
         elsif node[:resource_type] && %w[str string].include?(node[:resource_type].to_s)
           node[:name] = "strdup"
-        elsif node[:resource_type]
+        elsif node[:resource_type] && node[:resource_type].to_s != "ptr"
           node[:name] = "#{node[:resource_type]}_dup"
         else
           node[:name] = "strdup"
@@ -708,6 +1107,7 @@ module Juno
 
     class Pipeline
       def self.run(ast)
+        ast = StructResourceGen.new(ast).run
         signatures = OwnershipInference.new(ast).run
         EscapeAnalysis.new(ast).run
         ast = Perceus.new(ast, signatures).run

@@ -15,6 +15,8 @@ class LLVMGenerator
     "\\".ord => "\\\\"
   }.freeze
 
+  BUILTINS = %w(printf malloc realloc free concat trim file_read_all file_read_safe exists write read open close getpid juno_strlen juno_pow time rand srand substr syscall prints)
+
   def initialize(ast, source: "", filename: "main.juno", arch: :x86_64)
     @ast = ast
     @source = source
@@ -30,8 +32,6 @@ class LLVMGenerator
     @globals = {}
     @global_types = {}
   end
-
-  BUILTINS = %w(printf malloc realloc free concat trim file_read_all file_read_safe exists write read open close getpid juno_strlen juno_pow time rand srand substr syscall prints)
 
   def generate
     @output = ""
@@ -53,7 +53,6 @@ class LLVMGenerator
     emit_strings
     emit_globals
 
-    # Разделение глобальных объявлений и свободных инструкций верхнего уровня
     defs = []
     stmts = []
     @ast.each do |node|
@@ -66,20 +65,15 @@ class LLVMGenerator
       end
     end
 
-    # Генерация глобальных определений
     defs.each { |node| process_node(node) }
 
-    # Определение точки входа
     has_main = defs.any? { |n| n[:type] == :function_definition && n[:name] == "main" }
 
     if has_main
-      # Если функция main уже объявлена пользователем, генерация идет штатно
     elsif !stmts.empty?
-      # Если обнаружен код на верхнем уровне — автоматически упаковываем его в @main()
       main_fn = AST::FunctionDefinition.new("main", [], stmts, line: 1, column: 1, filename: @filename)
       gen_function(main_fn)
     else
-      # Если свободных инструкций нет, запускаем механизм фоллбека на первую функцию
       first_root_func = defs.find { |n| n[:type] == :function_definition && (n[:filename] == @filename || n[:filename].nil?) }
       if first_root_func
         entry_name = first_root_func[:name].gsub('.', '_')
@@ -224,10 +218,10 @@ class LLVMGenerator
       fn_params.unshift("self")
     end
     params = fn_params.map { |p| "i64 %#{p}_in" }.join(", ")
-    
+
     has_insertC = node[:body]&.any? { |s| s.is_a?(Hash) && s[:type] == :insertC }
     attrs = has_insertC ? " noinline" : ""
-    
+
     @output << "define i64 @#{node[:name].gsub('.', '_')}(#{params})#{attrs} {\n"
     @tmp_count = 0
     @label_count = 0
@@ -243,7 +237,6 @@ class LLVMGenerator
     collect_locals(node[:body] || [], locals, arrays)
 
     locals.uniq.each do |var|
-      # Исключаем глобальные переменные из аллокации на локальном стеке
       unless fn_params.include?(var) || (@globals && @globals.key?(var))
         @output << "  %#{var} = alloca i64\n"
       end
@@ -263,7 +256,7 @@ class LLVMGenerator
   end
 
   def next_tmp
-    res = "tmp#{@tmp_count}" 
+    res = "tmp#{@tmp_count}"
     @tmp_count += 1
     res
   end

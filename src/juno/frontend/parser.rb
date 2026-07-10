@@ -1,16 +1,66 @@
 require_relative "../errors"
 require_relative "parser/parts/expressions"
 require_relative "parser/parts/statements"
+require "thread"
+require "etc"
 
 class Parser
   include ParserExpressions
   include ParserStatements
+
+  def self.parse_many(entries)
+    return [] if entries.empty?
+
+    pool_size = [Etc.nprocessors, entries.size].min
+    pool_size = 1 if pool_size < 1
+
+    results = Array.new(entries.size)
+    errors = Array.new(entries.size)
+    queue = Queue.new
+    entries.each_with_index { |e, i| queue << [e, i] }
+
+    workers = Array.new(pool_size) do
+      Thread.new do
+        loop do
+          job = begin
+            queue.pop(true)
+          rescue ThreadError
+            nil
+          end
+          break unless job
+
+          entry, idx = job
+          tokens, filename, source = entry
+          begin
+            results[idx] = new(tokens, filename || "", source || "").parse
+          rescue Exception => e
+            errors[idx] = e
+          end
+        end
+      end
+    end
+
+    workers.each(&:join)
+
+    first_error = errors.compact.first
+    raise first_error if first_error
+
+    results
+  end
 
   def initialize(tokens, filename = "", source = "")
     @tokens = tokens
     @filename = filename
     @source = source
     @last_token = nil
+  end
+
+  def parse_async(&block)
+    Thread.new do
+      result = parse
+      block.call(result) if block
+      result
+    end
   end
 
   def parse

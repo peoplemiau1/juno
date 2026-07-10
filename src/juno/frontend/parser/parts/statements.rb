@@ -1,4 +1,5 @@
 require_relative "../../ast"
+require_relative "../../preprocessor"
 
 module ParserStatements
   def consume_type
@@ -48,8 +49,26 @@ module ParserStatements
       else error_unexpected(token, "Unknown keyword")
       end
     elsif token[:type] == :insertC
-      consume(:insertC)
-      with_loc(AST::InsertC.new(token[:content]), token)
+      t = consume(:insertC)
+      with_loc(AST::InsertC.new(t[:content], clobbers: t[:clobbers] || []), t)
+    elsif token[:type] == :asm
+      t = consume(:asm)
+      lines = t[:content].lines.map(&:strip)
+      begin
+        pp = Preprocessor.new
+        bytes, clobbers = pp.send(:assemble_block, lines, t[:clobbers].empty? ? nil : t[:clobbers])
+      rescue => e
+        error = JunoParseError.new(
+          e.message,
+          filename: @filename,
+          line_num: t[:line],
+          column: t[:column],
+          source: @source
+        )
+        JunoErrorReporter.report(error)
+      end
+      content_str = bytes.map { |b| "0x%02X" % b }.join(', ')
+      with_loc(AST::InsertC.new(content_str, clobbers: clobbers), t)
     elsif token[:type] == :star
       parse_deref_assign
     elsif token[:type] == :ident

@@ -1,20 +1,16 @@
 #!/usr/bin/env python3
+
 import os
 import sys
 import glob
-import time
 import subprocess
 import concurrent.futures
-import threading
-
-GREEN = "\033[32m"
-RED = "\033[31m"
-YELLOW = "\033[33m"
-BLUE = "\033[34m"
-BOLD = "\033[1m"
-RESET = "\033[0m"
-
-print_lock = threading.Lock()
+from rich.console import Console
+from rich.table import Table
+from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn
+from rich.live import Live
+from rich.panel import Panel
+from rich.align import Align
 
 POSITIVE_TESTS = [
     "tests/big_suite.juno",
@@ -65,15 +61,14 @@ POSITIVE_TESTS = [
     "tests/test_predictive_borrow.juno",
     "tests/test_autodrop.juno",
     "tests/test_safety_loopholes.juno",
+    "tests/test_native_asm.juno",
 ]
 
 FLAT_TESTS = [
     "tests/test_flat_binary.juno",
 ]
 
-def safe_print(message):
-    with print_lock:
-        print(message)
+console = Console()
 
 def get_output_path(test_file):
     base_name = os.path.basename(test_file).replace(".juno", "")
@@ -81,84 +76,83 @@ def get_output_path(test_file):
 
 def run_positive_test(test_file):
     if not os.path.exists(test_file):
-        return ("skip", f"{BLUE}[SKIP]{RESET} {test_file} (not found)")
+        return "skip", "Not found"
     
     out_path = get_output_path(test_file)
     compile_cmd = ["./bin/juno", "-o", out_path, test_file]
     
     comp_res = subprocess.run(compile_cmd, capture_output=True)
     if comp_res.returncode != 0:
-        return ("fail", f"{RED}[FAIL]{RESET} {test_file} - compilation error\n{comp_res.stderr.decode()}")
+        return "fail", f"Compilation failed:\n{comp_res.stderr.decode().strip()}"
     
     try:
         os.chmod(out_path, 0o755)
         run_res = subprocess.run([f"./{out_path}"], capture_output=True)
         exit_code = run_res.returncode
     except Exception as e:
-        return ("fail", f"{RED}[FAIL]{RESET} {test_file} - execution failed: {e}")
+        return "fail", f"Execution error: {e}"
         
     if exit_code in [132, 134, 135, 136, 139]:
         sig = exit_code - 128
-        return ("fail", f"{RED}[FAIL]{RESET} {test_file} - CRASH (signal {sig}, exit {exit_code})")
+        return "fail", f"Crash (signal {sig}, exit {exit_code})"
         
-    return ("pass", f"{GREEN}[OK]{RESET} {test_file} (exit {exit_code})")
+    return "pass", f"Exit {exit_code}"
 
 def run_flat_test(test_file):
     if not os.path.exists(test_file):
-        return ("skip", f"{BLUE}[SKIP]{RESET} {test_file} (not found)")
+        return "skip", "Not found"
         
     out_path = get_output_path(test_file)
     compile_cmd = ["./bin/juno", "-t", "flat", "-o", out_path, test_file]
     
     comp_res = subprocess.run(compile_cmd, capture_output=True)
     if comp_res.returncode != 0:
-        return ("fail", f"{RED}[FAIL]{RESET} {test_file} - compilation error")
+        return "fail", "Compilation error"
         
     if not os.path.exists(out_path):
-        return ("fail", f"{RED}[FAIL]{RESET} {test_file} - flat binary missing")
+        return "fail", "Flat binary missing"
         
     try:
         with open(out_path, "rb") as f:
             header = f.read(4)
         if len(header) == 4 and header == b"\x7fELF":
-            return ("fail", f"{RED}[FAIL]{RESET} {test_file} - not flat output")
+            return "fail", "Not a flat binary (ELF detected)"
     except Exception as e:
-        return ("fail", f"{RED}[FAIL]{RESET} {test_file} - error reading output: {e}")
+        return "fail", f"Read error: {e}"
         
-    return ("pass", f"{GREEN}[OK]{RESET} {test_file}")
+    return "pass", "Flat output valid"
 
 def run_negative_test(test_file):
     if not os.path.exists(test_file):
-        return ("skip", f"{BLUE}[SKIP]{RESET} {test_file} (not found)")
+        return "skip", "Not found"
         
     out_path = get_output_path(test_file)
     compile_cmd = ["./bin/juno", "-o", out_path, test_file]
     
     comp_res = subprocess.run(compile_cmd, capture_output=True)
     if comp_res.returncode != 0:
-        return ("pass", f"{GREEN}[OK FAIL]{RESET} {test_file} (compile error as expected)")
+        return "pass", "Rejected as expected"
         
     try:
         os.chmod(out_path, 0o755)
         run_res = subprocess.run([f"./{out_path}"], capture_output=True)
         exit_code = run_res.returncode
     except Exception:
-        return ("pass", f"{GREEN}[OK FAIL]{RESET} {test_file} (runtime error as expected)")
+        return "pass", "Runtime error as expected"
         
     if exit_code != 0:
-        return ("pass", f"{GREEN}[OK FAIL]{RESET} {test_file} (runtime error as expected)")
+        return "pass", "Runtime error as expected"
         
-    return ("fail", f"{RED}[UNEXPECTED PASS]{RESET} {test_file}")
+    return "fail", "Unexpectedly compiled and passed"
 
 def execute_test(category, test_file):
     if category == "positive":
-        res, msg = run_positive_test(test_file)
+        res, detail = run_positive_test(test_file)
     elif category == "flat":
-        res, msg = run_flat_test(test_file)
+        res, detail = run_flat_test(test_file)
     else:
-        res, msg = run_negative_test(test_file)
-    safe_print(msg)
-    return res
+        res, detail = run_negative_test(test_file)
+    return res, detail
 
 def main():
     os.makedirs("build", exist_ok=True)
@@ -175,28 +169,81 @@ def main():
     for tf in negative_tests:
         tasks.append(("negative", tf))
         
-    print(f"{BOLD}========================================{RESET}")
-    print(f"{BOLD}Running Juno Self-Tests in Parallel{RESET}")
-    print(f"{BOLD}========================================{RESET}\n")
-    
     passed = 0
     failed = 0
     skipped = 0
+    failures = []
+
+    header_panel = Panel(
+        Align.center("[bold cyan]Juno Multi-Threaded Self-Tests Execution[/bold cyan]"),
+        border_style="cyan"
+    )
+    console.print(header_panel)
+    console.print()
+
+    progress = Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(bar_width=40),
+        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+    )
     
-    with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
-        futures = {executor.submit(execute_test, cat, tf): (cat, tf) for cat, tf in tasks}
-        for future in concurrent.futures.as_completed(futures):
-            res = future.result()
-            if res == "pass":
-                passed += 1
-            elif res == "fail":
-                failed += 1
-            elif res == "skip":
-                skipped += 1
+    total_tasks = len(tasks)
+    task_id = progress.add_task("[yellow]Processing tests...", total=total_tasks)
+    
+    table = Table(title="Test Matrix Summary", expand=True)
+    table.add_column("Category", style="cyan")
+    table.add_column("Passed", style="green", justify="right")
+    table.add_column("Failed", style="red", justify="right")
+    table.add_column("Skipped", style="blue", justify="right")
+    table.add_column("Total", style="bold white", justify="right")
+    
+    with Live(progress, refresh_per_second=10) as live:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count()) as executor:
+            futures = {executor.submit(execute_test, cat, tf): (cat, tf) for cat, tf in tasks}
+            for future in concurrent.futures.as_completed(futures):
+                cat, tf = futures[future]
+                res, detail = future.result()
                 
-    print(f"\n{BOLD}========================================{RESET}")
-    print(f"{BOLD}Results: {GREEN}{passed} passed{RESET}, {RED}{failed} failed{RESET}, {BLUE}{skipped} skipped{RESET}")
-    print(f"{BOLD}========================================{RESET}")
+                if res == "pass":
+                    passed += 1
+                elif res == "fail":
+                    failed += 1
+                    failures.append((tf, cat, detail))
+                elif res == "skip":
+                    skipped += 1
+                    
+                progress.update(task_id, advance=1)
+    
+    console.print()
+    
+    table.add_row("Positive Tests", str(passed), str(failed), str(skipped), str(total_tasks))
+    console.print(table)
+    console.print()
+    
+    if failures:
+        fail_table = Table(title="Detailed Failure Report", expand=True, border_style="red")
+        fail_table.add_column("Test File", style="yellow")
+        fail_table.add_column("Category", style="magenta")
+        fail_table.add_column("Error Detail", style="white")
+        
+        for f_file, f_cat, f_detail in failures:
+            fail_table.add_row(f_file, f_cat, f_detail)
+            
+        console.print(fail_table)
+        console.print()
+
+    result_color = "red" if failed > 0 else "green"
+    summary_panel = Panel(
+        Align.center(
+            f"[{result_color}]Status: {'FAILED' if failed > 0 else 'SUCCESS'}[/{result_color}]\n\n"
+            f"[green]Passed: {passed}[/green]  •  [red]Failed: {failed}[/red]  •  [blue]Skipped: {skipped}[/blue]"
+        ),
+        border_style=result_color,
+        title="Execution Summary",
+        title_align="center"
+    )
+    console.print(summary_panel)
     
     if failed > 0:
         sys.exit(1)

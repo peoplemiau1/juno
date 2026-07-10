@@ -2,15 +2,25 @@ require_relative "../frontend/lexer"
 require_relative "../frontend/parser"
 require_relative "../errors"
 require "set"
+require "thread"
 
 class CHeaderParser
   @@seen = {}
+  @@mutex = Mutex.new
 
   def self.clear_seen!
-    @@seen = {}
+    @@mutex.synchronize { @@seen = {} }
   end
 
-  def self.parse(header_path, lib_name)
+  def self.try_claim(name)
+    @@mutex.synchronize do
+      return false if @@seen.key?(name)
+      @@seen[name] = true
+      true
+    end
+  end
+
+  def self.parse(header_path, lib_name, filename: "unknown", line: nil)
     if header_path == "vulkan/vulkan.h" || header_path == "vulkan/vulkan_core.h"
       header_path = "vulkan/vulkan_core.h"
       lib_name = "libvulkan.so"
@@ -21,27 +31,49 @@ class CHeaderParser
     end
 
     path = find_header(header_path)
-    return [] unless path && File.exist?(path)
+
+    if path.nil? || !File.exist?(path)
+      raise JunoImportError.new(
+        "Cannot find C header '#{header_path}' - searched in: #{search_paths.join(', ')}. " \
+        "Make sure the development headers are installed (e.g. via your package manager) " \
+        "or provide a full/relative path to the header.",
+        filename: filename,
+        line_num: line
+      )
+    end
 
     content = File.read(path)
     content.gsub!(/\/\*.*?\*\//m, '')
     content.gsub!(/\/\/.*$/, '')
-    content.gsub!(/^#.*$/, '')
+    content.gsub!(/^\s*#.*$/, '')
 
     nodes = []
-    decl_regex = /([\w\s\*]+?)\s+(\w+)\s*\(([^\)]*)\)[^;]*;/
+    decl_regex = /([\w\s\*]+?)\s+(\w+)\s*\(([^\)]*)\)[^;{]*;/
 
     content.scan(decl_regex) do |ret_type, func_name, args_str|
       next if %w[if else return while for switch do].include?(func_name)
-      next if @@seen.key?(func_name)
+      next if ret_type =~ /\btypedef\b/
+      next if ret_type =~ /(?<![\w])static(?![\w])/
 
       args = []
       param_types = {}
       args_str = args_str.strip
+      ok = true
 
       if args_str != "void" && !args_str.empty?
         args_str.split(',').each_with_index do |arg, idx|
-          parts = arg.strip.split(/\s+/)
+          arg = arg.strip
+          next if arg.empty?
+
+          if arg.include?('(')
+            ok = false
+            break
+          end
+
+          is_array = arg.include?('[')
+          arg = arg.gsub(/\[[^\]]*\]/, '').strip
+
+          parts = arg.split(/\s+/)
           next if parts.empty?
 
           param_name = parts.last
@@ -59,6 +91,8 @@ class CHeaderParser
             type_str = type_parts.join(' ')
           end
 
+          type_str << " *" if is_array && !type_str.include?('*')
+
           param_name = param_name.gsub(/[^\w]/, '')
           param_name = "arg#{idx}" if param_name.empty? || param_name =~ /^\d/
 
@@ -68,7 +102,9 @@ class CHeaderParser
         end
       end
 
-      @@seen[func_name] = true
+      next unless ok
+      next unless try_claim(func_name)
+
       nodes << {
         type: :extern_definition,
         name: func_name,
@@ -87,17 +123,32 @@ class CHeaderParser
     nodes
   end
 
+  def self.search_paths
+    paths = [ "." ]
+
+    %w[C_INCLUDE_PATH CPATH CPLUS_INCLUDE_PATH].each do |var|
+      next unless ENV[var]
+      paths.concat(ENV[var].split(File::PATH_SEPARATOR))
+    end
+
+    paths.concat([
+      "/usr/include",
+      "/usr/local/include",
+      "/usr/include/x86_64-linux-gnu",
+      "/usr/include/aarch64-linux-gnu",
+      "/usr/include/i386-linux-gnu",
+      "/usr/lib/clang/include",
+      "/Library/Developer/CommandLineTools/usr/include"
+    ])
+
+    paths
+  end
+
   def self.find_header(header_path)
     if header_path.include?('/') && File.exist?(header_path)
       return header_path
     end
-    search_paths = [
-      ".",
-      "/usr/include",
-      "/usr/local/include",
-      "/usr/lib/clang/include",
-      "/Library/Developer/CommandLineTools/usr/include"
-    ]
+
     search_paths.each do |dir|
       full_path = File.join(dir, header_path)
       return full_path if File.exist?(full_path)
@@ -105,14 +156,28 @@ class CHeaderParser
     File.exist?(header_path) ? header_path : nil
   end
 
+  CALLCONV_MACROS = %w[
+    extern const volatile restrict __restrict __const inline
+    VKAPI_ATTR VKAPI_CALL GLAPI APIENTRY APIENTRYP
+    GLFWAPI WINGDIAPI WINAPI CALLBACK PASCAL NTAPI
+    __cdecl __stdcall __fastcall DLLEXPORT DLLIMPORT
+  ].freeze
+
   def self.map_type(c_type)
     c_type = c_type.strip.gsub(/\s+/, ' ')
-    c_type = c_type.gsub(/\b(extern|const|volatile|restrict|__restrict|__const|inline|VKAPI_ATTR|VKAPI_CALL|GLAPI|APIENTRY)\b/, '').strip
+    c_type = c_type.gsub(/__declspec\s*\([^)]*\)/, '')
+    c_type = c_type.gsub(/\b(#{CALLCONV_MACROS.join('|')})\b/, '').strip
     return "ptr" if c_type.include?('*')
     case c_type
-    when "float", "double" then "float"
+    when "float", "double", "long double" then "float"
     when "void" then "void"
-    when "int", "char", "short", "long", "size_t", "int32_t", "uint32_t", "int64_t", "uint64_t" then "int"
+    when "int", "char", "short", "long", "size_t", "ssize_t",
+         "int8_t", "uint8_t", "int16_t", "uint16_t",
+         "int32_t", "uint32_t", "int64_t", "uint64_t",
+         "intptr_t", "uintptr_t", "wchar_t", "bool", "_Bool",
+         "unsigned", "unsigned int", "unsigned char", "unsigned short",
+         "unsigned long", "unsigned long long", "long long", "signed char"
+      "int"
     else "int"
     end
   end
@@ -164,12 +229,21 @@ class CppHeaderParser
   ).freeze
 
   @@seen = {}
+  @@mutex = Mutex.new
 
   def self.clear_seen!
-    @@seen = {}
+    @@mutex.synchronize { @@seen = {} }
   end
 
-  def self.parse(header_path, lib_name)
+  def self.try_claim(name)
+    @@mutex.synchronize do
+      return false if @@seen.key?(name)
+      @@seen[name] = true
+      true
+    end
+  end
+
+  def self.parse(header_path, lib_name, filename: "unknown", line: nil)
     if header_path == "vulkan/vulkan.h" || header_path == "vulkan/vulkan_core.h"
       header_path = "vulkan/vulkan_core.h"
       lib_name = "libvulkan.so"
@@ -180,7 +254,16 @@ class CppHeaderParser
     end
 
     path = CHeaderParser.find_header(header_path)
-    return [] unless path && File.exist?(path)
+
+    if path.nil? || !File.exist?(path)
+      raise JunoImportError.new(
+        "Cannot find C++ header '#{header_path}' - searched in: #{CHeaderParser.search_paths.join(', ')}. " \
+        "Make sure the development headers are installed (e.g. via your package manager) " \
+        "or provide a full/relative path to the header.",
+        filename: filename,
+        line_num: line
+      )
+    end
 
     raw = File.read(path)
     content = strip_comments(raw)
@@ -314,7 +397,8 @@ class CppHeaderParser
 
     content.scan(decl_regex) do |ret_type, func_name, args_str|
       next if %w[if else return while for switch do sizeof].include?(func_name)
-      next if @@seen.key?(func_name)
+      next if ret_type =~ /\btypedef\b/
+      next if ret_type =~ /(?<![\w])static(?![\w])/
 
       cpp_params = []
       args_str = args_str.strip
@@ -337,13 +421,13 @@ class CppHeaderParser
 
       ret_info = parse_cpp_return_type(ret_type)
       next if ret_info.nil?
+      next unless try_claim(func_name)
 
       symbol = mangle ? mangle_itanium(func_name, cpp_params) : func_name
 
       params = cpp_params.each_index.map { |idx| "arg#{idx}" }
       param_types = params.each_with_index.to_h { |p, idx| [p, cpp_params[idx][:juno_type]] }
 
-      @@seen[func_name] = true
       nodes << {
         type: :extern_definition,
         name: func_name,
@@ -482,18 +566,27 @@ end
 class AutoExternPass
   def self.run(ast)
     declared = Set.new
-    called   = {}
 
     walk(ast) do |node|
-      case node[:type]
-      when :function_definition, :extern_definition
+      if node[:type] == :function_definition || node[:type] == :extern_definition
         declared << node[:name]
-      when :fn_call
-        if BuiltinLibm.known?(node[:name])
-          node[:name] = (node[:name] == "pow") ? "juno_fpow" : "juno_#{node[:name]}"
-        end
-        called[node[:name]] = node unless node[:name].to_s.include?('.')
       end
+    end
+
+    called = {}
+
+    walk(ast) do |node|
+      next unless node[:type] == :fn_call
+      name = node[:name]
+      next if name.to_s.include?('.')
+
+      if !declared.include?(name) && BuiltinLibm.known?(name)
+        new_name = (name == "pow") ? "juno_fpow" : "juno_#{name}"
+        node[:name] = new_name
+        name = new_name
+      end
+
+      called[name] = node
     end
 
     missing = []
@@ -587,7 +680,7 @@ class UndefinedCallCheckPass
     i8 u8 i16 u16 i32 u32 i64 u64 ptr_add byte_add ptr_sub ptr_diff
     memcpy memset write read open close spin_lock spin_unlock
     store_i64 store_ptr load_i64 load_ptr store_i8 load_i8
-    byte_at byte_set prints len sizeof
+    byte_at byte_set prints len sizeof getpid
   ].freeze
 
   def self.run(ast, filename: "unknown")
@@ -615,49 +708,119 @@ class UndefinedCallCheckPass
   end
 end
 
+class ImportCache
+  def initialize
+    @mutex = Mutex.new
+    @cv = ConditionVariable.new
+    @done = {}
+    @in_progress = {}
+  end
+
+  def fetch(path)
+    @mutex.synchronize do
+      loop do
+        if @done.key?(path)
+          return []
+        elsif @in_progress[path]
+          @cv.wait(@mutex)
+        else
+          @in_progress[path] = true
+          break
+        end
+      end
+    end
+
+    begin
+      result = yield
+      @mutex.synchronize do
+        @done[path] = true
+        @in_progress.delete(path)
+        @cv.broadcast
+      end
+      result
+    rescue Exception => e
+      @mutex.synchronize do
+        @in_progress.delete(path)
+        @cv.broadcast
+      end
+      raise e
+    end
+  end
+end
+
 class Importer
   CPP_EXTENSIONS = %w[.hpp .hh .hxx .h++ .hp .cc .cpp].freeze
 
   def initialize(base_path = ".", system_path: nil)
     @base_path = base_path
     @system_path = system_path
-    @imported = {}
-    @import_stack = []
+    @cache = ImportCache.new
+    @clear_mutex = Mutex.new
   end
 
   def resolve(ast, current_file = nil)
-    result = []
+    top_level = import_stack.empty?
 
-    if @import_stack.empty?
-      CHeaderParser.clear_seen!
-      CppHeaderParser.clear_seen!
-    end
-
-    ast.each do |node|
-      if node[:type] == :import || node[:type] == :use_statement
-        begin
-          imported_ast = process_import(node[:path], current_file, node[:system] || node[:type] == :use_statement)
-        rescue JunoImportError => e
-          if !node[:system] && node[:type] != :use_statement
-            begin
-              imported_ast = process_import(node[:path], current_file, true)
-            rescue JunoImportError
-              raise e
-            end
-          else
-            raise e
-          end
-        end
-        result.concat(imported_ast)
-      elsif node[:type] == :import_c
-        parser_class = cpp_header?(node) ? CppHeaderParser : CHeaderParser
-        result.concat(parser_class.parse(node[:header_path], node[:lib_name]))
-      else
-        result << node
+    if top_level
+      @clear_mutex.synchronize do
+        CHeaderParser.clear_seen!
+        CppHeaderParser.clear_seen!
       end
     end
 
-    if @import_stack.empty?
+    slots = Array.new(ast.size) { [] }
+    threads = []
+
+    ast.each_with_index do |node, idx|
+      case node[:type]
+      when :import, :use_statement
+        inherited_stack = import_stack.dup
+        threads << Thread.new(node, idx, inherited_stack) do |n, i, stack|
+          Thread.current[:juno_import_stack] = stack
+          begin
+            slots[i] = process_import(n[:path], current_file, n[:system] || n[:type] == :use_statement)
+          rescue JunoImportError => e
+            if !n[:system] && n[:type] != :use_statement
+              begin
+                slots[i] = process_import(n[:path], current_file, true)
+              rescue JunoImportError
+                raise e
+              end
+            else
+              raise e
+            end
+          end
+        end
+      when :import_c
+        inherited_stack = import_stack.dup
+        threads << Thread.new(node, idx, inherited_stack) do |n, i, stack|
+          Thread.current[:juno_import_stack] = stack
+          parser_class = cpp_header?(n) ? CppHeaderParser : CHeaderParser
+          slots[i] = parser_class.parse(
+            n[:header_path],
+            n[:lib_name],
+            filename: current_file || "unknown",
+            line: n[:line]
+          )
+        end
+      else
+        slots[idx] = [node]
+      end
+    end
+
+    errors = []
+    threads.each do |t|
+      begin
+        t.join
+      rescue Exception => e
+        errors << e
+      end
+    end
+    raise errors.first if errors.any?
+
+    result = slots.flatten(1)
+
+    if top_level
       result = AutoExternPass.run(result)
       result = CppManglePass.run(result)
       result = UndefinedCallCheckPass.run(result, filename: current_file || "unknown")
@@ -667,6 +830,10 @@ class Importer
   end
 
   private
+
+  def import_stack
+    Thread.current[:juno_import_stack] ||= []
+  end
 
   def cpp_header?(node)
     return true if node[:cpp]
@@ -695,15 +862,13 @@ class Importer
       end
     end
 
-    if @import_stack.include?(full_path)
-      cycle = @import_stack.drop_while { |p| p != full_path } + [full_path]
+    if import_stack.include?(full_path)
+      cycle = import_stack.drop_while { |p| p != full_path } + [full_path]
       raise JunoImportError.new(
         "Circular import detected: #{cycle.join(' -> ')}",
         filename: current_file || "unknown"
       )
     end
-
-    return [] if @imported.key?(full_path)
 
     unless File.exist?(full_path)
       raise JunoImportError.new(
@@ -712,33 +877,32 @@ class Importer
       )
     end
 
-    @import_stack.push(full_path)
-    begin
-      source = File.read(full_path)
-      lexer = Lexer.new(source, full_path)
-      tokens = lexer.tokenize
-      parser = Parser.new(tokens, full_path, source)
-      imported_ast = parser.parse
+    @cache.fetch(full_path) do
+      import_stack.push(full_path)
+      begin
+        source = File.read(full_path)
+        lexer = Lexer.new(source, full_path)
+        tokens = lexer.tokenize
+        parser = Parser.new(tokens, full_path, source)
+        imported_ast = parser.parse
 
-      resolved_ast = resolve(imported_ast, full_path)
+        resolved_ast = resolve(imported_ast, full_path)
 
-      definitions = resolved_ast.select do |node|
-        case node[:type]
-        when :struct_definition, :enum_definition, :type_alias, :extern_definition, :union_definition
-          true
-        when :function_definition
-          node[:name] != "main"
-        when :assignment
-          node[:let] == true
-        else
-          false
+        resolved_ast.select do |node|
+          case node[:type]
+          when :struct_definition, :enum_definition, :type_alias, :extern_definition, :union_definition
+            true
+          when :function_definition
+            node[:name] != "main"
+          when :assignment
+            node[:let] == true
+          else
+            false
+          end
         end
+      ensure
+        import_stack.pop
       end
-
-      @imported[full_path] = definitions
-      definitions
-    ensure
-      @import_stack.pop
     end
   end
 end

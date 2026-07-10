@@ -95,7 +95,7 @@ class NativeGenerator
     gen_synthetic_main(top_level) if has_top_level
 
     @ast.each do |n|
-      gen_function(n, @ctx, @emitter, @linker) if n[:type] == :function_definition
+      gen_function(n) if n[:type] == :function_definition
     end
 
     if @hell_mode && (@arch == :x86_64 || @arch == :aarch64)
@@ -193,27 +193,55 @@ class NativeGenerator
     end
   end
 
-  def gen_function(node, ctx, emitter, linker)
-    linker.register_function(node[:name], emitter.current_pos); ctx.reset_for_function(node[:name])
-    gen_function_internal(node, ctx, emitter, linker)
+  def gen_function(node)
+    @linker.register_function(node[:name], @emitter.current_pos)
+    @ctx.reset_for_function(node[:name])
+    gen_function_internal(node)
   end
 
-  def gen_function_internal(node, ctx, emitter, linker)
-    res = @allocator.allocate(node[:body], ctx.globals.keys)
-    res[:allocations].each { |var, reg| ctx.assign_register(var, reg) }
+  def body_terminates?(nodes)
+    return false if nodes.nil? || nodes.empty?
+
+    nodes.any? do |n|
+      next false unless n.is_a?(Hash)
+
+      case n[:type]
+      when :return
+        true
+      when :if_statement
+        has_else = !(n[:else_body].nil? || n[:else_body].empty?)
+        next false unless has_else
+
+        main_ok = body_terminates?(n[:body])
+        elif_ok = (n[:elif_branches] || []).all? { |e| body_terminates?(e[:body]) }
+        else_ok = body_terminates?(n[:else_body])
+        main_ok && elif_ok && else_ok
+      when :match_expression
+        (n[:cases] || []).all? { |c| body_terminates?(c[:body]) }
+      else
+        false
+      end
+    end
+  end
+
+  def gen_function_internal(node)
+    res = @allocator.allocate(node[:body], @ctx.globals.keys)
+    res[:allocations].each { |var, reg| @ctx.assign_register(var, reg) }
 
     params = node[:params].map { |p| p.is_a?(Hash) ? p[:name] : p }
     param_types = node[:param_types] || {}
+    is_method = node[:name].include?('.')
+
     node[:params].each do |p|
       t = param_types[p]
-      if p == "self" && !t && node[:name].include?('.')
+      if p == "self" && !t && is_method
         t = node[:name].split('.')[0]
       end
       @ctx.var_types[p] = t if t
       @ctx.var_is_ptr[p] = true if t && (["ptr", "str"].include?(t) || @ctx.structs.key?(t))
     end
 
-    if node[:name].include?('.') && !@ctx.var_types["self"]
+    if is_method && params.include?("self") && !@ctx.var_types["self"]
       @ctx.var_types["self"] = node[:name].split('.')[0]
       @ctx.var_is_ptr["self"] = true
     end
@@ -242,9 +270,8 @@ class NativeGenerator
     callee_saved = @emitter.callee_saved_regs
     @emitter.push_callee_saved(callee_saved)
 
-    if @arch == :x86_64 && (callee_saved.length + 1) % 2 == 0
-      @emitter.emit_sub_rsp(8)
-    end
+    extra_align = @arch == :x86_64 && (callee_saved.length + 1) % 2 == 0
+    @emitter.emit_sub_rsp(8) if extra_align
 
     regs = (@arch == :aarch64) ? [0,1,2,3,4,5,6,7] : [7,6,2,1,8,9]
     params.each_with_index do |p, i|
@@ -267,23 +294,18 @@ class NativeGenerator
       end
     end
 
-    has_ret = false
+    guaranteed_return = body_terminates?(node[:body])
+
     node[:body].each do |c|
       process_node(c)
-      if c[:type] == :return
-        has_ret = true
-        break
-      end
+      break if c[:type] == :return
     end
 
-    unless has_ret
+    unless guaranteed_return
       @emitter.xor_rax_rax if node[:name] == "main"
-      if @arch == :x86_64 && (@emitter.callee_saved_regs.length + 1) % 2 == 0
-        @emitter.emit_add_rsp(8)
-      end
+      @emitter.emit_add_rsp(8) if extra_align
       @emitter.pop_callee_saved(@emitter.callee_saved_regs)
       @emitter.emit_epilogue(needed_stack)
     end
   end
-
 end

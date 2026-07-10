@@ -26,13 +26,50 @@ class Lexer
         @column = 1
       elsif scanner.scan(/[ \t\r]+/)
       elsif scanner.scan(/(\/\/|#).*$/)
-      elsif scanner.scan(/insertC\s*\{/)
+      elsif scanner.scan(/insertC\s*(?:clobbers\s*\(\s*([^)]*)\s*\)\s*)?\{/i)
+        matched_str = scanner.matched
+        @line += matched_str.count("\n")
+        clobbers_str = scanner[1]
+        clobbers = clobbers_str ? clobbers_str.split(',').map(&:strip).reject(&:empty?) : []
         content = ""
         until scanner.check(/\}/) || scanner.eos?
-          content << scanner.getch
+          ch = scanner.getch
+          @line += 1 if ch == "\n" 
+          content << ch
         end
         scanner.getch if !scanner.eos?
-        add_token(:insertC, "insertC", content)
+        
+        token = { 
+          type: :insertC, 
+          value: "insertC", 
+          line: @line, 
+          column: @column, 
+          content: content, 
+          clobbers: clobbers 
+        }
+        @tokens << token
+      elsif scanner.scan(/asm\s*(?:clobbers\s*\(\s*([^)]*)\s*\)\s*)?\{/i)
+        matched_str = scanner.matched
+        @line += matched_str.count("\n")
+        clobbers_str = scanner[1]
+        clobbers = clobbers_str ? clobbers_str.split(',').map(&:strip).reject(&:empty?) : []
+        content = ""
+        until scanner.check(/\}/) || scanner.eos?
+          ch = scanner.getch
+          @line += 1 if ch == "\n" 
+          content << ch
+        end
+        scanner.getch if !scanner.eos?
+        
+        token = { 
+          type: :asm, 
+          value: "asm", 
+          line: @line, 
+          column: @column, 
+          content: content, 
+          clobbers: clobbers 
+        }
+        @tokens << token
       elsif m = scanner.scan(/(struct|union|fn|func|def|if|elif|else|return|while|loop|break|continue|let|for|import|use|packed|extern|from|match|todo|panic|as|true|false|mut|type|enum|real|float|int|string|bool|ptr|import_c|import_ffi|importC|import_c|import_raw|import_c|import_lib|import_dll|import_so|import_dylib|import_h|import_header|import_headers|import_libs|import_lib|import_libs|import_dll|import_so|import_dylib|import_a|import_lib|import_libs)\b/)
         kw = m; kw = "fn" if kw == "func" || kw == "def"
         add_token(:keyword, kw)

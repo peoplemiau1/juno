@@ -130,12 +130,7 @@ module LLVMBuiltinGenerator
         @output << "  call void @llvm.memset.p0i8.i64(i8* %#{dst_p}, i8 %#{val_b}, i64 #{args[2]}, i1 false)\n"
       end
       return "0"
-    when "malloc"
-      arg = eval_expr(node[:args][0])
-      r = next_tmp
-      @output << "  %#{r} = call i64 @malloc(i64 #{arg})\n"
-      return "%#{r}"
-    when "alloc"
+    when "malloc", "alloc"
       arg = eval_expr(node[:args][0])
       r = next_tmp
       @output << "  %#{r} = call i64 @malloc(i64 #{arg})\n"
@@ -319,17 +314,17 @@ module LLVMBuiltinGenerator
     enum_info = @enums[enum_name]
     variant_info = enum_info[:variants][variant_name]
     size = enum_info[:size]
-    
+
     ptr = next_tmp
     @output << "  %#{ptr} = call i64 @malloc(i64 #{size})\n"
-    
+
     tmp_p = next_tmp
     @output << "  %#{tmp_p} = inttoptr i64 %#{ptr} to i64*\n"
     @output << "  store i64 #{variant_info[:tag]}, i64* %#{tmp_p}, align 8\n"
-    
+
     tmp_i8 = next_tmp
     @output << "  %#{tmp_i8} = inttoptr i64 %#{ptr} to i8*\n"
-    
+
     (args || []).each_with_index do |arg, idx|
       val = eval_expr(arg)
       tmp_arg_p = next_tmp
@@ -339,7 +334,7 @@ module LLVMBuiltinGenerator
       @output << "  %#{tmp_cast} = bitcast i8* %#{tmp_arg_p} to i64*\n"
       @output << "  store i64 #{val}, i64* %#{tmp_cast}, align 8\n"
     end
-    
+
     "%#{ptr}"
   end
 

@@ -1,3 +1,6 @@
+require "thread"
+require "etc"
+
 module AST
   class Node < Hash
     attr_accessor :line, :column, :filename, :inferred_type
@@ -8,7 +11,7 @@ module AST
       @column = column
       @filename = filename
       @inferred_type = inferred_type
-      
+
       self[:line] = line if line
       self[:column] = column if column
       self[:filename] = filename if filename
@@ -26,6 +29,11 @@ module AST
     end
 
     def []=(key, val)
+      if frozen?
+        raise FrozenError, "cannot mutate a frozen AST::Node (#{self.class}) - " \
+                            "this node was shared read-only across threads via deep_freeze!"
+      end
+
       key_sym = key.to_sym
       setter = "#{key_sym}="
       if respond_to?(setter) && setter != "[]="
@@ -36,6 +44,126 @@ module AST
 
     def key?(key)
       respond_to?(key.to_sym) || super(key)
+    end
+
+    def deep_freeze!
+      each_value do |v|
+        case v
+        when Node
+          v.deep_freeze!
+        when Array
+          v.each { |item| item.deep_freeze! if item.is_a?(Node) }
+          v.freeze
+        end
+      end
+      freeze
+    end
+  end
+
+  module Intern
+    @mutex = Mutex.new
+    @literals = {}
+    @strings = {}
+    @floats = {}
+
+    class << self
+      def literal(value)
+        key = value
+        @mutex.synchronize { @literals[key] ||= value.freeze }
+      end
+
+      def string(value)
+        @mutex.synchronize { @strings[value] ||= value.dup.freeze }
+      end
+
+      def float(value)
+        @mutex.synchronize { @floats[value] ||= value.freeze }
+      end
+
+      def clear!
+        @mutex.synchronize do
+          @literals = {}
+          @strings = {}
+          @floats = {}
+        end
+      end
+
+      def stats
+        @mutex.synchronize do
+          { literals: @literals.size, strings: @strings.size, floats: @floats.size }
+        end
+      end
+    end
+  end
+
+  module Async
+    module_function
+
+    def default_pool_size
+      [Etc.nprocessors, 1].max
+    end
+
+    def parallel_map(items, pool_size: default_pool_size)
+      return [] if items.empty?
+      return items.map { |it| yield(it) } if pool_size <= 1 || items.size <= 1
+
+      results = Array.new(items.size)
+      errors = Array.new(items.size)
+      queue = Queue.new
+      items.each_with_index { |item, idx| queue << [item, idx] }
+
+      workers = Array.new([pool_size, items.size].min) do
+        Thread.new do
+          loop do
+            job = begin
+              queue.pop(true)
+            rescue ThreadError
+              nil
+            end
+            break unless job
+
+            item, idx = job
+            begin
+              results[idx] = yield(item)
+            rescue Exception => e
+              errors[idx] = e
+            end
+          end
+        end
+      end
+
+      workers.each(&:join)
+
+      first_error = errors.compact.first
+      raise first_error if first_error
+
+      results
+    end
+
+    def walk_async(nodes, pool_size: default_pool_size, &block)
+      list = Array(nodes)
+      parallel_map(list, pool_size: pool_size) do |node|
+        collected = []
+        walk_node_sync(node) { |n| collected << block.call(n) }
+        collected
+      end.flatten(1)
+    end
+
+    def walk_node_sync(node, &block)
+      return unless node.is_a?(Hash)
+      block.call(node) if node.key?(:type)
+      node.each_value do |v|
+        if v.is_a?(Hash)
+          walk_node_sync(v, &block)
+        elsif v.is_a?(Array)
+          v.each { |item| walk_node_sync(item, &block) }
+        end
+      end
+    end
+
+    def each_function_parallel(ast, pool_size: default_pool_size, &block)
+      functions = Array(ast).select { |n| n.is_a?(Hash) && n[:type] == :function_definition }
+      parallel_map(functions, pool_size: pool_size, &block)
     end
   end
 
@@ -53,30 +181,30 @@ module AST
 
   class Literal < Node
     attr_accessor :value
-    def initialize(value, **opts)
+    def initialize(value, intern: true, **opts)
       super(**opts)
-      @value = value
-      self[:value] = value
+      @value = intern ? Intern.literal(value) : value
+      self[:value] = @value
     end
     def type; :literal; end
   end
 
   class FloatLiteral < Node
     attr_accessor :value
-    def initialize(value, **opts)
+    def initialize(value, intern: true, **opts)
       super(**opts)
-      @value = value
-      self[:value] = value
+      @value = intern ? Intern.float(value) : value
+      self[:value] = @value
     end
     def type; :float_literal; end
   end
 
   class StringLiteral < Node
     attr_accessor :value
-    def initialize(value, **opts)
+    def initialize(value, intern: true, **opts)
       super(**opts)
-      @value = value
-      self[:value] = value
+      @value = intern ? Intern.string(value) : value
+      self[:value] = @value
     end
     def type; :string_literal; end
   end
@@ -415,15 +543,17 @@ module AST
   end
 
   class InsertC < Node
-    attr_accessor :content
-    def initialize(content, **opts)
+    attr_accessor :content, :clobbers
+    def initialize(content, clobbers: [], **opts)
       super(**opts)
       @content = content
+      @clobbers = clobbers
       self[:content] = content
+      self[:clobbers] = clobbers
     end
     def type; :insertC; end
   end
-
+  
   class TypeAlias < Node
     attr_accessor :name, :target
     def initialize(name, target, **opts)
