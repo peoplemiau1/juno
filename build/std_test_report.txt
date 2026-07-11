@@ -1,5 +1,0 @@
-Juno Standard Library Test Report
----------------------------------
-Multithreading lock result: 400000
-Target host parsed from JSON: debian
-Status: OK
