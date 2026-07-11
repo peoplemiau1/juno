@@ -166,7 +166,12 @@ module ParserStatements
 
   def parse_return
     token = consume_keyword('return')
-    expr = match_symbol?(";") ? AST::Literal.new(0) : parse_expression
+    # ASI: bare return (followed by ';', '}', EOF, or newline) returns 0
+    if match_symbol?(";") || match_symbol?("}") || peek.nil? || !on_same_line?
+      expr = AST::Literal.new(0)
+    else
+      expr = parse_expression
+    end
     with_loc(AST::ReturnStatement.new(expr), token)
   end
 

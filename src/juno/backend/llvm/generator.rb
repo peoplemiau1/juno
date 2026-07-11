@@ -15,7 +15,7 @@ class LLVMGenerator
     "\\".ord => "\\\\"
   }.freeze
 
-  BUILTINS = %w(printf malloc realloc free concat trim file_read_all file_read_safe exists write read open close getpid juno_strlen juno_pow time rand srand substr syscall prints)
+  BUILTINS = %w(printf malloc realloc free concat trim file_read_all file_read_safe exists write read open close getpid juno_strlen juno_pow time rand srand substr syscall prints strdup exit usleep)
 
   def initialize(ast, source: "", filename: "main.juno", arch: :x86_64)
     @ast = ast
@@ -124,6 +124,8 @@ class LLVMGenerator
     @output << "declare void @llvm.memcpy.p0i8.p0i8.i64(i8*, i8*, i64, i1)\n"
     @output << "declare void @llvm.memset.p0i8.i64(i8*, i8, i64, i1)\n"
     @output << "declare void @exit(i32)\n"
+    @output << "declare i64 @strdup(i64)\n"
+    @output << "declare i64 @usleep(i64)\n"
 
     @output << "@fmt_s = private unnamed_addr constant [3 x i8] c\"%s\\00\"\n"
     @output << "@fmt_i = private unnamed_addr constant [4 x i8] c\"%ld\\00\"\n"
