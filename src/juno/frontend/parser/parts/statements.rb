@@ -20,7 +20,7 @@ module ParserStatements
 
     if token[:type] == :keyword
       case token[:value]
-     when 'import_c' then parse_import_c
+      when 'import_c' then parse_import_c
       when 'if'       then parse_if
       when 'while'    then parse_while
       when 'for'      then parse_for
@@ -58,14 +58,13 @@ module ParserStatements
         pp = Preprocessor.new
         bytes, clobbers = pp.send(:assemble_block, lines, t[:clobbers].empty? ? nil : t[:clobbers])
       rescue => e
-        error = JunoParseError.new(
+        raise JunoParseError.new(
           e.message,
           filename: @filename,
           line_num: t[:line],
           column: t[:column],
           source: @source
         )
-        JunoErrorReporter.report(error)
       end
       content_str = bytes.map { |b| "0x%02X" % b }.join(', ')
       with_loc(AST::InsertC.new(content_str, clobbers: clobbers), t)
@@ -81,12 +80,12 @@ module ParserStatements
       elsif peek_next && peek_next[:value] == '.'
         expr = parse_expression
         if match_symbol?('=')
-           consume_symbol('=')
-           val = parse_expression
-           name = expr.is_a?(AST::MemberAccess) ? "#{expr.receiver}.#{expr.member}" : extract_name(expr)
-           AST::Assignment.new(name, val)
+          consume_symbol('=')
+          val = parse_expression
+          name = expr.is_a?(AST::MemberAccess) ? "#{expr.receiver}.#{expr.member}" : extract_name(expr)
+          with_loc(AST::Assignment.new(name, val), token)
         else
-           expr
+          expr
         end
       else
         parse_expression
@@ -94,6 +93,18 @@ module ParserStatements
     else
       error_unexpected(peek, "Expected statement")
     end
+  end
+
+  def parse_block
+    consume_symbol('{')
+    body = []
+    until match_symbol?('}')
+      error_eof("Expected '}'") if peek.nil?
+      stmt = parse_statement
+      body << stmt if stmt
+    end
+    consume_symbol('}')
+    body
   end
 
   def parse_array_assign_or_access
@@ -122,14 +133,7 @@ module ParserStatements
     consume_symbol('(') if has_paren
     cond = parse_expression
     consume_symbol(')') if has_paren
-    consume_symbol('{')
-    body = []
-    until match_symbol?('}')
-      error_eof("Expected '}'") if peek.nil?
-      stmt = parse_statement
-      body << stmt if stmt
-    end
-    consume_symbol('}')
+    body = parse_block
 
     elif_branches = []
     while match_keyword?('elif')
@@ -138,35 +142,20 @@ module ParserStatements
       consume_symbol('(') if e_has_paren
       e_cond = parse_expression
       consume_symbol(')') if e_has_paren
-      consume_symbol('{')
-      e_body = []
-      until match_symbol?('}')
-        error_eof("Expected '}'") if peek.nil?
-        stmt = parse_statement
-        e_body << stmt if stmt
-      end
-      consume_symbol('}')
+      e_body = parse_block
       elif_branches << { condition: e_cond, body: e_body }
     end
 
     else_body = nil
     if match_keyword?('else')
       consume_keyword('else')
-      consume_symbol('{')
-      else_body = []
-      until match_symbol?('}')
-        error_eof("Expected '}'") if peek.nil?
-        stmt = parse_statement
-        else_body << stmt if stmt
-      end
-      consume_symbol('}')
+      else_body = parse_block
     end
     with_loc(AST::IfStatement.new(cond, body, elif_branches: elif_branches, else_body: else_body), token)
   end
 
   def parse_return
     token = consume_keyword('return')
-    # ASI: bare return (followed by ';', '}', EOF, or newline) returns 0
     if match_symbol?(";") || match_symbol?("}") || peek.nil? || !on_same_line?
       expr = AST::Literal.new(0)
     else
@@ -221,14 +210,7 @@ module ParserStatements
       return_type = consume_type
     end
 
-    consume_symbol('{')
-    body = []
-    until match_symbol?('}')
-      error_eof("Expected '}'") if peek.nil?
-      stmt = parse_statement
-      body << stmt if stmt
-    end
-    consume_symbol('}')
+    body = parse_block
     with_loc(AST::FunctionDefinition.new(name, params, body, type_params: type_params, param_types: param_types, return_type: return_type), token)
   end
 
@@ -252,7 +234,7 @@ module ParserStatements
       error_eof("Expected '}'") if peek.nil?
       consume_keyword('let') if match_keyword?('let')
       if match_keyword?('mut')
-         consume_keyword('mut')
+        consume_keyword('mut')
       end
       field_name = consume_ident
       if match?(:colon)
@@ -302,14 +284,7 @@ module ParserStatements
     consume_symbol('(') if has_paren
     cond = parse_expression
     consume_symbol(')') if has_paren
-    consume_symbol('{')
-    body = []
-    until match_symbol?('}')
-      error_eof("Expected '}'") if peek.nil?
-      stmt = parse_statement
-      body << stmt if stmt
-    end
-    consume_symbol('}')
+    body = parse_block
     with_loc(AST::WhileStatement.new(cond, body), token)
   end
 
@@ -327,14 +302,7 @@ module ParserStatements
     update_op = consume(:operator)[:value]
     update = { type: :increment, name: update_name, op: update_op }
     consume_symbol(')')
-    consume_symbol('{')
-    body = []
-    until match_symbol?('}')
-      error_eof("Expected '}'") if peek.nil?
-      stmt = parse_statement
-      body << stmt if stmt
-    end
-    consume_symbol('}')
+    body = parse_block
     with_loc(AST::ForStatement.new(init, cond, update, body), token)
   end
 
@@ -415,6 +383,9 @@ module ParserStatements
           path += consume_symbol('.')[:value]
         end
       end
+      if path.empty?
+        error_unexpected(peek, "Expected string or system path for use")
+      end
       AST::Import.new(path, system: true)
     end
   end
@@ -429,14 +400,7 @@ module ParserStatements
 
   def parse_loop
     token = consume_keyword('loop')
-    consume_symbol('{')
-    body = []
-    until match_symbol?('}')
-      error_eof("Expected '}'") if peek.nil?
-      stmt = parse_statement
-      body << stmt if stmt
-    end
-    consume_symbol('}')
+    body = parse_block
     with_loc(AST::WhileStatement.new(AST::Literal.new(1), body), token)
   end
 
@@ -537,13 +501,7 @@ module ParserStatements
       consume_symbol('=>')
       body = []
       if match_symbol?('{')
-        consume_symbol('{')
-        until match_symbol?('}')
-          error_eof("Expected '}'") if peek.nil?
-          stmt = parse_statement
-          body << stmt if stmt
-        end
-        consume_symbol('}')
+        body = parse_block
       else
         stmt = parse_statement
         body << stmt if stmt
@@ -600,9 +558,8 @@ module ParserStatements
     token = consume_keyword('continue')
     with_loc(AST::ContinueStatement.new, token)
   end
-end
 
-def parse_import_c
+  def parse_import_c
     token = consume_keyword('import_c')
     header_path = consume(:string)[:value]
     lib_name = "libc.so.6"
@@ -612,3 +569,6 @@ def parse_import_c
     end
     with_loc(AST::ImportC.new(header_path, lib_name), token)
   end
+end
+
+

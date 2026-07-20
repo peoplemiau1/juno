@@ -48,7 +48,7 @@ class JunoError < StandardError
         puts " #{RED}#{line_num_str}#{RESET} #{GRAY}|#{RESET} #{line_content}"
         if @column && @column > 0
           padding = " " * [@column - 1, 0].max
-          puts "     #{GRAY}|#{RESET} #{padding}#{RED}#{BOLD}^#{@message.length > 0 ? '' : '~~~'}#{RESET}"
+          puts "     #{GRAY}|#{RESET} #{padding}#{RED}#{BOLD}^#{RESET}"
         end
       else
         puts " #{GRAY}#{line_num_str} |#{RESET} #{line_content}"
@@ -72,6 +72,27 @@ end
 class JunoParseError < JunoError
   def initialize(message, **opts)
     super("E0003", message, **opts)
+  end
+end
+
+class JunoParseEOFError < JunoParseError
+end
+
+class JunoMultiParseError < JunoError
+  attr_reader :errors
+
+  def initialize(errors)
+    @errors = errors
+    super("E0003", "found #{errors.length} parse error#{errors.length == 1 ? '' : 's'}")
+  end
+
+  def display
+    @errors.each_with_index do |e, i|
+      puts "" if i > 0
+      e.display
+    end
+    puts ""
+    puts "#{RED}#{BOLD}error#{RESET}: aborting due to #{@errors.length} previous error#{@errors.length == 1 ? '' : 's'}"
   end
 end
 
@@ -159,3 +180,4 @@ module JunoErrorReporter
     puts "#{GRAY}note#{RESET}: #{message}"
   end
 end
+

@@ -8,6 +8,12 @@ class Parser
   include ParserExpressions
   include ParserStatements
 
+  MAX_ERRORS = 100
+  SYNC_KEYWORDS = %w[
+    fn struct enum union packed type import import_c use extern pub
+    let if while for loop return break continue match panic todo
+  ].freeze
+
   def self.parse_many(entries)
     return [] if entries.empty?
 
@@ -15,7 +21,7 @@ class Parser
     pool_size = 1 if pool_size < 1
 
     results = Array.new(entries.size)
-    errors = Array.new(entries.size)
+    failures = Array.new(entries.size)
     queue = Queue.new
     entries.each_with_index { |e, i| queue << [e, i] }
 
@@ -34,7 +40,7 @@ class Parser
           begin
             results[idx] = new(tokens, filename || "", source || "").parse
           rescue Exception => e
-            errors[idx] = e
+            failures[idx] = e
           end
         end
       end
@@ -42,8 +48,15 @@ class Parser
 
     workers.each(&:join)
 
-    first_error = errors.compact.first
-    raise first_error if first_error
+    parse_errors = []
+    failures.compact.each do |e|
+      case e
+      when JunoMultiParseError then parse_errors.concat(e.errors)
+      when JunoParseError then parse_errors << e
+      else raise e
+      end
+    end
+    raise JunoMultiParseError.new(parse_errors) unless parse_errors.empty?
 
     results
   end
@@ -53,6 +66,7 @@ class Parser
     @filename = filename
     @source = source
     @last_token = nil
+    @errors = []
   end
 
   def parse_async(&block)
@@ -67,12 +81,35 @@ class Parser
     ast = []
     until @tokens.empty?
       if match_symbol?('}')
-        error_unexpected(peek, "Unexpected '}' at top level")
+        t = @tokens.shift
+        record_error(make_error("Unexpected '}' at top level", t))
+        next
       end
       stmt = parse_statement
       ast << stmt if stmt
     end
+    raise JunoMultiParseError.new(@errors) unless @errors.empty?
     ast
+  end
+
+  def parse_statement
+    before = @tokens.length
+    begin
+      super
+    rescue JunoParseEOFError => e
+      record_error(e)
+      @tokens.clear
+      nil
+    rescue JunoParseError => e
+      record_error(e)
+      synchronize
+      @tokens.shift if !@tokens.empty? && @tokens.length == before
+      nil
+    end
+  end
+
+  def errors
+    @errors
   end
 
   def peek; @tokens[0]; end
@@ -158,27 +195,63 @@ class Parser
 
   private
 
-  def error_unexpected(token, message)
-    if token.nil?
-      error_eof(message)
+  def record_error(error)
+    return if error.is_a?(JunoParseEOFError) && @errors.last.is_a?(JunoParseEOFError)
+    @errors << error if @errors.length < MAX_ERRORS
+    @tokens.clear if @errors.length >= MAX_ERRORS
+  end
+
+  def synchronize
+    depth = 0
+    until @tokens.empty?
+      t = peek
+      if depth == 0
+        return if t[:type] == :keyword && SYNC_KEYWORDS.include?(t[:value])
+        if match_symbol?(';')
+          @tokens.shift
+          return
+        end
+        return if match_symbol?('}')
+      end
+      if match_symbol?('{')
+        depth += 1
+      elsif match_symbol?('}')
+        depth -= 1
+        return if depth < 0
+      end
+      @tokens.shift
     end
-    error = JunoParseError.new(
+  end
+
+  def make_error(message, token)
+    JunoParseError.new(
+      message,
+      filename: @filename,
+      line_num: token ? token[:line] : nil,
+      column: token ? token[:column] : nil,
+      source: @source
+    )
+  end
+
+  def error_unexpected(token, message)
+    error_eof(message) if token.nil?
+    raise JunoParseError.new(
       "#{message}, got #{token[:type]} '#{token[:value]}'",
       filename: @filename,
       line_num: token[:line],
       column: token[:column],
       source: @source
     )
-    JunoErrorReporter.report(error)
   end
 
   def error_eof(message)
-    error = JunoParseError.new(
+    raise JunoParseEOFError.new(
       "#{message}, but reached end of file",
       filename: @filename,
       line_num: @source.lines.length,
       source: @source
     )
-    JunoErrorReporter.report(error)
   end
 end
+
+

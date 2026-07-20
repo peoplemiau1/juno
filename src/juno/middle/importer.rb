@@ -673,6 +673,8 @@ end
 
 class UndefinedCallCheckPass
   BUILTIN_CONTROL = %w[
+    trim file_read_all file_read_safe exists juno_strlen juno_pow strdup exit usleep
+    trim file_read_all file_read_safe exists juno_strlen juno_pow strdup exit usleep
     free malloc alloc os_alloc mem_malloc stack_alloc reuse_alloc
     arena_create arena_alloc arena_reset arena_destroy
     realloc dup drop rc_dec printf syscall str_len concat substr

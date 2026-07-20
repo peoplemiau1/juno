@@ -1,4 +1,6 @@
 class SemanticAnalyzer
+  MAX_ERRORS = 100
+
   def initialize(ast, filename = "unknown", source = "")
     @ast = ast
     @filename = filename
@@ -6,6 +8,7 @@ class SemanticAnalyzer
     @symbol_table = {}
     @structs = {}
     @unions = {}
+    @errors = []
   end
 
   def function_signatures
@@ -91,6 +94,9 @@ class SemanticAnalyzer
         node[:stack_size] = (stack_size + 15) & ~15
       end
     end
+
+    raise JunoMultiParseError.new(@errors) unless @errors.empty?
+
     @ast
   end
 
@@ -323,13 +329,15 @@ class SemanticAnalyzer
   end
 
   def error_at(node, message)
-    error = JunoTypeError.new(
+    return if @errors.length >= MAX_ERRORS
+    @errors << JunoTypeError.new(
       message,
       filename: @filename,
       line_num: node.is_a?(Hash) ? node[:line] : nil,
       column: node.is_a?(Hash) ? node[:column] : nil,
       source: @source
     )
-    JunoErrorReporter.report(error)
   end
 end
+
+

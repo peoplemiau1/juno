@@ -49,7 +49,12 @@ module Juno
     end
 
     def compile(input_file)
-      code = File.read(input_file)
+      begin
+        code = File.read(input_file)
+      rescue Errno::ENOENT
+        JunoErrorReporter.report(JunoError.new("E0000", "file not found: #{input_file}"))
+      end
+
       unless @options[:no_std]
         if input_file != File.join(@options[:stdlib_path], "std.juno") && !code.include?("import \"std\"")
           code = "import \"std.juno\"\n" + code
@@ -61,10 +66,14 @@ module Juno
       preprocessor.define("__JUNO__")
       code = preprocessor.process(code, input_file)
 
-      lexer = Lexer.new(code, input_file)
-      tokens = lexer.tokenize
-      parser = Parser.new(tokens, input_file, code)
-      ast = parser.parse
+      begin
+        lexer = Lexer.new(code, input_file)
+        tokens = lexer.tokenize
+        parser = Parser.new(tokens, input_file, code)
+        ast = parser.parse
+      rescue JunoMultiParseError => e
+        JunoErrorReporter.report(e)
+      end
 
       importer = Importer.new(File.dirname(input_file), system_path: @options[:stdlib_path])
       ast = importer.resolve(ast, input_file)
@@ -73,7 +82,11 @@ module Juno
       ast = monomorphizer.monomorphize
 
       analyzer = SemanticAnalyzer.new(ast, input_file, code)
-      ast = analyzer.analyze
+      begin
+        ast = analyzer.analyze
+      rescue JunoMultiParseError => e
+        JunoErrorReporter.report(e)
+      end
 
       auto_drop = AutoDropPass.new(ast)
       ast = auto_drop.run
@@ -91,8 +104,8 @@ module Juno
       llc_cmd = toolchain[:llc]
       opt_cmd = toolchain[:opt]
 
-      raw_opt = @options[:opt_level].to_s
-      opt_level = (raw_opt == 's' || raw_opt == 'z') ? raw_opt : (raw_opt.to_i || 2)
+      raw_opt = (@options[:opt_level] || 2).to_s
+      opt_level = (raw_opt == 's' || raw_opt == 'z') ? raw_opt : raw_opt.to_i
 
       runtime_obj = File.expand_path("backend/llvm/runtime_#{@options[:os]}_#{@options[:arch]}.o", __dir__)
       runtime_src = File.expand_path("backend/llvm/runtime.c", __dir__)
@@ -112,7 +125,9 @@ module Juno
 
       if @options[:target] == :flat || @options[:target].to_s == "flat"
         objcopy_cmd = RUBY_PLATFORM =~ /darwin/i ? "llvm-objcopy" : "objcopy"
-        system("#{objcopy_cmd} -O binary #{obj_file} #{@options[:output]}")
+        unless system("#{objcopy_cmd} -O binary #{obj_file} #{@options[:output]}")
+          raise "objcopy failed"
+        end
       elsif @options[:target] == :obj || @options[:target].to_s == "obj"
         File.binwrite(@options[:output], File.binread(obj_file))
       else
@@ -125,6 +140,8 @@ module Juno
     private
 
     def run_llvm_pipeline(ir_file, obj_file, opt_cmd, llc_cmd, opt_level, target_triple)
+      raise "llc not found, install LLVM" if llc_cmd.nil?
+
       target_ir_file = ir_file
 
       if opt_cmd && opt_level.to_s != "0"
@@ -150,9 +167,13 @@ module Juno
       if @options[:os] == :macos && RUBY_PLATFORM !~ /darwin/i && @options[:darling]
         darling_runtime_obj = "/Volumes/SystemRoot" + runtime_obj
         darling_runtime_src = "/Volumes/SystemRoot" + runtime_src
-        system("darling shell clang -fPIC -O2 -c -o #{darling_runtime_obj} #{darling_runtime_src}")
+        unless system("darling shell clang -fPIC -O2 -c -o #{darling_runtime_obj} #{darling_runtime_src}")
+          raise "runtime compilation failed (darling clang)"
+        end
       else
-        system("gcc -fPIC -O2 -c -o #{runtime_obj} #{runtime_src}")
+        unless system("gcc -fPIC -O2 -c -o #{runtime_obj} #{runtime_src}")
+          raise "runtime compilation failed (gcc)"
+        end
       end
 
       runtime_obj
@@ -262,7 +283,9 @@ module Juno
         $stderr.puts "DEBUG: Linking command: #{link_cmd}"
       end
 
-      system(link_cmd)
+      unless system(link_cmd)
+        raise "Linking failed: #{link_cmd}"
+      end
     end
 
     def find_stdlib_path
