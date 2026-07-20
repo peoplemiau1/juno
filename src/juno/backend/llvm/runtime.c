@@ -327,8 +327,10 @@ int64_t prints(int64_t s_ptr) {
 #include <sys/types.h>
 #include <sys/event.h>
 
-#if defined(__aarch64__)
-int64_t syscall(int64_t number, ...) {
+#if defined(__aarch64__) || defined(__arm64__)
+int64_t juno_syscall_stub(int64_t number, ...) __asm__("_syscall");
+
+int64_t juno_syscall_stub(int64_t number, ...) {
     (void)number;
     errno = ENOSYS;
     return -1;
