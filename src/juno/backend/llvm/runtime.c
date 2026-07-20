@@ -275,7 +275,7 @@ int64_t exists(int64_t path_ptr) {
     return access(path, F_OK) == 0 ? 1 : 0;
 }
 
-int64_t juno_strlen(int66_t s_ptr) {
+int64_t juno_strlen(int64_t s_ptr) {
     const char* s = (const char*)s_ptr;
     if (!s) return 0;
     return (int64_t)strlen(s);
