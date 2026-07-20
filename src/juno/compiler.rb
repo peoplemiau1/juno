@@ -257,9 +257,9 @@ module Juno
           darling_output = "/Volumes/SystemRoot" + File.expand_path(@options[:output])
           darling_obj_file = "/Volumes/SystemRoot" + File.expand_path(obj_file)
           darling_runtime_obj = "/Volumes/SystemRoot" + runtime_obj
-          link_cmd = "darling shell clang -o #{darling_output} #{darling_obj_file} #{darling_runtime_obj} -L. -Wl,-rpath,'\$ORIGIN' -Wl,--gc-sections #{libs_str} -lm"
+          link_cmd = "darling shell clang -o #{darling_output} #{darling_obj_file} #{darling_runtime_obj} -L. -Wl,-rpath,@executable_path -Wl,-dead_strip #{libs_str} -lm"
         else
-          link_cmd = "gcc -o #{@options[:output]} #{obj_file} #{runtime_obj} -L. -Wl,-rpath,'\$ORIGIN' -Wl,--gc-sections #{libs_str} -lm"
+          link_cmd = "gcc -o #{@options[:output]} #{obj_file} #{runtime_obj} -L. -Wl,-rpath,@executable_path -Wl,-dead_strip #{libs_str} -lm"
         end
       else
         if @options[:static]
